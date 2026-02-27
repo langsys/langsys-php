@@ -232,6 +232,7 @@ class Client
             $cached = $this->cache->get($cacheKey);
             if ($cached !== null) {
                 $this->projectData = $cached;
+                $this->syncBatchLimit();
                 $this->logger->debug('Authorization from cache', [
                     'project_id' => $this->config->getProjectId(),
                 ]);
@@ -243,6 +244,7 @@ class Client
 
         if (isset($response['data'])) {
             $this->projectData = $response['data'];
+            $this->syncBatchLimit();
             $this->cache->set($cacheKey, $this->projectData);
             $keyType = isset($this->projectData['key_type']) ? $this->projectData['key_type'] : 'unknown';
             $this->logger->info('Project authorized', [
@@ -253,6 +255,18 @@ class Client
         }
 
         return $response;
+    }
+
+    /**
+     * Sync the batch limit from project data to the TranslatableItems resource.
+     *
+     * @return void
+     */
+    protected function syncBatchLimit()
+    {
+        if (isset($this->projectData['langsys_settings']['batch_limit'])) {
+            $this->translatableItems->setBatchLimit($this->projectData['langsys_settings']['batch_limit']);
+        }
     }
 
     /**

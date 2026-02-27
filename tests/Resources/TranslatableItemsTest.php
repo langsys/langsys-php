@@ -45,8 +45,10 @@ class TranslatableItemsTest extends TestCase
         $this->assertEquals('POST', $request['method']);
         $this->assertEquals('translatable-items', $request['endpoint']);
         $this->assertEquals('test-project-id', $request['data']['project_id']);
-        $this->assertEquals('phrase', $request['data']['type']);
-        $this->assertEquals($phrases, $request['data']['phrases']);
+        $this->assertEquals([
+            ['type' => 'phrase', 'phrase' => 'Hello', 'category' => 'Greetings', 'translatable' => true],
+            ['type' => 'phrase', 'phrase' => 'Goodbye', 'category' => 'Greetings', 'translatable' => true],
+        ], $request['data']['translatable_items']);
     }
 
     public function testCreatePhrasesWithStrings()
@@ -62,9 +64,9 @@ class TranslatableItemsTest extends TestCase
 
         $request = $this->http->getLastRequest();
         $this->assertEquals([
-            ['phrase' => 'Hello'],
-            ['phrase' => 'Goodbye'],
-        ], $request['data']['phrases']);
+            ['type' => 'phrase', 'phrase' => 'Hello', 'category' => null, 'translatable' => true],
+            ['type' => 'phrase', 'phrase' => 'Goodbye', 'category' => null, 'translatable' => true],
+        ], $request['data']['translatable_items']);
     }
 
     public function testCreatePhrasesMixedFormat()
@@ -82,10 +84,10 @@ class TranslatableItemsTest extends TestCase
 
         $request = $this->http->getLastRequest();
         $this->assertEquals([
-            ['phrase' => 'Simple phrase'],
-            ['phrase' => 'With category', 'category' => 'UI'],
-            ['phrase' => 'Not translatable', 'translatable' => false],
-        ], $request['data']['phrases']);
+            ['type' => 'phrase', 'phrase' => 'Simple phrase', 'category' => null, 'translatable' => true],
+            ['type' => 'phrase', 'phrase' => 'With category', 'category' => 'UI', 'translatable' => true],
+            ['type' => 'phrase', 'phrase' => 'Not translatable', 'category' => null, 'translatable' => false],
+        ], $request['data']['translatable_items']);
     }
 
     public function testCreateContentBlock()
@@ -106,16 +108,19 @@ class TranslatableItemsTest extends TestCase
         $request = $this->http->getLastRequest();
         $this->assertEquals('POST', $request['method']);
         $this->assertEquals('test-project-id', $request['data']['project_id']);
-        $this->assertEquals('content_block', $request['data']['type']);
-        $this->assertEquals('main-menu', $request['data']['custom_id']);
-        $this->assertEquals('<nav><a>Home</a><a>About</a></nav>', $request['data']['content']);
-        $this->assertEquals('Navigation', $request['data']['category']);
-        $this->assertEquals('Main Menu', $request['data']['label']);
+        $this->assertCount(1, $request['data']['translatable_items']);
+
+        $item = $request['data']['translatable_items'][0];
+        $this->assertEquals('content_block', $item['type']);
+        $this->assertEquals('main-menu', $item['custom_id']);
+        $this->assertEquals('<nav><a>Home</a><a>About</a></nav>', $item['content']);
+        $this->assertEquals('Navigation', $item['category']);
+        $this->assertEquals('Main Menu', $item['label']);
         // Phrases are now auto-extracted from HTML
         $this->assertEquals([
             ['phrase' => 'Home'],
             ['phrase' => 'About'],
-        ], $request['data']['phrases']);
+        ], $item['phrases']);
     }
 
     public function testCreateContentBlockWithoutOptionalParams()
@@ -129,15 +134,16 @@ class TranslatableItemsTest extends TestCase
         );
 
         $request = $this->http->getLastRequest();
-        $this->assertArrayNotHasKey('category', $request['data']);
-        $this->assertArrayNotHasKey('label', $request['data']);
+        $item = $request['data']['translatable_items'][0];
+        $this->assertArrayNotHasKey('category', $item);
+        $this->assertArrayNotHasKey('label', $item);
         // customId should be auto-generated
-        $this->assertArrayHasKey('custom_id', $request['data']);
-        $this->assertEquals(32, strlen($request['data']['custom_id'])); // md5 hash length
+        $this->assertArrayHasKey('custom_id', $item);
+        $this->assertEquals(32, strlen($item['custom_id'])); // md5 hash length
         // Phrases auto-extracted
         $this->assertEquals([
             ['phrase' => 'Contact Us'],
-        ], $request['data']['phrases']);
+        ], $item['phrases']);
     }
 
     public function testCreateContentBlockAutoGeneratesCustomId()
@@ -152,13 +158,19 @@ class TranslatableItemsTest extends TestCase
         $this->items->createContentBlock('<p>Hello</p>', 'UI');
         $request2 = $this->http->getLastRequest();
 
-        $this->assertEquals($request1['data']['custom_id'], $request2['data']['custom_id']);
+        $this->assertEquals(
+            $request1['data']['translatable_items'][0]['custom_id'],
+            $request2['data']['translatable_items'][0]['custom_id']
+        );
 
         // Different category should generate different customId
         $this->items->createContentBlock('<p>Hello</p>', 'Marketing');
         $request3 = $this->http->getLastRequest();
 
-        $this->assertNotEquals($request1['data']['custom_id'], $request3['data']['custom_id']);
+        $this->assertNotEquals(
+            $request1['data']['translatable_items'][0]['custom_id'],
+            $request3['data']['translatable_items'][0]['custom_id']
+        );
     }
 
     public function testCreateContentBlockExtractsAttributePhrases()
@@ -172,8 +184,9 @@ class TranslatableItemsTest extends TestCase
         );
 
         $request = $this->http->getLastRequest();
+        $item = $request['data']['translatable_items'][0];
         // Should extract placeholder and button text
-        $phrases = array_map(function($p) { return $p['phrase']; }, $request['data']['phrases']);
+        $phrases = array_map(function($p) { return $p['phrase']; }, $item['phrases']);
         $this->assertContains('Enter name', $phrases);
         $this->assertContains('Submit', $phrases);
     }
@@ -190,10 +203,10 @@ class TranslatableItemsTest extends TestCase
 
         $request = $this->http->getLastRequest();
         $this->assertEquals([
-            ['phrase' => 'Error 404', 'category' => 'Errors', 'translatable' => true],
-            ['phrase' => 'Error 500', 'category' => 'Errors', 'translatable' => true],
-            ['phrase' => 'Server Error', 'category' => 'Errors', 'translatable' => true],
-        ], $request['data']['phrases']);
+            ['type' => 'phrase', 'phrase' => 'Error 404', 'category' => 'Errors', 'translatable' => true],
+            ['type' => 'phrase', 'phrase' => 'Error 500', 'category' => 'Errors', 'translatable' => true],
+            ['type' => 'phrase', 'phrase' => 'Server Error', 'category' => 'Errors', 'translatable' => true],
+        ], $request['data']['translatable_items']);
     }
 
     public function testCreatePhrasesWithCategoryNonTranslatable()
@@ -209,9 +222,9 @@ class TranslatableItemsTest extends TestCase
 
         $request = $this->http->getLastRequest();
         $this->assertEquals([
-            ['phrase' => 'API_KEY', 'category' => 'Config', 'translatable' => false],
-            ['phrase' => 'SECRET_TOKEN', 'category' => 'Config', 'translatable' => false],
-        ], $request['data']['phrases']);
+            ['type' => 'phrase', 'phrase' => 'API_KEY', 'category' => 'Config', 'translatable' => false],
+            ['type' => 'phrase', 'phrase' => 'SECRET_TOKEN', 'category' => 'Config', 'translatable' => false],
+        ], $request['data']['translatable_items']);
     }
 
     public function testCreateFromMap()
@@ -228,11 +241,84 @@ class TranslatableItemsTest extends TestCase
 
         $request = $this->http->getLastRequest();
         $this->assertEquals([
-            ['phrase' => 'Home', 'category' => 'Navigation'],
-            ['phrase' => 'About', 'category' => 'Navigation'],
-            ['phrase' => 'Contact', 'category' => 'Navigation'],
-            ['phrase' => 'Submit', 'category' => 'Forms'],
-            ['phrase' => 'Cancel', 'category' => 'Forms'],
-        ], $request['data']['phrases']);
+            ['type' => 'phrase', 'phrase' => 'Home', 'category' => 'Navigation', 'translatable' => true],
+            ['type' => 'phrase', 'phrase' => 'About', 'category' => 'Navigation', 'translatable' => true],
+            ['type' => 'phrase', 'phrase' => 'Contact', 'category' => 'Navigation', 'translatable' => true],
+            ['type' => 'phrase', 'phrase' => 'Submit', 'category' => 'Forms', 'translatable' => true],
+            ['type' => 'phrase', 'phrase' => 'Cancel', 'category' => 'Forms', 'translatable' => true],
+        ], $request['data']['translatable_items']);
+    }
+
+    public function testCreatePhrasesChunkingWithDefaultLimit()
+    {
+        $expectedResponse = ['status' => true, 'created' => 200];
+        $this->http->setResponse('POST', 'translatable-items', $expectedResponse);
+
+        // Default batch limit is 200, so 450 phrases = 3 chunks: 200, 200, 50
+        $phrases = [];
+        for ($i = 0; $i < 450; $i++) {
+            $phrases[] = 'Phrase ' . $i;
+        }
+
+        $result = $this->items->createPhrases($phrases);
+
+        $requests = $this->http->getRequests();
+        $this->assertCount(3, $requests);
+
+        $this->assertCount(200, $requests[0]['data']['translatable_items']);
+        $this->assertCount(200, $requests[1]['data']['translatable_items']);
+        $this->assertCount(50, $requests[2]['data']['translatable_items']);
+
+        foreach ($requests as $request) {
+            $this->assertEquals('test-project-id', $request['data']['project_id']);
+        }
+    }
+
+    public function testCreatePhrasesChunkingWithCustomLimit()
+    {
+        $expectedResponse = ['status' => true, 'created' => 50];
+        $this->http->setResponse('POST', 'translatable-items', $expectedResponse);
+
+        // Set a custom batch limit (simulating API-provided value)
+        $this->items->setBatchLimit(50);
+
+        $phrases = [];
+        for ($i = 0; $i < 120; $i++) {
+            $phrases[] = 'Phrase ' . $i;
+        }
+
+        $result = $this->items->createPhrases($phrases);
+
+        $requests = $this->http->getRequests();
+        $this->assertCount(3, $requests);
+
+        $this->assertCount(50, $requests[0]['data']['translatable_items']);
+        $this->assertCount(50, $requests[1]['data']['translatable_items']);
+        $this->assertCount(20, $requests[2]['data']['translatable_items']);
+    }
+
+    public function testCreatePhrasesSingleChunk()
+    {
+        $expectedResponse = ['status' => true, 'created' => 5];
+        $this->http->setResponse('POST', 'translatable-items', $expectedResponse);
+
+        $phrases = ['One', 'Two', 'Three', 'Four', 'Five'];
+        $result = $this->items->createPhrases($phrases);
+
+        // Should only make 1 request
+        $requests = $this->http->getRequests();
+        $this->assertCount(1, $requests);
+        $this->assertCount(5, $requests[0]['data']['translatable_items']);
+    }
+
+    public function testBatchLimitDefaultValue()
+    {
+        $this->assertEquals(200, $this->items->getBatchLimit());
+    }
+
+    public function testSetBatchLimit()
+    {
+        $this->items->setBatchLimit(100);
+        $this->assertEquals(100, $this->items->getBatchLimit());
     }
 }
