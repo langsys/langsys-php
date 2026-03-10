@@ -528,6 +528,37 @@ class ClientTest extends TestCase
         $this->assertFalse($client->hasPendingRegistrations());
     }
 
+    public function testAuthorizeSyncsBatchLimitFromLangsysSettings()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => [
+                'key_type' => 'write',
+                'langsys_settings' => [
+                    'batch_limit' => 50,
+                ],
+            ],
+        ]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+        $client->authorize();
+
+        $this->assertEquals(50, $client->translatableItems()->getBatchLimit());
+    }
+
+    public function testAuthorizeFallsBackToDefaultBatchLimit()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'write'],
+        ]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+        $client->authorize();
+
+        $this->assertEquals(200, $client->translatableItems()->getBatchLimit());
+    }
+
     // =========================================================================
     // Helper methods
     // =========================================================================

@@ -13,6 +13,11 @@ use Langsys\SDK\Log\NullLogger;
 class TranslatableItems
 {
     /**
+     * Default batch limit when the API does not provide one.
+     */
+    const DEFAULT_BATCH_LIMIT = 200;
+
+    /**
      * @var HttpClient
      */
     protected $http;
@@ -33,6 +38,11 @@ class TranslatableItems
     protected $logger;
 
     /**
+     * @var int Batch limit for chunking API requests
+     */
+    protected $batchLimit;
+
+    /**
      * Create a new TranslatableItems instance.
      *
      * @param HttpClient $http
@@ -44,6 +54,7 @@ class TranslatableItems
         $this->http = $http;
         $this->projectId = $projectId;
         $this->translatableAttributes = null;
+        $this->batchLimit = self::DEFAULT_BATCH_LIMIT;
         $this->logger = $logger !== null ? $logger : new NullLogger();
     }
 
@@ -101,6 +112,28 @@ class TranslatableItems
     }
 
     /**
+     * Set the batch limit for chunking API requests.
+     *
+     * @param int $limit
+     * @return $this
+     */
+    public function setBatchLimit($limit)
+    {
+        $this->batchLimit = (int) $limit;
+        return $this;
+    }
+
+    /**
+     * Get the current batch limit.
+     *
+     * @return int
+     */
+    public function getBatchLimit()
+    {
+        return $this->batchLimit;
+    }
+
+    /**
      * Create or update phrases.
      *
      * @param array $phrases Array of phrases, each with: phrase (required), category (optional), translatable (optional)
@@ -108,23 +141,30 @@ class TranslatableItems
      */
     public function createPhrases(array $phrases)
     {
-        $formattedPhrases = [];
+        $items = [];
 
         foreach ($phrases as $phrase) {
-            if (is_string($phrase)) {
-                $formattedPhrases[] = ['phrase' => $phrase];
-            } else {
-                $formattedPhrases[] = $phrase;
-            }
+            $items[] = [
+                'type' => 'phrase',
+                'phrase' => is_string($phrase) ? $phrase : $phrase['phrase'],
+                'category' => is_string($phrase) ? null : (isset($phrase['category']) ? $phrase['category'] : null),
+                'translatable' => is_string($phrase) ? true : (isset($phrase['translatable']) ? $phrase['translatable'] : true),
+            ];
         }
 
-        $this->logger->debug('Creating phrases', ['count' => count($formattedPhrases)]);
+        $this->logger->debug('Creating phrases', ['count' => count($items)]);
 
-        return $this->http->post('translatable-items', [
-            'project_id' => $this->projectId,
-            'type' => 'phrase',
-            'phrases' => $formattedPhrases,
-        ]);
+        $chunks = array_chunk($items, $this->batchLimit);
+        $lastResponse = null;
+
+        foreach ($chunks as $chunk) {
+            $lastResponse = $this->http->post('translatable-items', [
+                'project_id' => $this->projectId,
+                'translatable_items' => $chunk,
+            ]);
+        }
+
+        return $lastResponse;
     }
 
     /**
@@ -185,8 +225,7 @@ class TranslatableItems
             'phrase_count' => count($formattedPhrases),
         ]);
 
-        $data = [
-            'project_id' => $this->projectId,
+        $item = [
             'type' => 'content_block',
             'custom_id' => $customId,
             'content' => $content,
@@ -194,14 +233,17 @@ class TranslatableItems
         ];
 
         if ($category !== null) {
-            $data['category'] = $category;
+            $item['category'] = $category;
         }
 
         if ($label !== null) {
-            $data['label'] = $label;
+            $item['label'] = $label;
         }
 
-        return $this->http->post('translatable-items', $data);
+        return $this->http->post('translatable-items', [
+            'project_id' => $this->projectId,
+            'translatable_items' => [$item],
+        ]);
     }
 
     /**
@@ -243,7 +285,6 @@ class TranslatableItems
             }
 
             $item = [
-                'project_id' => $this->projectId,
                 'type' => 'content_block',
                 'custom_id' => $customId,
                 'content' => $html,
@@ -265,8 +306,17 @@ class TranslatableItems
             'count' => count($requestItems),
         ]);
 
-        // Send array of content block objects directly
-        return $this->http->post('translatable-items', $requestItems);
+        $chunks = array_chunk($requestItems, $this->batchLimit);
+        $lastResponse = null;
+
+        foreach ($chunks as $chunk) {
+            $lastResponse = $this->http->post('translatable-items', [
+                'project_id' => $this->projectId,
+                'translatable_items' => $chunk,
+            ]);
+        }
+
+        return $lastResponse;
     }
 
     /**
