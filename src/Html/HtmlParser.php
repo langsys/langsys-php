@@ -164,12 +164,21 @@ class HtmlParser
      */
     public function generateCustomId($category, array $phrases)
     {
-        $tokens = array_merge(
-            [$category !== null ? $category : ''],
-            $phrases
-        );
+        // Mirror the JS SDKs' generateCustomId so the same content block resolves
+        // to the same custom_id across every Langsys SDK. JS computes:
+        //   md5(JSON.stringify([category, tokens]))
+        //
+        // - JSON-encode the [category, phrases] tuple. JSON_UNESCAPED_SLASHES +
+        //   JSON_UNESCAPED_UNICODE make json_encode match JS JSON.stringify
+        //   byte-for-byte (JS escapes neither slashes nor non-ASCII).
+        // - Treat the reserved '__uncategorized__' sentinel (and null) as "no
+        //   category" - hashed as '' - matching the JS side, which passes the raw
+        //   category ('' when none) and never the sentinel. This also makes the
+        //   two PHP callers (translateContentBlock default '__uncategorized__' and
+        //   createContentBlock default null) agree with each other.
+        $cat = ($category === null || $category === '__uncategorized__') ? '' : $category;
 
-        return md5(implode('|', $tokens));
+        return md5(json_encode([$cat, array_values($phrases)], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
     }
 
     /**

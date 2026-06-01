@@ -6,6 +6,7 @@ use Langsys\SDK\Client;
 use Langsys\SDK\Cache\NullCache;
 use Langsys\SDK\Exception\LangsysException;
 use Langsys\SDK\Tests\Mock\MockHttpClient;
+use Langsys\SDK\Html\HtmlParser;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -383,7 +384,7 @@ class ClientTest extends TestCase
     public function testLookupContentReturnsContentBlockPhrase()
     {
         $mockHttp = new MockHttpClient();
-        $customId = md5('__uncategorized__|Hello|World');
+        $customId = (new HtmlParser())->generateCustomId('__uncategorized__', ['Hello', 'World']);
         $mockHttp->setResponse('GET', 'translations', [
             'data' => [
                 '__uncategorized__' => [
@@ -407,8 +408,8 @@ class ClientTest extends TestCase
     {
         $mockHttp = new MockHttpClient();
 
-        // The customId is md5('__uncategorized__|Hello|World')
-        $customId = md5('__uncategorized__|Hello|World');
+        // customId must match what the SDK generates for this block
+        $customId = (new HtmlParser())->generateCustomId('__uncategorized__', ['Hello', 'World']);
 
         $mockHttp->setResponse('GET', 'translations', [
             'data' => [
@@ -466,8 +467,8 @@ class ClientTest extends TestCase
     {
         $mockHttp = new MockHttpClient();
 
-        // The customId is md5('homepage|Hello')
-        $customId = md5('homepage|Hello');
+        // customId must match what the SDK generates for this block
+        $customId = (new HtmlParser())->generateCustomId('homepage', ['Hello']);
 
         $mockHttp->setResponse('GET', 'translations', [
             'data' => [
