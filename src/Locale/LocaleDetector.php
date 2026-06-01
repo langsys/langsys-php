@@ -14,9 +14,14 @@ class LocaleDetector
      * Detect locale from browser HTTP_ACCEPT_LANGUAGE header.
      *
      * Detection algorithm:
-     * 1. Try locale_accept_from_http() if Intl extension available
-     * 2. Parse HTTP_ACCEPT_LANGUAGE with regex for full locale (xx-YY or xx_YY)
-     * 3. Fallback: use 2-letter language code, assume country = language
+     * 1. Try locale_accept_from_http() if the Intl extension is available, but
+     *    only accept a COMPLETE locale (xx_YY) from it.
+     * 2. Parse HTTP_ACCEPT_LANGUAGE with regex for the first full locale (xx-YY or xx_YY).
+     * 3. Fallback: use the 2-letter language code, assuming country = language (xx-xx).
+     *
+     * Steps 2-3 mean a language-only top preference still expands to "xx-xx",
+     * and a full locale later in the header wins over a bare language code -
+     * giving identical results whether or not ext-intl is loaded.
      *
      * @return string|null Locale in "xx-yy" format, or null if unable to detect
      */
@@ -28,10 +33,17 @@ class LocaleDetector
 
         $acceptLanguage = $_SERVER['HTTP_ACCEPT_LANGUAGE'];
 
-        // Try built-in function if Intl extension is available
+        // Try the Intl extension first, but only trust it when it returns a
+        // COMPLETE locale (xx_YY). locale_accept_from_http() returns the
+        // highest-q tag, which for a bare-language top preference (e.g.
+        // 'en,es-MX;q=0.9') is 'en'. Returning that would skip the full locale
+        // further down and never expand a language-only header, and would make
+        // the result depend on whether ext-intl is installed. So when Intl
+        // yields only a language code, fall through to the regex + fallback
+        // logic below (which prefers a full locale and expands 'en' -> 'en-en').
         if (function_exists('locale_accept_from_http')) {
             $locale = locale_accept_from_http($acceptLanguage);
-            if ($locale !== null && preg_match('/^[a-z]{2}(_[A-Z]{2})?$/i', $locale)) {
+            if ($locale !== null && preg_match('/^[a-z]{2}_[A-Z]{2}$/i', $locale)) {
                 return self::normalize($locale);
             }
         }

@@ -45,8 +45,9 @@ $client = new Client();
 // Get translations for Spanish
 $translations = $client->getTranslations('es-es');
 
-// Translate a phrase
-echo $client->translate('Home', 'es-es', 'UI'); // "Inicio"
+// Translate a phrase - translate(phrase, category?, params?, locale?)
+$client->setLocale('es-es');
+echo $client->translate('Home', 'UI'); // "Inicio"
 ```
 
 ## Configuration
@@ -366,26 +367,31 @@ $translations = $client->getTranslations('es-es');
 
 ### Translate a Single Phrase
 
-The `translate()` method both translates AND automatically queues new phrases for registration:
+The `translate()` method both translates AND automatically queues new phrases for registration. Its signature mirrors the JS SDKs' `t(phrase, category?, params?)`; locale is a trailing argument (a stateless PHP request can pass it per call) and defaults to `setLocale()`:
 
 ```php
 // Set locale first (or auto-detect from browser)
 $client->setLocale('es-es');
 
-// Basic usage - uses current locale
+// Basic usage - uses the current locale
 $text = $client->translate('Home');
 
-// With explicit locale
-$text = $client->translate('Home', 'es-es');
+// With a category (2nd argument)
+$text = $client->translate('Home', 'UI');
 
-// With category
-$text = $client->translate('Home', 'es-es', 'UI');
+// With interpolation params (3rd argument): {name} placeholders are
+// substituted. ICU MessageFormat (plural/select/gender) is used when
+// ext-intl is installed; otherwise simple {name} replacement is applied.
+$text = $client->translate('Hello, {name}!', 'UI', ['name' => 'Sarah']);
 
-// Using current locale with category
-$text = $client->translate('Home', null, 'UI');
+// Params without a category - an array in the category slot shifts to params
+$text = $client->translate('Hello, {name}!', ['name' => 'Sarah']);
 
-// For content block phrases
-$text = $client->translate('Menu Item', 'es-es', 'Navigation', 'content-block-id');
+// With an explicit per-call locale (trailing argument)
+$text = $client->translate('Home', 'UI', null, 'fr-ca');
+
+// Look up a phrase inside a registered content block (never queues)
+$text = $client->lookupContent('Navigation', 'content-block-id', 'Menu Item');
 ```
 
 If the phrase doesn't exist in translations, it will be:
@@ -926,7 +932,7 @@ function __($phrase, $category = '__uncategorized__')
         $locale = $_SESSION['locale'] ?? 'en-us';
     }
 
-    return $client->translate($phrase, $locale, $category);
+    return $client->translate($phrase, $category, null, $locale);
 }
 
 // Usage in templates:

@@ -265,6 +265,30 @@ class UtilitiesTest extends TestCase
         ], $result);
     }
 
+    public function testGetLocaleListWithFormattedResponseKey()
+    {
+        // The org's locale_code_format re-keys the response (e.g. BCP47), so
+        // the response key 'en-US' does not match the raw 'en-us' we sent.
+        $response = [
+            'status' => true,
+            'data' => [
+                'en-US' => [
+                    ['code' => 'es-ES', 'name' => 'Spanish (Spain)'],
+                    ['code' => 'fr-FR', 'name' => 'French (France)'],
+                ],
+            ],
+        ];
+
+        $this->http->setResponse('GET', 'locales/flat', $response);
+
+        $result = $this->utilities->getLocaleList('en-us');
+
+        $this->assertEquals([
+            ['code' => 'es-ES', 'name' => 'Spanish (Spain)'],
+            ['code' => 'fr-FR', 'name' => 'French (France)'],
+        ], $result);
+    }
+
     public function testGetLocaleListNotFound()
     {
         $response = [

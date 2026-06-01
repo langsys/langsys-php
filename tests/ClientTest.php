@@ -286,6 +286,120 @@ class ClientTest extends TestCase
     }
 
     // =========================================================================
+    // JS-parity tests: translate(phrase, category?, params?) + interpolation
+    // =========================================================================
+
+    public function testTranslateUsesCategoryAsSecondArgument()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'translations', [
+            'data' => [
+                'UI' => ['Save' => 'Guardar'],
+                '__uncategorized__' => [],
+            ],
+        ]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+        $client->setLocale('es-es');
+
+        // Mirrors the JS SDKs: the 2nd positional argument is the category.
+        $this->assertEquals('Guardar', $client->translate('Save', 'UI'));
+        $this->assertFalse($client->hasPendingRegistrations());
+    }
+
+    public function testTranslateInterpolatesParams()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'translations', [
+            'data' => [
+                'UI' => ['Hello, {name}!' => 'Hola, {name}!'],
+                '__uncategorized__' => [],
+            ],
+        ]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+        $client->setLocale('es-es');
+
+        // t(phrase, category, params): the 3rd argument interpolates the translation.
+        $this->assertEquals(
+            'Hola, Sarah!',
+            $client->translate('Hello, {name}!', 'UI', ['name' => 'Sarah'])
+        );
+    }
+
+    public function testTranslateInterpolatesFallbackPhrase()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'translations', [
+            'data' => ['__uncategorized__' => []],
+        ]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+        $client->setLocale('es-es');
+
+        // Missing phrase: returns the source phrase, still interpolated (JS parity).
+        $this->assertEquals('Bye Sarah', $client->translate('Bye {name}', 'UI', ['name' => 'Sarah']));
+    }
+
+    public function testTranslateParamsOverloadWithoutCategory()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'translations', [
+            'data' => [
+                '__uncategorized__' => ['Hi {name}' => 'Hola {name}'],
+            ],
+        ]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+        $client->setLocale('es-es');
+
+        // JS overload t(phrase, params): an array in the category slot = params, no category.
+        $this->assertEquals('Hola Mundo', $client->translate('Hi {name}', ['name' => 'Mundo']));
+    }
+
+    public function testTranslateRendersIcuPlural()
+    {
+        if (!class_exists('MessageFormatter')) {
+            $this->markTestSkipped('ext-intl not available');
+        }
+
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'translations', [
+            'data' => [
+                'ProductCard' => [
+                    'Based on {n} reviews' => '{n, plural, one {Based on # review} other {Based on # reviews}}',
+                ],
+                '__uncategorized__' => [],
+            ],
+        ]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+        $client->setLocale('en-us');
+
+        $this->assertEquals('Based on 1 review', $client->translate('Based on {n} reviews', 'ProductCard', ['n' => 1]));
+        $this->assertEquals('Based on 5 reviews', $client->translate('Based on {n} reviews', 'ProductCard', ['n' => 5]));
+    }
+
+    public function testLookupContentReturnsContentBlockPhrase()
+    {
+        $mockHttp = new MockHttpClient();
+        $customId = md5('__uncategorized__|Hello|World');
+        $mockHttp->setResponse('GET', 'translations', [
+            'data' => [
+                '__uncategorized__' => [
+                    $customId => ['Hello' => 'Hola', 'World' => 'Mundo'],
+                ],
+            ],
+        ]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+        $client->setLocale('es-es');
+
+        $this->assertEquals('Hola', $client->lookupContent('__uncategorized__', $customId, 'Hello'));
+        $this->assertNull($client->lookupContent('__uncategorized__', $customId, 'Missing'));
+    }
+
+    // =========================================================================
     // translateContentBlock() tests
     // =========================================================================
 
@@ -535,7 +649,9 @@ class ClientTest extends TestCase
             'data' => [
                 'key_type' => 'write',
                 'langsys_settings' => [
-                    'batch_limit' => 50,
+                    'translatable_items' => [
+                        'batch_limit' => 50,
+                    ],
                 ],
             ],
         ]);

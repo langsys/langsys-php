@@ -264,8 +264,8 @@ class Client
      */
     protected function syncBatchLimit()
     {
-        if (isset($this->projectData['langsys_settings']['batch_limit'])) {
-            $this->translatableItems->setBatchLimit($this->projectData['langsys_settings']['batch_limit']);
+        if (isset($this->projectData['langsys_settings']['translatable_items']['batch_limit'])) {
+            $this->translatableItems->setBatchLimit($this->projectData['langsys_settings']['translatable_items']['batch_limit']);
         }
     }
 
@@ -355,55 +355,105 @@ class Client
     }
 
     /**
-     * Translate a phrase.
+     * Translate a phrase. Mirrors the JS SDKs' `t(phrase, category?, params?)`
+     * exactly: the phrase comes first (it is the lookup key AND the
+     * base-language default), the category second, interpolation params third.
+     *
+     * The one deliberate divergence from langsys-js-typescript /
+     * langsys-js-react is `$locale`: a browser client reads an ambient, reactive
+     * locale, but a stateless PHP request must be able to pass the locale per
+     * call. It is the trailing argument and defaults to getLocale()/setLocale().
+     *
+     * Like the JS overload, calling translate($phrase, $params) (an array in the
+     * category slot) is treated as "no category, with params".
      *
      * This method both translates the phrase AND queues it for registration if
-     * it doesn't exist in translations. Pending registrations are automatically
-     * flushed at the end of the request, or you can call flushPendingRegistrations()
-     * manually.
+     * it doesn't exist. Pending registrations flush at the end of the request,
+     * or via flushPendingRegistrations(). Curly-brace placeholders in the
+     * resulting string are interpolated from $params via Interpolator (ICU
+     * MessageFormat when ext-intl is present, simple {name} substitution
+     * otherwise).
      *
-     * @param string $phrase The phrase to translate
+     * @param string $phrase The phrase to translate (and the lookup key)
+     * @param string|array $category Category, or the params array (JS-style overload)
+     * @param array|null $params Interpolation params, e.g. array('name' => 'Sarah')
      * @param string|null $locale Locale code (defaults to getLocale() if not set)
-     * @param string $category Category (default: '__uncategorized__')
-     * @param string|null $contentBlockId Content block custom_id (for content block phrases)
-     * @return string The translation, or the original phrase if not found
+     * @return string The (interpolated) translation, or the (interpolated) phrase if not found
      */
-    public function translate($phrase, $locale = null, $category = '__uncategorized__', $contentBlockId = null)
+    public function translate($phrase, $category = '__uncategorized__', $params = null, $locale = null)
     {
-        // Use set locale if not provided
+        // Mirror the JS overload t(phrase, params): an array in the category slot
+        // means "no category, with params" (optionally followed by a locale).
+        if (is_array($category)) {
+            if ($locale === null && is_string($params)) {
+                $locale = $params;
+            }
+            $params = $category;
+            $category = '__uncategorized__';
+        }
+
+        // Locale is the one deliberate server-side divergence from the JS SDKs.
         if ($locale === null) {
             $locale = $this->getLocale();
             if ($locale === null) {
-                return $phrase; // Can't translate without locale
+                // Can't translate without a locale - still interpolate the source.
+                return is_array($params) ? Interpolator::interpolate($phrase, $params, null) : $phrase;
             }
         }
 
         $translations = $this->getTranslations($locale);
         $categoryTranslations = isset($translations[$category]) ? $translations[$category] : [];
 
-        // Handle content block phrase lookup (don't queue - content block handles its own registration)
-        if ($contentBlockId !== null) {
-            if (isset($categoryTranslations[$contentBlockId][$phrase])) {
-                return $categoryTranslations[$contentBlockId][$phrase];
-            }
-            return $phrase;
-        }
-
-        // Regular phrase lookup
         if (array_key_exists($phrase, $categoryTranslations)) {
             $value = $categoryTranslations[$phrase];
-            // If it's an array (content block ID collision), return original phrase
+            // An array here is a content-block id collision, not a phrase translation.
             if (is_array($value)) {
-                return $phrase;
+                $result = $phrase;
+            } else {
+                // Translation, or the original phrase when empty (not yet translated).
+                $result = $value !== '' ? $value : $phrase;
             }
-            // Return translation (or original if empty)
-            return $value !== '' ? $value : $phrase;
+        } else {
+            // Phrase not found - queue for registration.
+            $this->queuePhraseForRegistration($phrase, $category);
+            $result = $phrase;
         }
 
-        // Phrase not found - queue for registration
-        $this->queuePhraseForRegistration($phrase, $category);
+        if (is_array($params)) {
+            return Interpolator::interpolate($result, $params, $locale);
+        }
 
-        return $phrase;
+        return $result;
+    }
+
+    /**
+     * Look up a single phrase inside a registered content block. Mirrors the JS
+     * SDK's Translations.lookupContent(category, customId, token). Never queues a
+     * missing token - content blocks manage their own registration.
+     *
+     * @param string $category
+     * @param string $contentBlockId Content block custom_id
+     * @param string $phrase
+     * @param string|null $locale Locale code (defaults to getLocale() if not set)
+     * @return string|null The translation, or null if the block or token is missing
+     */
+    public function lookupContent($category, $contentBlockId, $phrase, $locale = null)
+    {
+        if ($locale === null) {
+            $locale = $this->getLocale();
+            if ($locale === null) {
+                return null;
+            }
+        }
+
+        $translations = $this->getTranslations($locale);
+        $categoryTranslations = isset($translations[$category]) ? $translations[$category] : [];
+
+        if (isset($categoryTranslations[$contentBlockId][$phrase])) {
+            return $categoryTranslations[$contentBlockId][$phrase];
+        }
+
+        return null;
     }
 
     /**

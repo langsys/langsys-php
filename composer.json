@@ -11,7 +11,8 @@
         "ext-json": "*"
     },
     "suggest": {
-        "ext-redis": "For Redis cache support"
+        "ext-redis": "For Redis cache support",
+        "ext-intl": "Enables ICU MessageFormat (plural/select/gender) interpolation in translate(); without it, ICU strings fall back to simple {name} substitution"
     },
     "autoload": {
         "psr-4": {

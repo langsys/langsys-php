@@ -177,8 +177,12 @@ class Utilities
     {
         $response = $this->getLocalesFlat([$displayLocale], $appendTargetLocales);
 
-        if (isset($response['data'][$displayLocale])) {
-            return $response['data'][$displayLocale];
+        // The response is keyed by the display locale formatted in the org's
+        // configured locale_code_format, which may not match the raw string we
+        // sent (e.g. 'en-US' vs 'en-us'). Since we request a single display
+        // locale, take the only entry regardless of how its key is formatted.
+        if (isset($response['data']) && is_array($response['data']) && !empty($response['data'])) {
+            return reset($response['data']);
         }
 
         return [];
