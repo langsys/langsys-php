@@ -265,6 +265,30 @@ class ClientTest extends TestCase
         $this->assertFalse($client->hasPendingRegistrations());
     }
 
+    public function testTranslateExistingPhraseWithNullValueFallsBackToSource()
+    {
+        // The base locale (and not-yet-translated phrases) come back present in
+        // the catalog but with a null value. translate() must return the source
+        // phrase, not null, and must not queue it (it already exists).
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'translations', [
+            'data' => [
+                'ProductCard' => [
+                    'Based on {n} reviews' => null,
+                ],
+            ],
+        ]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+        $client->setLocale('en-us');
+
+        $this->assertSame(
+            'Based on 5 reviews',
+            $client->translate('Based on {n} reviews', 'ProductCard', ['n' => 5])
+        );
+        $this->assertFalse($client->hasPendingRegistrations());
+    }
+
     public function testTranslateSamePhraseNotQueuedTwice()
     {
         $mockHttp = new MockHttpClient();

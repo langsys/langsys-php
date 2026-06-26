@@ -30,6 +30,10 @@ class Interpolator
      */
     public static function isICU($template)
     {
+        if (!is_string($template) || $template === '') {
+            return false;
+        }
+
         return preg_match('/\{[^{}]+,\s*(plural|select|selectordinal|number|date|time)\s*,/', $template) === 1;
     }
 
@@ -43,6 +47,10 @@ class Interpolator
      */
     public static function interpolate($template, array $params, $locale = null)
     {
+        if ($template === null) {
+            return '';
+        }
+
         if (self::isICU($template) && class_exists('MessageFormatter')) {
             $useLocale = ($locale !== null && $locale !== '') ? $locale : 'en';
             // formatMessage() returns false on a malformed pattern (and may warn);

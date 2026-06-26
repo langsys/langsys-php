@@ -410,8 +410,9 @@ class Client
             if (is_array($value)) {
                 $result = $phrase;
             } else {
-                // Translation, or the original phrase when empty (not yet translated).
-                $result = $value !== '' ? $value : $phrase;
+                // Translation, or the original phrase when empty/null (the base
+                // locale and not-yet-translated phrases come back as null).
+                $result = ($value === null || $value === '') ? $phrase : $value;
             }
         } else {
             // Phrase not found - queue for registration.
