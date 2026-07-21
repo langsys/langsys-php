@@ -264,6 +264,31 @@ class ClientTest extends TestCase
         $this->assertFalse($client->hasPendingRegistrations());
     }
 
+    public function testTranslateFallsBackToPhraseWhenTranslationIsNull()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'translations', [
+            'data' => [
+                '__uncategorized__' => [
+                    'Hello' => null,
+                ],
+            ],
+        ]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+        $client->setLocale('es-es');
+
+        // Phrase exists in the project but has no translation yet - the API
+        // returns null for it
+        $result = $client->translate('Hello');
+
+        // Should fall back to the original phrase, never return null
+        $this->assertSame('Hello', $result);
+
+        // Phrase already exists - should NOT be queued
+        $this->assertFalse($client->hasPendingRegistrations());
+    }
+
     public function testTranslateSamePhraseNotQueuedTwice()
     {
         $mockHttp = new MockHttpClient();

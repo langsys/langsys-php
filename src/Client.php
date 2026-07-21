@@ -396,8 +396,9 @@ class Client
             if (is_array($value)) {
                 return $phrase;
             }
-            // Return translation (or original if empty)
-            return $value !== '' ? $value : $phrase;
+            // Return translation (or original if empty/null — the API returns
+            // null for phrases that exist but have no translation yet)
+            return $value !== '' && $value !== null ? $value : $phrase;
         }
 
         // Phrase not found - queue for registration
