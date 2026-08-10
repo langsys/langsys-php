@@ -219,10 +219,40 @@ class LocaleDetectorTest extends TestCase
         $this->assertEquals('en-us', LocaleDetector::fromBrowser());
     }
 
-    public function testFromBrowserWithLocaleInMiddle(): void
+    public function testFromBrowserRespectsQualityOverPosition(): void
     {
-        // Locale appears in middle of header after some text
+        // "en" carries an implicit q=1 and therefore outranks es-MX at q=0.9,
+        // even though es-MX is the only entry with an explicit region.
+        // This previously returned 'es-mx' on hosts without ext-intl and 'en'
+        // on hosts with it - the same visitor served a different language
+        // depending on the host's extensions.
         $_SERVER['HTTP_ACCEPT_LANGUAGE'] = 'en,es-MX;q=0.9';
+        $this->assertEquals('en-en', LocaleDetector::fromBrowser());
+    }
+
+    public function testFromBrowserPicksHigherQualityLaterEntry(): void
+    {
+        // Here es-MX genuinely outranks en, so it must win despite coming second.
+        $_SERVER['HTTP_ACCEPT_LANGUAGE'] = 'en;q=0.5,es-MX;q=0.9';
         $this->assertEquals('es-mx', LocaleDetector::fromBrowser());
+    }
+
+    public function testFromBrowserTieBreaksOnOrder(): void
+    {
+        // Equal quality: the browser's own ordering decides.
+        $_SERVER['HTTP_ACCEPT_LANGUAGE'] = 'fr-FR,es-MX';
+        $this->assertEquals('fr-fr', LocaleDetector::fromBrowser());
+    }
+
+    public function testFromBrowserIgnoresWildcard(): void
+    {
+        $_SERVER['HTTP_ACCEPT_LANGUAGE'] = '*';
+        $this->assertNull(LocaleDetector::fromBrowser());
+    }
+
+    public function testFromBrowserSkipsWildcardAndUsesRealTag(): void
+    {
+        $_SERVER['HTTP_ACCEPT_LANGUAGE'] = '*;q=0.5,de-DE;q=0.4';
+        $this->assertEquals('de-de', LocaleDetector::fromBrowser());
     }
 }

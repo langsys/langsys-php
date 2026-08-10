@@ -14,9 +14,18 @@ class LocaleDetector
      * Detect locale from browser HTTP_ACCEPT_LANGUAGE header.
      *
      * Detection algorithm:
-     * 1. Try locale_accept_from_http() if Intl extension available
-     * 2. Parse HTTP_ACCEPT_LANGUAGE with regex for full locale (xx-YY or xx_YY)
-     * 3. Fallback: use 2-letter language code, assume country = language
+     * 1. Try locale_accept_from_http() (ext-intl), which honours q-values
+     * 2. Otherwise parse the header ourselves, also honouring q-values
+     * 3. Either way, fill in a missing region ("en" -> "en-en"), because the
+     *    Langsys API addresses translations by xx-yy locale codes
+     *
+     * Both paths deliberately produce the SAME result for a given header.
+     * They used to diverge - the intl path returned a bare "en" while the
+     * fallback synthesised "en-en", and the fallback picked whichever full
+     * locale appeared in the string regardless of priority, so "en,es-MX;q=0.9"
+     * resolved to "es-mx" even though "en" has an implicit q=1 and outranks it.
+     * That meant the same visitor could be served a different language
+     * depending on whether the host had ext-intl loaded.
      *
      * @return string|null Locale in "xx-yy" format, or null if unable to detect
      */
@@ -28,32 +37,88 @@ class LocaleDetector
 
         $acceptLanguage = $_SERVER['HTTP_ACCEPT_LANGUAGE'];
 
-        // Try built-in function if Intl extension is available
+        // Preferred: ext-intl, which implements RFC 4647 lookup properly.
         if (function_exists('locale_accept_from_http')) {
             $locale = locale_accept_from_http($acceptLanguage);
-            if ($locale !== null && preg_match('/^[a-z]{2}(_[A-Z]{2})?$/i', $locale)) {
-                return self::normalize($locale);
+            if (!empty($locale) && preg_match('/^[a-z]{2}([_-][a-z]{2})?$/i', $locale)) {
+                return self::withRegion(self::normalize($locale));
             }
         }
 
-        // Try to extract full locale from the beginning of the string (xx-YY or xx_YY)
-        if (preg_match('/^([a-z]{2})[_-]([a-z]{2})/i', $acceptLanguage, $matches)) {
-            return strtolower($matches[1]) . '-' . strtolower($matches[2]);
-        }
-
-        // Try to extract full locale from anywhere in the string
-        if (preg_match('/([a-z]{2})[_-]([a-z]{2})/i', $acceptLanguage, $matches)) {
-            return strtolower($matches[1]) . '-' . strtolower($matches[2]);
-        }
-
-        // Fallback: use 2-letter language code, assume country matches language
-        // This is a reasonable assumption for most common cases (en-en, es-es, etc.)
-        $langCode = strtolower(substr($acceptLanguage, 0, 2));
-        if (preg_match('/^[a-z]{2}$/', $langCode)) {
-            return $langCode . '-' . $langCode;
+        // Fallback for hosts without ext-intl. Mirrors the above rather than
+        // using a looser "first locale-shaped thing in the string" match.
+        $preferred = self::highestPriorityLanguage($acceptLanguage);
+        if ($preferred !== null) {
+            return self::withRegion($preferred);
         }
 
         return null;
+    }
+
+    /**
+     * Pick the highest-priority language tag from an Accept-Language header.
+     *
+     * Entries are "tag" or "tag;q=0.8"; a missing q defaults to 1. Ties keep
+     * the order the browser sent, which is the documented tie-break.
+     *
+     * @param string $acceptLanguage Raw header value
+     * @return string|null Normalized tag ("en", "es-mx"), or null if none parse
+     */
+    protected static function highestPriorityLanguage($acceptLanguage)
+    {
+        $best = null;
+        $bestQuality = -1.0;
+        $position = 0;
+
+        foreach (explode(',', $acceptLanguage) as $part) {
+            $part = trim($part);
+            if ($part === '') {
+                continue;
+            }
+
+            $bits = explode(';', $part);
+            $tag = trim($bits[0]);
+
+            if (!preg_match('/^[a-z]{2}([_-][a-z]{2})?$/i', $tag)) {
+                continue; // Ignore wildcards and anything not a simple tag.
+            }
+
+            $quality = 1.0;
+            for ($i = 1; $i < count($bits); $i++) {
+                if (preg_match('/^\s*q\s*=\s*([0-9.]+)\s*$/i', $bits[$i], $m)) {
+                    $quality = (float) $m[1];
+                    break;
+                }
+            }
+
+            // Strictly greater, so an earlier entry wins an exact tie.
+            if ($quality > $bestQuality) {
+                $bestQuality = $quality;
+                $best = self::normalize($tag);
+            }
+
+            $position++;
+        }
+
+        return $best;
+    }
+
+    /**
+     * Fill in a missing region, assuming country matches language.
+     *
+     * The Langsys API addresses translations by xx-yy codes, so a bare "en"
+     * would not match a project locale. "en" -> "en-en".
+     *
+     * @param string $locale
+     * @return string
+     */
+    protected static function withRegion($locale)
+    {
+        if ($locale === '' || strpos($locale, '-') !== false) {
+            return $locale;
+        }
+
+        return $locale . '-' . $locale;
     }
 
     /**
