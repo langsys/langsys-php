@@ -7,6 +7,7 @@ use Langsys\SDK\Cache\FileCache;
 use Langsys\SDK\Cache\NullCache;
 use Langsys\SDK\Cache\RedisCache;
 use Langsys\SDK\Exception\LangsysException;
+use Langsys\SDK\Format\Interpolator;
 use Langsys\SDK\Html\HtmlParser;
 use Langsys\SDK\Html\PageTranslator;
 use Langsys\SDK\Http\HttpClient;
@@ -95,6 +96,11 @@ class Client
     protected $translationsMemoryCache = [];
 
     /**
+     * @var Interpolator|null Placeholder interpolator (lazily created)
+     */
+    protected $interpolator;
+
+    /**
      * Create a new Langsys Client.
      *
      * @param string|null $apiKey API key (or null to use env var)
@@ -129,6 +135,12 @@ class Client
         // Initialize logger
         $this->logger = $this->initializeLogger($options);
 
+        // Composer enforces the PHP version and ext-intl, but the documented
+        // manual autoload.php install bypasses Composer entirely - so check at
+        // runtime too, or those users hit an obscure failure inside the ICU code
+        // with nothing pointing at the cause.
+        $this->checkRuntimeRequirements();
+
         // Initialize HTTP client
         $this->http = new HttpClient($this->config, $this->logger);
 
@@ -145,6 +157,71 @@ class Client
         $this->translations = new Translations($this->http, $this->config->getProjectId(), $this->logger);
         $this->translatableItems = new TranslatableItems($this->http, $this->config->getProjectId(), $this->logger);
         $this->utilities = new Utilities($this->http, $this->config->getProjectId(), $this->logger);
+    }
+
+    /**
+     * Minimum supported PHP version (mirrors composer.json).
+     */
+    const MIN_PHP_VERSION = '7.4';
+
+    /**
+     * @var bool Whether runtime requirement warnings have already been emitted.
+     */
+    protected static $requirementsWarned = false;
+
+    /**
+     * Warn about unmet runtime requirements.
+     *
+     * Deliberately warns rather than throws: a manual install on an older PHP
+     * may still work for basic translation, and a missing ext-intl degrades
+     * gracefully to simple placeholder substitution rather than breaking the
+     * render. The goal is that the operator is TOLD, not stopped.
+     *
+     * Warnings go to both the SDK logger and trigger_error(), because a manual
+     * install typically has no log path configured, which would make a
+     * logger-only warning invisible to exactly the users who need it.
+     *
+     * @return void
+     */
+    protected function checkRuntimeRequirements()
+    {
+        // Once per process - this runs on every Client construction.
+        if (self::$requirementsWarned) {
+            return;
+        }
+
+        self::$requirementsWarned = true;
+
+        if (version_compare(PHP_VERSION, self::MIN_PHP_VERSION, '<')) {
+            $this->warnRequirement(
+                'Langsys SDK requires PHP ' . self::MIN_PHP_VERSION . ' or higher; running ' . PHP_VERSION
+                    . '. Installed without Composer? The version constraint is not enforced on that path.',
+                ['required' => self::MIN_PHP_VERSION, 'actual' => PHP_VERSION]
+            );
+        }
+
+        if (!extension_loaded('intl')) {
+            $this->warnRequirement(
+                'Langsys SDK: ext-intl is not loaded. ICU plurals and locale-aware number/date '
+                    . 'formatting are unavailable; placeholders fall back to simple substitution.',
+                ['missing_extension' => 'intl']
+            );
+        }
+    }
+
+    /**
+     * Emit an unmet-requirement warning through both channels.
+     *
+     * @param string $message
+     * @param array $context
+     * @return void
+     */
+    protected function warnRequirement($message, array $context = [])
+    {
+        $this->logger->warning($message, $context);
+
+        // Surfaces in the PHP error log even when SDK logging is disabled.
+        trigger_error($message, E_USER_WARNING);
     }
 
     /**
@@ -362,19 +439,27 @@ class Client
      * flushed at the end of the request, or you can call flushPendingRegistrations()
      * manually.
      *
+     * IMPORTANT: pass dynamic values via $params rather than building the string
+     * yourself. `translate(sprintf('Hello, %s!', $name))` registers a NEW catalog
+     * phrase for every distinct value ("Hello, Sarah!", "Hello, Ahmed!", ...),
+     * polluting the catalog shared with the JS SDKs. `translate('Hello, {name}!',
+     * null, null, null, ['name' => $name])` registers one reusable phrase.
+     *
      * @param string $phrase The phrase to translate
      * @param string|null $locale Locale code (defaults to getLocale() if not set)
      * @param string $category Category (default: '__uncategorized__')
      * @param string|null $contentBlockId Content block custom_id (for content block phrases)
+     * @param array $params Placeholder values, e.g. ['name' => 'Sarah']
      * @return string The translation, or the original phrase if not found
      */
-    public function translate($phrase, $locale = null, $category = '__uncategorized__', $contentBlockId = null)
+    public function translate($phrase, $locale = null, $category = '__uncategorized__', $contentBlockId = null, array $params = [])
     {
         // Use set locale if not provided
         if ($locale === null) {
             $locale = $this->getLocale();
             if ($locale === null) {
-                return $phrase; // Can't translate without locale
+                // Can't translate without locale, but placeholders still resolve.
+                return $this->interpolate($phrase, $params, null);
             }
         }
 
@@ -384,9 +469,9 @@ class Client
         // Handle content block phrase lookup (don't queue - content block handles its own registration)
         if ($contentBlockId !== null) {
             if (isset($categoryTranslations[$contentBlockId][$phrase])) {
-                return $categoryTranslations[$contentBlockId][$phrase];
+                return $this->interpolate($categoryTranslations[$contentBlockId][$phrase], $params, $locale);
             }
-            return $phrase;
+            return $this->interpolate($phrase, $params, $locale);
         }
 
         // Regular phrase lookup
@@ -394,16 +479,48 @@ class Client
             $value = $categoryTranslations[$phrase];
             // If it's an array (content block ID collision), return original phrase
             if (is_array($value)) {
-                return $phrase;
+                return $this->interpolate($phrase, $params, $locale);
             }
             // Return translation (or original if empty)
-            return $value !== '' ? $value : $phrase;
+            return $this->interpolate($value !== '' ? $value : $phrase, $params, $locale);
         }
 
-        // Phrase not found - queue for registration
+        // Phrase not found - queue the RAW phrase (placeholders intact) for
+        // registration, then interpolate only what we return to the caller.
         $this->queuePhraseForRegistration($phrase, $category);
 
-        return $phrase;
+        return $this->interpolate($phrase, $params, $locale);
+    }
+
+    /**
+     * Get the placeholder interpolator.
+     *
+     * @return Interpolator
+     */
+    public function getInterpolator()
+    {
+        if ($this->interpolator === null) {
+            $this->interpolator = new Interpolator($this->logger);
+        }
+
+        return $this->interpolator;
+    }
+
+    /**
+     * Interpolate placeholder values into a string.
+     *
+     * @param string $text
+     * @param array $params
+     * @param string|null $locale
+     * @return string
+     */
+    protected function interpolate($text, array $params, $locale)
+    {
+        if (empty($params)) {
+            return $text;
+        }
+
+        return $this->getInterpolator()->interpolate($text, $params, $locale);
     }
 
     /**
@@ -769,9 +886,10 @@ class Client
      * @param string $html Full HTML document
      * @param string|null $category Page category/name (e.g., 'homepage', 'contact')
      * @param array $selectorCategories Map of CSS selector => category config
+     * @param array $params Placeholder values applied page-wide
      * @return string Translated HTML
      */
-    public function translatePage($html, $category = null, array $selectorCategories = [])
+    public function translatePage($html, $category = null, array $selectorCategories = [], array $params = [])
     {
         $locale = $this->getLocale();
         if ($locale === null) {
@@ -786,7 +904,7 @@ class Client
             );
         }
 
-        return $this->pageTranslator->translate($html, $locale, $category, $selectorCategories);
+        return $this->pageTranslator->translate($html, $locale, $category, $selectorCategories, $params);
     }
 
     /**
@@ -798,9 +916,10 @@ class Client
      *
      * @param string $html HTML content block
      * @param string $category Category for the content block (default: '__uncategorized__')
+     * @param array $params Placeholder values applied to text nodes and translatable attributes
      * @return string Translated HTML
      */
-    public function translateContentBlock($html, $category = '__uncategorized__')
+    public function translateContentBlock($html, $category = '__uncategorized__', array $params = [])
     {
         if (empty($html)) {
             return $html;
@@ -808,7 +927,10 @@ class Client
 
         $locale = $this->getLocale();
         if ($locale === null) {
-            return $html; // Can't translate without locale
+            // Can't translate without locale, but placeholders still resolve.
+            return empty($params)
+                ? $html
+                : $this->applyBlockTranslations($html, [], new HtmlParser($this->translatableItems->getTranslatableAttributes()), $params, null);
         }
 
         // Parse HTML and extract phrases
@@ -818,6 +940,9 @@ class Client
         if (empty($phrases)) {
             return $html; // No translatable content
         }
+
+        // Placeholders inside a content block are part of the phrase text, so the
+        // raw HTML is what gets registered; params only affect what we render.
 
         // Generate customId for this content block
         $customId = $parser->generateCustomId($category, $phrases);
@@ -831,14 +956,18 @@ class Client
             !is_array($categoryTranslations[$customId])) {
             // Content block doesn't exist - queue for registration
             $this->queueContentBlockForRegistration($html, $category, $customId, $phrases);
-            return $html; // Return original (no translations yet)
+
+            // No translations yet, but placeholders still resolve against the original.
+            return empty($params)
+                ? $html
+                : $this->applyBlockTranslations($html, [], $parser, $params, $locale);
         }
 
         // Get content block translations
         $blockTranslations = $categoryTranslations[$customId];
 
         // Apply translations to HTML
-        return $this->applyBlockTranslations($html, $blockTranslations, $parser);
+        return $this->applyBlockTranslations($html, $blockTranslations, $parser, $params, $locale);
     }
 
     /**
@@ -847,9 +976,11 @@ class Client
      * @param string $html Original HTML
      * @param array $translations Map of [phrase => translation]
      * @param HtmlParser $parser HTML parser instance
+     * @param array $params Placeholder values
+     * @param string|null $locale Locale for placeholder formatting
      * @return string Translated HTML
      */
-    protected function applyBlockTranslations($html, array $translations, HtmlParser $parser)
+    protected function applyBlockTranslations($html, array $translations, HtmlParser $parser, array $params = [], $locale = null)
     {
         // Use DOMDocument to properly apply translations
         $internalErrors = libxml_use_internal_errors(true);
@@ -863,7 +994,7 @@ class Client
         libxml_use_internal_errors($internalErrors);
 
         // Walk DOM and apply translations
-        $this->walkAndTranslateBlock($doc->documentElement, $translations, $parser->getTranslatableAttributes());
+        $this->walkAndTranslateBlock($doc->documentElement, $translations, $parser->getTranslatableAttributes(), $params, $locale);
 
         // Extract inner HTML of the wrapper div
         $wrapper = $doc->getElementsByTagName('div')->item(0);
@@ -885,16 +1016,27 @@ class Client
      * @param \DOMNode $node Node to process
      * @param array $translations Translation map
      * @param array $translatableAttributes Attributes to translate
+     * @param array $params Placeholder values
+     * @param string|null $locale Locale for placeholder formatting
      * @return void
      */
-    protected function walkAndTranslateBlock(\DOMNode $node, array $translations, array $translatableAttributes)
+    protected function walkAndTranslateBlock(\DOMNode $node, array $translations, array $translatableAttributes, array $params = [], $locale = null)
     {
         // Handle text nodes
         if ($node instanceof \DOMText) {
             $normalizedText = trim(preg_replace('/\s+/', ' ', $node->textContent));
-            if ($normalizedText !== '' && isset($translations[$normalizedText])) {
-                $translated = $translations[$normalizedText];
-                if ($translated !== '' && $translated !== $normalizedText) {
+            if ($normalizedText !== '') {
+                $translated = isset($translations[$normalizedText]) ? $translations[$normalizedText] : null;
+
+                // Fall back to the original text so placeholders still resolve
+                // in blocks that have no translation yet.
+                if ($translated === null || $translated === '') {
+                    $translated = $normalizedText;
+                }
+
+                $translated = $this->interpolate($translated, $params, $locale);
+
+                if ($translated !== $normalizedText) {
                     // Preserve whitespace pattern
                     $leadingSpace = preg_match('/^\s/', $node->textContent) ? ' ' : '';
                     $trailingSpace = preg_match('/\s$/', $node->textContent) ? ' ' : '';
@@ -914,37 +1056,19 @@ class Client
             // Translate attributes
             foreach ($translatableAttributes as $attr) {
                 if ($node->hasAttribute($attr)) {
-                    $value = $node->getAttribute($attr);
-                    if ($value !== '' && isset($translations[$value])) {
-                        $translated = $translations[$value];
-                        if ($translated !== '' && $translated !== null) {
-                            $node->setAttribute($attr, $translated);
-                        }
-                    }
+                    $this->translateAttributeValue($node, $attr, $translations, $params, $locale);
                 }
             }
 
             // Handle button/input values
             $tagName = strtolower($node->tagName);
             if ($tagName === 'button' && $node->hasAttribute('value')) {
-                $value = $node->getAttribute('value');
-                if ($value !== '' && isset($translations[$value])) {
-                    $translated = $translations[$value];
-                    if ($translated !== '') {
-                        $node->setAttribute('value', $translated);
-                    }
-                }
+                $this->translateAttributeValue($node, 'value', $translations, $params, $locale);
             }
             if ($tagName === 'input' && $node->hasAttribute('value')) {
                 $type = strtolower($node->getAttribute('type'));
                 if ($type === 'submit' || $type === 'button') {
-                    $value = $node->getAttribute('value');
-                    if ($value !== '' && isset($translations[$value])) {
-                        $translated = $translations[$value];
-                        if ($translated !== '') {
-                            $node->setAttribute('value', $translated);
-                        }
-                    }
+                    $this->translateAttributeValue($node, 'value', $translations, $params, $locale);
                 }
             }
         }
@@ -952,8 +1076,42 @@ class Client
         // Recurse into children
         if ($node->hasChildNodes()) {
             foreach ($node->childNodes as $child) {
-                $this->walkAndTranslateBlock($child, $translations, $translatableAttributes);
+                $this->walkAndTranslateBlock($child, $translations, $translatableAttributes, $params, $locale);
             }
+        }
+    }
+
+    /**
+     * Translate a single attribute value, then interpolate placeholders.
+     *
+     * Falls back to the original attribute value when no translation exists so
+     * placeholders still resolve in not-yet-translated blocks.
+     *
+     * @param \DOMElement $node
+     * @param string $attr Attribute name
+     * @param array $translations Translation map
+     * @param array $params Placeholder values
+     * @param string|null $locale
+     * @return void
+     */
+    protected function translateAttributeValue(\DOMElement $node, $attr, array $translations, array $params, $locale)
+    {
+        $value = $node->getAttribute($attr);
+
+        if ($value === '') {
+            return;
+        }
+
+        $translated = isset($translations[$value]) ? $translations[$value] : null;
+
+        if ($translated === null || $translated === '') {
+            $translated = $value;
+        }
+
+        $translated = $this->interpolate($translated, $params, $locale);
+
+        if ($translated !== $value) {
+            $node->setAttribute($attr, $translated);
         }
     }
 

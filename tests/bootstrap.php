@@ -13,3 +13,16 @@ if (!file_exists($autoloadFile)) {
 }
 
 require_once $autoloadFile;
+
+/**
+ * Client::checkRuntimeRequirements() emits an E_USER_WARNING once per process
+ * when PHP is too old or ext-intl is missing. PHPUnit converts warnings to test
+ * errors, so on a host without intl it would poison whichever test happens to
+ * construct a Client first - an arbitrary, order-dependent failure.
+ *
+ * Trip the once-per-process flag up front so the suite is deterministic.
+ * ClientRequirementsTest resets it explicitly to exercise the guard itself.
+ */
+$warnedFlag = new \ReflectionProperty(\Langsys\SDK\Client::class, 'requirementsWarned');
+$warnedFlag->setAccessible(true);
+$warnedFlag->setValue(null, true);

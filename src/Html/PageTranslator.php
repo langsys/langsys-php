@@ -67,6 +67,16 @@ class PageTranslator
     protected $selectorMatcher = null;
 
     /**
+     * @var array Placeholder values for the current translate() call.
+     */
+    protected $params = [];
+
+    /**
+     * @var string|null Target locale for the current translate() call.
+     */
+    protected $currentLocale = null;
+
+    /**
      * Create a new PageTranslator instance.
      *
      * @param \Langsys\SDK\Client $client The Langsys client
@@ -86,10 +96,15 @@ class PageTranslator
      * @param string $locale Target locale (e.g., 'es-es')
      * @param string|null $defaultCategory Default category/name (can be overridden by data-langsys-category attribute)
      * @param array $selectorCategories Map of CSS selector => category config
+     * @param array $params Placeholder values applied page-wide
      * @return string Translated HTML
      */
-    public function translate($html, $locale, $defaultCategory = null, array $selectorCategories = [])
+    public function translate($html, $locale, $defaultCategory = null, array $selectorCategories = [], array $params = [])
     {
+        // Per-call state; reset every time since the instance is reused.
+        $this->params = $params;
+        $this->currentLocale = $locale;
+
         if (empty($html)) {
             return $html;
         }
@@ -508,7 +523,7 @@ class PageTranslator
             $originalText = $phraseData['text'];
             // Use item's category or fall back to default
             $itemCategory = isset($phraseData['category']) ? $phraseData['category'] : $defaultCategory;
-            $translated = $this->lookupTranslation($originalText, $itemCategory, $translations);
+            $translated = $this->interp($this->lookupTranslation($originalText, $itemCategory, $translations));
 
             if ($translated !== $originalText) {
                 // Replace text content while preserving structure (br tags, etc.)
@@ -530,7 +545,12 @@ class PageTranslator
             $blockTranslations = isset($translations[$cat][$customId]) ? $translations[$cat][$customId] : null;
 
             if (!is_array($blockTranslations) || empty($blockTranslations)) {
-                continue; // No translations for this content block
+                // No translations for this content block, but placeholders in the
+                // original markup should still resolve.
+                if (!empty($this->params)) {
+                    $this->applyContentBlockTranslations($block['element'], []);
+                }
+                continue;
             }
 
             // Apply translations within the content block
@@ -591,9 +611,18 @@ class PageTranslator
         // Handle text nodes
         if ($node instanceof DOMText) {
             $normalizedText = trim(preg_replace('/\s+/', ' ', $node->textContent));
-            if ($normalizedText !== '' && isset($translations[$normalizedText])) {
-                $translated = $translations[$normalizedText];
-                if ($translated !== '' && $translated !== null && $translated !== $normalizedText) {
+            if ($normalizedText !== '') {
+                $translated = isset($translations[$normalizedText]) ? $translations[$normalizedText] : null;
+
+                // Fall back to the original so placeholders resolve even when
+                // this block has no translation yet.
+                if ($translated === '' || $translated === null) {
+                    $translated = $normalizedText;
+                }
+
+                $translated = $this->interp($translated);
+
+                if ($translated !== $normalizedText) {
                     // Preserve whitespace pattern
                     $leadingSpace = preg_match('/^\s/', $node->textContent) ? ' ' : '';
                     $trailingSpace = preg_match('/\s$/', $node->textContent) ? ' ' : '';
@@ -614,37 +643,19 @@ class PageTranslator
             $translatableAttrs = $this->htmlParser->getTranslatableAttributes();
             foreach ($translatableAttrs as $attr) {
                 if ($node->hasAttribute($attr)) {
-                    $value = $node->getAttribute($attr);
-                    if ($value !== '' && isset($translations[$value])) {
-                        $translated = $translations[$value];
-                        if ($translated !== '' && $translated !== null) {
-                            $node->setAttribute($attr, $translated);
-                        }
-                    }
+                    $this->translateAttribute($node, $attr, $translations);
                 }
             }
 
             // Handle button/input values
             $tagName = strtolower($node->tagName);
             if ($tagName === 'button' && $node->hasAttribute('value')) {
-                $value = $node->getAttribute('value');
-                if ($value !== '' && isset($translations[$value])) {
-                    $translated = $translations[$value];
-                    if ($translated !== '' && $translated !== null) {
-                        $node->setAttribute('value', $translated);
-                    }
-                }
+                $this->translateAttribute($node, 'value', $translations);
             }
             if ($tagName === 'input' && $node->hasAttribute('value')) {
                 $type = strtolower($node->getAttribute('type'));
                 if ($type === 'submit' || $type === 'button') {
-                    $value = $node->getAttribute('value');
-                    if ($value !== '' && isset($translations[$value])) {
-                        $translated = $translations[$value];
-                        if ($translated !== '' && $translated !== null) {
-                            $node->setAttribute('value', $translated);
-                        }
-                    }
+                    $this->translateAttribute($node, 'value', $translations);
                 }
             }
 
@@ -655,6 +666,50 @@ class PageTranslator
                 }
             }
         }
+    }
+
+    /**
+     * Translate a single attribute value, then interpolate placeholders.
+     *
+     * @param DOMElement $node
+     * @param string $attr Attribute name
+     * @param array $translations Map of [original => translated]
+     * @return void
+     */
+    protected function translateAttribute(DOMElement $node, $attr, array $translations)
+    {
+        $value = $node->getAttribute($attr);
+
+        if ($value === '') {
+            return;
+        }
+
+        $translated = isset($translations[$value]) ? $translations[$value] : null;
+
+        if ($translated === '' || $translated === null) {
+            $translated = $value;
+        }
+
+        $translated = $this->interp($translated);
+
+        if ($translated !== $value) {
+            $node->setAttribute($attr, $translated);
+        }
+    }
+
+    /**
+     * Interpolate placeholder values for the current translate() call.
+     *
+     * @param string $text
+     * @return string
+     */
+    protected function interp($text)
+    {
+        if (empty($this->params) || !is_string($text) || $text === '') {
+            return $text;
+        }
+
+        return $this->client->getInterpolator()->interpolate($text, $this->params, $this->currentLocale);
     }
 
     /**

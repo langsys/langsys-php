@@ -1,0 +1,381 @@
+<?php
+
+namespace Langsys\SDK\Format;
+
+use Langsys\SDK\Log\LoggerInterface;
+
+/**
+ * Interpolates {placeholder} values into translated strings.
+ *
+ * Behaviour is aligned with the Langsys JS SDK so that a single shared catalog
+ * renders identically from a PHP backend and a JS frontend:
+ *
+ * - Unknown keys are left VERBATIM (including braces), never blanked. A missing
+ *   value must be visible to the developer rather than silently rendering empty.
+ *   The same applies to a key that is present but null.
+ * - Whitespace inside braces is tolerated: `{ name }` resolves the key `name`.
+ * - Numbers are formatted per the target locale's CLDR rules (1234.5 renders as
+ *   "1.234,5" in de-DE). Pass a value as a string to opt out of grouping - the
+ *   documented escape hatch for IDs, codes and version numbers.
+ * - Dates are formatted with the locale's medium date style.
+ * - Booleans render as "true"/"false" to match JS String(bool), not PHP's "1"/"".
+ * - ICU MessageFormat ({n, plural, one {...} other {...}}) is detected and
+ *   formatted with ext-intl so plural rules are correct per language.
+ *
+ * Failure handling is deliberately non-fatal in both directions:
+ * - If a string uses ICU syntax but ext-intl is unavailable at runtime, a
+ *   warning naming the phrase and the missing extension is logged once, and the
+ *   string falls back to simple substitution. ext-intl is a hard composer
+ *   requirement, so this only occurs when intl is disabled after install; the
+ *   point is that the operator is told exactly why, rather than discovering it
+ *   as a quietly mistranslated plural.
+ * - If ICU parsing fails, we fall back to simple substitution rather than
+ *   throwing. A visibly-imperfect string beats a crash mid-render, and backend
+ *   validation is meant to stop malformed ICU reaching us in the first place.
+ */
+class Interpolator
+{
+    /**
+     * Detects ICU MessageFormat argument slots.
+     *
+     * Deliberately matches style-less forms such as `{n, number}` as well as
+     * `{n, plural, ...}`. Kept character-for-character in sync with the JS SDK.
+     */
+    const ICU_PATTERN = '/\{[^{}]+,\s*(plural|select|selectordinal|number|date|time)\s*[,}]/';
+
+    /**
+     * Matches a simple placeholder and captures its (untrimmed) key.
+     */
+    const PLACEHOLDER_PATTERN = '/\{([^{}]*)\}/';
+
+    /**
+     * Locale used for ICU formatting when no target locale is known.
+     */
+    const FALLBACK_LOCALE = 'en';
+
+    /**
+     * @var LoggerInterface|null
+     */
+    protected $logger;
+
+    /**
+     * @var bool Whether the missing-intl warning has already been emitted.
+     */
+    protected $warnedMissingIntl = false;
+
+    /**
+     * @param LoggerInterface|null $logger
+     */
+    public function __construct($logger = null)
+    {
+        $this->logger = $logger;
+    }
+
+    /**
+     * Interpolate parameters into a string.
+     *
+     * @param string $text The (already translated) string
+     * @param array $params Map of placeholder name => value
+     * @param string|null $locale Target locale, drives plural rules and formatting
+     * @return string
+     */
+    public function interpolate($text, array $params = [], $locale = null)
+    {
+        if (!is_string($text) || $text === '' || empty($params)) {
+            return $text;
+        }
+
+        if (strpos($text, '{') === false) {
+            return $text;
+        }
+
+        if ($this->hasIcuSyntax($text)) {
+            $formatted = $this->formatIcu($text, $params, $locale);
+            if ($formatted !== null) {
+                return $formatted;
+            }
+            // ICU unavailable or unparseable - fall through to simple substitution.
+        }
+
+        return $this->substitute($text, $params, $locale);
+    }
+
+    /**
+     * Whether a string contains ICU MessageFormat argument slots.
+     *
+     * @param string $text
+     * @return bool
+     */
+    public function hasIcuSyntax($text)
+    {
+        return is_string($text) && preg_match(self::ICU_PATTERN, $text) === 1;
+    }
+
+    /**
+     * Whether a string contains any simple placeholder.
+     *
+     * @param string $text
+     * @return bool
+     */
+    public function hasPlaceholders($text)
+    {
+        return is_string($text) && preg_match(self::PLACEHOLDER_PATTERN, $text) === 1;
+    }
+
+    /**
+     * Format a string via ICU MessageFormat.
+     *
+     * @param string $text
+     * @param array $params
+     * @param string|null $locale
+     * @return string|null Null when ICU could not be applied (caller falls back)
+     */
+    protected function formatIcu($text, array $params, $locale)
+    {
+        if (!$this->hasIntl()) {
+            $this->warnMissingIntl($text);
+            return null;
+        }
+
+        $icuLocale = $this->resolveLocale($locale);
+
+        // MessageFormatter wants scalars/timestamps; DateTime is not accepted.
+        $icuParams = [];
+        foreach ($params as $key => $value) {
+            $icuParams[$key] = $this->toIcuValue($value);
+        }
+
+        $formatter = @\MessageFormatter::create($icuLocale, $text);
+
+        if ($formatter === null) {
+            $this->log('warning', 'ICU pattern could not be parsed; falling back to simple interpolation', [
+                'phrase' => $text,
+                'locale' => $icuLocale,
+                'intl_error' => intl_get_error_message(),
+            ]);
+            return null;
+        }
+
+        $result = @$formatter->format($icuParams);
+
+        if ($result === false) {
+            $this->log('warning', 'ICU formatting failed; falling back to simple interpolation', [
+                'phrase' => $text,
+                'locale' => $icuLocale,
+                'intl_error' => $formatter->getErrorMessage(),
+            ]);
+            return null;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Replace simple {key} placeholders.
+     *
+     * Uses preg_replace_callback rather than preg_replace on purpose: with a
+     * replacement STRING, PHP interprets $1 / \1 inside the replacement as
+     * backreferences, so any translation or parameter value containing a dollar
+     * sign (a price like "$5", or a stray "$&") gets mangled. Returning the
+     * value from a callback sidesteps that entirely.
+     *
+     * @param string $text
+     * @param array $params
+     * @param string|null $locale
+     * @return string
+     */
+    protected function substitute($text, array $params, $locale)
+    {
+        $self = $this;
+
+        $result = preg_replace_callback(
+            self::PLACEHOLDER_PATTERN,
+            function ($matches) use ($params, $locale, $self) {
+                $key = trim($matches[1]);
+
+                if ($key === '' || !array_key_exists($key, $params)) {
+                    return $matches[0]; // Unknown key - leave verbatim.
+                }
+
+                $value = $params[$key];
+
+                if ($value === null) {
+                    return $matches[0]; // Present but null - also left visible.
+                }
+
+                $formatted = $self->formatValue($value, $locale);
+
+                return $formatted === null ? $matches[0] : $formatted;
+            },
+            $text
+        );
+
+        // preg_replace_callback returns null on PCRE failure (e.g. backtrack
+        // limit on a pathological string); never hand back null to a renderer.
+        return $result === null ? $text : $result;
+    }
+
+    /**
+     * Format a single parameter value for output.
+     *
+     * Public so the substitution callback can reach it on PHP 7.4 without
+     * binding gymnastics.
+     *
+     * @param mixed $value
+     * @param string|null $locale
+     * @return string|null Null when the value has no sensible string form
+     */
+    public function formatValue($value, $locale = null)
+    {
+        // Strings pass through untouched - this is the documented opt-out from
+        // locale number formatting.
+        if (is_string($value)) {
+            return $value;
+        }
+
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return $this->formatNumber($value, $locale);
+        }
+
+        if ($value instanceof \DateTimeInterface) {
+            return $this->formatDate($value, $locale);
+        }
+
+        if (is_object($value) && method_exists($value, '__toString')) {
+            return (string) $value;
+        }
+
+        // Arrays, resources, objects without __toString: no sensible rendering.
+        return null;
+    }
+
+    /**
+     * Format a number per the locale's CLDR rules.
+     *
+     * @param int|float $value
+     * @param string|null $locale
+     * @return string
+     */
+    protected function formatNumber($value, $locale)
+    {
+        if (!$this->hasIntl()) {
+            return (string) $value;
+        }
+
+        $formatter = @\NumberFormatter::create($this->resolveLocale($locale), \NumberFormatter::DECIMAL);
+
+        if ($formatter === null) {
+            return (string) $value;
+        }
+
+        $formatted = @$formatter->format($value);
+
+        return $formatted === false ? (string) $value : $formatted;
+    }
+
+    /**
+     * Format a date with the locale's medium date style.
+     *
+     * @param \DateTimeInterface $value
+     * @param string|null $locale
+     * @return string
+     */
+    protected function formatDate(\DateTimeInterface $value, $locale)
+    {
+        if (!$this->hasIntl()) {
+            return $value->format('Y-m-d');
+        }
+
+        $formatter = new \IntlDateFormatter(
+            $this->resolveLocale($locale),
+            \IntlDateFormatter::MEDIUM,
+            \IntlDateFormatter::NONE
+        );
+
+        $formatted = @$formatter->format($value);
+
+        return $formatted === false ? $value->format('Y-m-d') : $formatted;
+    }
+
+    /**
+     * Convert a value into something MessageFormatter accepts.
+     *
+     * @param mixed $value
+     * @return mixed
+     */
+    protected function toIcuValue($value)
+    {
+        if ($value instanceof \DateTimeInterface) {
+            return $value->getTimestamp();
+        }
+
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
+        if (is_object($value) && method_exists($value, '__toString')) {
+            return (string) $value;
+        }
+
+        return $value;
+    }
+
+    /**
+     * @param string|null $locale
+     * @return string
+     */
+    protected function resolveLocale($locale)
+    {
+        if (!is_string($locale) || trim($locale) === '') {
+            return self::FALLBACK_LOCALE;
+        }
+
+        return $locale;
+    }
+
+    /**
+     * @return bool
+     */
+    protected function hasIntl()
+    {
+        return class_exists('\MessageFormatter');
+    }
+
+    /**
+     * Warn once per instance that ICU content cannot be formatted.
+     *
+     * @param string $text
+     * @return void
+     */
+    protected function warnMissingIntl($text)
+    {
+        if ($this->warnedMissingIntl) {
+            return;
+        }
+
+        $this->warnedMissingIntl = true;
+
+        $this->log('warning', 'Phrase uses ICU MessageFormat but ext-intl is not loaded; plural and select rules will not be applied', [
+            'phrase' => $text,
+            'missing_extension' => 'intl',
+            'fallback' => 'simple placeholder substitution',
+        ]);
+    }
+
+    /**
+     * @param string $level
+     * @param string $message
+     * @param array $context
+     * @return void
+     */
+    protected function log($level, $message, array $context = [])
+    {
+        if ($this->logger instanceof LoggerInterface) {
+            $this->logger->log($level, $message, $context);
+        }
+    }
+}
