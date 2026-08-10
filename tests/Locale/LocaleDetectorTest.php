@@ -184,8 +184,10 @@ class LocaleDetectorTest extends TestCase
     public function testFromBrowserWithLanguageOnly(): void
     {
         $_SERVER['HTTP_ACCEPT_LANGUAGE'] = 'en';
-        // Should assume country matches language
-        $this->assertEquals('en-en', LocaleDetector::fromBrowser());
+        // A header with no region yields the bare language tag. Assuming the
+        // country matches the language would invent 'en-EN', which is not a
+        // real locale.
+        $this->assertEquals('en', LocaleDetector::fromBrowser());
     }
 
     public function testFromBrowserWithComplexHeader(): void
@@ -219,10 +221,77 @@ class LocaleDetectorTest extends TestCase
         $this->assertEquals('en-us', LocaleDetector::fromBrowser());
     }
 
-    public function testFromBrowserWithLocaleInMiddle(): void
+    public function testFromBrowserPrefersHighestQualityOverPosition(): void
     {
-        // Locale appears in middle of header after some text
+        // A region-qualified entry later in the header does not outrank a
+        // bare one before it: 'en' carries an implicit q=1 and beats
+        // 'es-MX' at q=0.9.
         $_SERVER['HTTP_ACCEPT_LANGUAGE'] = 'en,es-MX;q=0.9';
+        $this->assertEquals('en', LocaleDetector::fromBrowser());
+    }
+
+    public function testFromBrowserPicksHighestQualityRegardlessOfOrder(): void
+    {
+        $_SERVER['HTTP_ACCEPT_LANGUAGE'] = 'de-DE;q=0.5,es-MX;q=0.9,fr-FR;q=0.7';
         $this->assertEquals('es-mx', LocaleDetector::fromBrowser());
+    }
+
+    public function testFromBrowserSkipsUnacceptableEntries(): void
+    {
+        // q=0 means "not acceptable" (RFC 9110).
+        $_SERVER['HTTP_ACCEPT_LANGUAGE'] = 'de-DE;q=0,es-MX;q=0.4';
+        $this->assertEquals('es-mx', LocaleDetector::fromBrowser());
+    }
+
+    public function testFromBrowserWithWildcardOnly(): void
+    {
+        $_SERVER['HTTP_ACCEPT_LANGUAGE'] = '*';
+        $this->assertNull(LocaleDetector::fromBrowser());
+    }
+
+    public function testFromBrowserKeepsScriptSubtag(): void
+    {
+        $_SERVER['HTTP_ACCEPT_LANGUAGE'] = 'zh-Hant';
+        $this->assertEquals('zh-hant', LocaleDetector::fromBrowser());
+    }
+
+    /**
+     * The two detection paths must agree.
+     *
+     * fromBrowser() uses locale_accept_from_http() when Intl is loaded and its
+     * own parser otherwise, and the two silently disagreeing is exactly the bug
+     * this suite missed before: the Intl-free expectations passed only on a
+     * build without Intl. Intl cannot be unloaded at runtime, so the parser is
+     * called directly and compared against whatever fromBrowser() returns here.
+     *
+     * @dataProvider acceptLanguageHeaderProvider
+     */
+    public function testBothDetectionPathsAgree(string $header): void
+    {
+        $parser = new \ReflectionMethod(LocaleDetector::class, 'preferredFromAcceptLanguage');
+        $parser->setAccessible(true);
+
+        $_SERVER['HTTP_ACCEPT_LANGUAGE'] = $header;
+
+        $this->assertSame(
+            $parser->invoke(null, $header),
+            LocaleDetector::fromBrowser(),
+            sprintf('Intl and Intl-free detection disagree on "%s"', $header)
+        );
+    }
+
+    public static function acceptLanguageHeaderProvider(): array
+    {
+        return [
+            'full locale' => ['en-US,en;q=0.9'],
+            'underscore' => ['es_ES,es;q=0.9'],
+            'multiple' => ['fr-FR,fr;q=0.9,en-US;q=0.8'],
+            'language only' => ['en'],
+            'complex' => ['de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7'],
+            'quality values' => ['pt-BR;q=0.8,pt;q=0.6'],
+            'uppercase' => ['EN-US'],
+            'bare before qualified' => ['en,es-MX;q=0.9'],
+            'script subtag' => ['zh-Hant'],
+        ];
     }
 }

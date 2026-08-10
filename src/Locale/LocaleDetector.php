@@ -14,11 +14,17 @@ class LocaleDetector
      * Detect locale from browser HTTP_ACCEPT_LANGUAGE header.
      *
      * Detection algorithm:
-     * 1. Try locale_accept_from_http() if Intl extension available
-     * 2. Parse HTTP_ACCEPT_LANGUAGE with regex for full locale (xx-YY or xx_YY)
-     * 3. Fallback: use 2-letter language code, assume country = language
+     * 1. Try locale_accept_from_http() if the Intl extension is available
+     * 2. Otherwise parse HTTP_ACCEPT_LANGUAGE ourselves, honouring q-values
      *
-     * @return string|null Locale in "xx-yy" format, or null if unable to detect
+     * Both paths return the same answer for the same header. A header with no
+     * region yields the bare language tag ("en" -> "en"), never a fabricated
+     * region: assuming the country matches the language happens to work for
+     * es-ES and fr-FR, but invents en-EN, ja-JA, zh-ZH and uk-UK, and uk-UK in
+     * particular reads as United Kingdom when it means Ukrainian. A bare
+     * language tag is valid BCP 47 and lets the server do its own matching.
+     *
+     * @return string|null Locale in "xx-yy" or "xx" format, or null if unable to detect
      */
     public static function fromBrowser()
     {
@@ -31,29 +37,73 @@ class LocaleDetector
         // Try built-in function if Intl extension is available
         if (function_exists('locale_accept_from_http')) {
             $locale = locale_accept_from_http($acceptLanguage);
-            if ($locale !== null && preg_match('/^[a-z]{2}(_[A-Z]{2})?$/i', $locale)) {
-                return self::normalize($locale);
+            if (!empty($locale)) {
+                $normalized = self::normalize($locale);
+                if (self::isWellFormedTag($normalized)) {
+                    return $normalized;
+                }
             }
         }
 
-        // Try to extract full locale from the beginning of the string (xx-YY or xx_YY)
-        if (preg_match('/^([a-z]{2})[_-]([a-z]{2})/i', $acceptLanguage, $matches)) {
-            return strtolower($matches[1]) . '-' . strtolower($matches[2]);
+        return self::preferredFromAcceptLanguage($acceptLanguage);
+    }
+
+    /**
+     * Pick the most-preferred usable tag out of an Accept-Language header.
+     *
+     * The Intl-free mirror of locale_accept_from_http(): entries are ranked by
+     * q-value (absent q means q=1) and ties keep header order, so
+     * "en,es-MX;q=0.9" resolves to "en" -- en carries an implicit q=1 and
+     * outranks es-MX. Entries with q=0 are explicitly unacceptable per RFC
+     * 9110 and are skipped, as are "*" and anything malformed.
+     *
+     * @param string $header The raw HTTP_ACCEPT_LANGUAGE value
+     * @return string|null Normalized locale, or null if nothing usable
+     */
+    private static function preferredFromAcceptLanguage($header)
+    {
+        $best = null;
+        $bestQuality = 0.0;
+
+        foreach (explode(',', $header) as $entry) {
+            $parts = explode(';', trim($entry));
+            $tag = self::normalize(trim(array_shift($parts)));
+
+            $quality = 1.0;
+            foreach ($parts as $parameter) {
+                $parameter = trim($parameter);
+                if (stripos($parameter, 'q=') === 0) {
+                    $quality = (float) substr($parameter, 2);
+                }
+            }
+
+            if ($quality <= 0 || $tag === '*' || !self::isWellFormedTag($tag)) {
+                continue;
+            }
+
+            // Strictly greater, so an earlier entry wins a tie.
+            if ($quality > $bestQuality) {
+                $best = $tag;
+                $bestQuality = $quality;
+            }
         }
 
-        // Try to extract full locale from anywhere in the string
-        if (preg_match('/([a-z]{2})[_-]([a-z]{2})/i', $acceptLanguage, $matches)) {
-            return strtolower($matches[1]) . '-' . strtolower($matches[2]);
-        }
+        return $best;
+    }
 
-        // Fallback: use 2-letter language code, assume country matches language
-        // This is a reasonable assumption for most common cases (en-en, es-es, etc.)
-        $langCode = strtolower(substr($acceptLanguage, 0, 2));
-        if (preg_match('/^[a-z]{2}$/', $langCode)) {
-            return $langCode . '-' . $langCode;
-        }
-
-        return null;
+    /**
+     * Whether a normalized tag is one we are willing to hand to the API.
+     *
+     * Accepts language, language-script and language-region, so "en",
+     * "zh-hant" and "es-mx" all pass. Deliberately narrow: the point is to
+     * reject junk rather than to mangle it into something plausible-looking.
+     *
+     * @param string $tag A tag already through normalize()
+     * @return bool
+     */
+    private static function isWellFormedTag($tag)
+    {
+        return (bool) preg_match('/^[a-z]{2,3}(-[a-z]{4})?(-([a-z]{2}|[0-9]{3}))?$/', $tag);
     }
 
     /**
