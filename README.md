@@ -4,9 +4,10 @@ Official PHP SDK for the [Langsys](https://langsys.dev) Translation API. Manage 
 
 ## Requirements
 
-- PHP 5.6 or higher (tested up to PHP 8.4)
+- PHP 7.4 or higher (tested up to PHP 8.4)
 - cURL extension
 - JSON extension
+- intl extension (for ICU plurals and locale-aware number/date formatting)
 - Redis extension (optional, for Redis caching)
 
 ## Installation
@@ -386,12 +387,81 @@ $text = $client->translate('Home', null, 'UI');
 
 // For content block phrases
 $text = $client->translate('Menu Item', 'es-es', 'Navigation', 'content-block-id');
+
+// With placeholder values - see Placeholder Interpolation below
+$text = $client->translate('Hello, {name}!', null, 'UI', null, ['name' => 'Sarah']);
 ```
 
 If the phrase doesn't exist in translations, it will be:
 1. Queued for registration (if write key)
 2. Returned as-is (fallback to original)
 3. Added to in-memory cache to prevent re-queueing in same request
+
+### Placeholder Interpolation
+
+Pass dynamic values via the `$params` argument rather than building the string
+yourself. Placeholders use `{name}`, the same canonical form the Langsys JS SDKs
+store, so a shared catalog renders identically from a PHP backend and a JS frontend.
+
+> **⚠️ Never pre-format strings before translating.**
+>
+> ```php
+> // WRONG - registers "Hello, Sarah!", "Hello, Ahmed!", "Hello, Priya!", ...
+> $client->translate(sprintf('Hello, %s!', $user->name));
+>
+> // RIGHT - registers "Hello, {name}!" exactly once
+> $client->translate('Hello, {name}!', null, null, null, ['name' => $user->name]);
+> ```
+>
+> `translate()` auto-registers any phrase it doesn't recognise, so building the
+> string yourself creates a **new catalog entry for every distinct runtime value**.
+> That pollutes the catalog every Langsys SDK shares, is billed as translatable
+> words, and can't be undone by fixing the code afterwards. The SDK cannot detect
+> this at runtime — an interpolated string is indistinguishable from an authored
+> one — so this is the one rule worth remembering.
+
+Placeholders work in phrases, content blocks and whole pages:
+
+```php
+$client->translate('Hello, {name}!', null, 'UI', null, ['name' => 'Sarah']);
+$client->translateContentBlock('<p>Welcome back, {name}</p>', 'homepage', ['name' => 'Sarah']);
+$client->translatePage($html, 'homepage', [], ['name' => 'Sarah']);
+```
+
+In content blocks and pages, placeholders resolve in text nodes **and** in
+translatable attributes (`placeholder`, `alt`, `title`, …).
+
+#### Behaviour
+
+| Case | Result |
+|------|--------|
+| Unknown key | Left **verbatim** (`{name}` stays `{name}`) — missing data stays visible |
+| Key present but `null` | Also left verbatim |
+| `{ name }` | Whitespace tolerated |
+| String value | Passed through untouched — the **opt-out** from number formatting (IDs, codes) |
+| Int / float | Formatted for the locale (`1234.5` → `1.234,5` in de-DE) |
+| Bool | `"true"` / `"false"` |
+| `DateTimeInterface` | Locale-formatted, medium date style |
+| Phrase not translated yet | Fallback text still interpolates, so users never see raw `{name}` |
+
+The phrase registered with Langsys always keeps its placeholders — interpolation
+only affects what your code receives.
+
+#### Plurals (ICU MessageFormat)
+
+Full ICU is supported, so plural categories are correct per language — Russian's
+four, Arabic's six:
+
+```php
+$client->translate(
+    '{n, plural, one {# item} other {# items}}',
+    'ru-RU', null, null, ['n' => 21]
+);
+```
+
+Requires the `intl` extension. If `intl` is disabled at runtime the SDK logs a
+warning naming the phrase and falls back to simple `{name}` substitution rather
+than failing the render. Malformed ICU also falls back rather than throwing.
 
 ### Translate a Content Block
 
@@ -407,6 +477,9 @@ $translated = $client->translateContentBlock($html);
 
 // With category
 $translated = $client->translateContentBlock($html, 'homepage');
+
+// With placeholder values
+$translated = $client->translateContentBlock('<p>Hi {name}</p>', 'homepage', ['name' => 'Sarah']);
 ```
 
 This uses the same phrase extraction logic as `registerContentBlock()`, ensuring consistent behavior between translation and registration.
