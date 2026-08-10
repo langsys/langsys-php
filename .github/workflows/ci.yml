@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          # intl is required: without it the ICU plural/select tests skip
+          # silently, which is exactly the gap this workflow exists to close.
+          extensions: curl, json, intl, redis
+          coverage: none
+
+      # A green suite means nothing if the ICU tests were skipped. Fail loudly
+      # rather than let the job pass while the plural rules go unexercised.
+      - name: Assert ext-intl is actually loaded
+        run: |
+          php -r 'if (!extension_loaded("intl")) { fwrite(STDERR, "ext-intl missing - ICU tests would skip\n"); exit(1); }'
+          php -r 'printf("intl %s / ICU %s\n", phpversion("intl"), INTL_ICU_VERSION);'
+
+      - name: Validate composer.json
+        run: composer validate --strict --no-check-lock
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      # LANGSYS_REQUIRE_INTL turns the ICU tests' markTestSkipped into a hard
+      # failure, so they cannot pass by quietly not running. Some skips here are
+      # still expected and correct - the missing-intl degradation tests skip
+      # precisely BECAUSE intl is present - so a blanket "no skips" check would
+      # be wrong in the other direction.
+      - name: Run test suite
+        env:
+          LANGSYS_REQUIRE_INTL: '1'
+        run: vendor/bin/phpunit
+
+  lint:
+    name: Syntax check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '7.4'
+          extensions: curl, json, intl
+          coverage: none
+
+      # Guards the documented 7.4 floor: catches any 8.x-only syntax that would
+      # parse fine on a modern dev box but break the minimum supported runtime.
+      - name: Lint all source files against the 7.4 floor
+        run: |
+          status=0
+          while IFS= read -r file; do
+            php -l "$file" > /dev/null || status=1
+          done < <(find src tests -name '*.php')
+          exit $status

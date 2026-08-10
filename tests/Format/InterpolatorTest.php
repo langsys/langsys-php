@@ -72,11 +72,28 @@ class InterpolatorTest extends TestCase
         $this->interpolator = new Interpolator();
     }
 
+    /**
+     * Skip when ext-intl is unavailable - unless LANGSYS_REQUIRE_INTL is set,
+     * in which case fail instead.
+     *
+     * CI sets that variable so the ICU tests cannot silently skip on a runner
+     * that was supposed to have intl. A green suite that skipped every plural
+     * assertion is exactly the false confidence this guards against.
+     */
     protected function requireIntl()
     {
-        if (!extension_loaded('intl')) {
-            $this->markTestSkipped('ext-intl is not available');
+        if (extension_loaded('intl')) {
+            return;
         }
+
+        if (getenv('LANGSYS_REQUIRE_INTL')) {
+            $this->fail(
+                'ext-intl is not loaded, but LANGSYS_REQUIRE_INTL is set. '
+                . 'ICU plural/select behaviour would go unverified.'
+            );
+        }
+
+        $this->markTestSkipped('ext-intl is not available');
     }
 
     // ---------------------------------------------------------------
