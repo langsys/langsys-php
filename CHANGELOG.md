@@ -5,6 +5,40 @@ All notable changes to the Langsys PHP SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Browser locale detection was inconsistent between hosts.**
+  `LocaleDetector::fromBrowser()` had two code paths that disagreed, and which
+  one ran depended on whether `ext-intl` was loaded — so the same visitor could
+  be served a different language on two otherwise identical deployments:
+
+  | `Accept-Language` | without intl | with intl |
+  |---|---|---|
+  | `en` | `en-en` | `en` |
+  | `en,es-MX;q=0.9` | `es-mx` | `en` |
+
+  The non-intl path matched whichever locale-shaped substring appeared in the
+  header regardless of priority, so `es-MX` at `q=0.9` beat `en` at an implicit
+  `q=1`. The intl path handled priority correctly but returned a bare language
+  code, which cannot match a project locale since the API addresses translations
+  by `xx-yy` codes.
+
+  Both paths now parse by quality value and then fill a missing region, so they
+  produce identical results on every host. The fallback is a real
+  `Accept-Language` parser rather than a substring match.
+
+  The divergence predates 1.0.0; making `ext-intl` mandatory promoted the intl
+  path from "whichever the host happened to have" to the only path in use.
+
+### Added
+
+- CI across PHP 7.4–8.4 with `ext-intl` loaded, so the ICU plural/select tests
+  actually execute. `LANGSYS_REQUIRE_INTL` turns their `markTestSkipped` into a
+  hard failure, preventing a green suite that silently skipped every plural
+  assertion.
+
 ## [1.0.0] - 2026-08-10
 
 First tagged release.
