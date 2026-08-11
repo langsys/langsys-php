@@ -145,29 +145,43 @@ class Interpolator
             $icuParams[$key] = $this->toIcuValue($value);
         }
 
-        $formatter = @\MessageFormatter::create($icuLocale, $text);
+        // intl can THROW rather than return a falsy value: MessageFormatter
+        // raises IntlException when intl.use_exceptions is On, and @ does not
+        // suppress exceptions. Escaping here would break the render, which this
+        // class promises never to do.
+        try {
+            $formatter = @\MessageFormatter::create($icuLocale, $text);
 
-        if ($formatter === null) {
-            $this->log('warning', 'ICU pattern could not be parsed; falling back to simple interpolation', [
+            // create() returns null on some versions and false on others.
+            if (!$formatter) {
+                $this->log('warning', 'ICU pattern could not be parsed; falling back to simple interpolation', [
+                    'phrase' => $text,
+                    'locale' => $icuLocale,
+                    'intl_error' => intl_get_error_message(),
+                ]);
+                return null;
+            }
+
+            $result = @$formatter->format($icuParams);
+
+            if ($result === false) {
+                $this->log('warning', 'ICU formatting failed; falling back to simple interpolation', [
+                    'phrase' => $text,
+                    'locale' => $icuLocale,
+                    'intl_error' => $formatter->getErrorMessage(),
+                ]);
+                return null;
+            }
+
+            return $result;
+        } catch (\Throwable $e) {
+            $this->log('warning', 'ICU formatting threw; falling back to simple interpolation', [
                 'phrase' => $text,
                 'locale' => $icuLocale,
-                'intl_error' => intl_get_error_message(),
+                'exception' => $e->getMessage(),
             ]);
             return null;
         }
-
-        $result = @$formatter->format($icuParams);
-
-        if ($result === false) {
-            $this->log('warning', 'ICU formatting failed; falling back to simple interpolation', [
-                'phrase' => $text,
-                'locale' => $icuLocale,
-                'intl_error' => $formatter->getErrorMessage(),
-            ]);
-            return null;
-        }
-
-        return $result;
     }
 
     /**
@@ -266,15 +280,20 @@ class Interpolator
             return (string) $value;
         }
 
-        $formatter = @\NumberFormatter::create($this->resolveLocale($locale), \NumberFormatter::DECIMAL);
+        try {
+            $formatter = @\NumberFormatter::create($this->resolveLocale($locale), \NumberFormatter::DECIMAL);
 
-        if ($formatter === null) {
+            // Returns null on some versions, false on others.
+            if (!$formatter) {
+                return (string) $value;
+            }
+
+            $formatted = @$formatter->format($value);
+
+            return $formatted === false ? (string) $value : $formatted;
+        } catch (\Throwable $e) {
             return (string) $value;
         }
-
-        $formatted = @$formatter->format($value);
-
-        return $formatted === false ? (string) $value : $formatted;
     }
 
     /**
@@ -290,15 +309,21 @@ class Interpolator
             return $value->format('Y-m-d');
         }
 
-        $formatter = new \IntlDateFormatter(
-            $this->resolveLocale($locale),
-            \IntlDateFormatter::MEDIUM,
-            \IntlDateFormatter::NONE
-        );
+        // IntlDateFormatter's CONSTRUCTOR throws on PHP 8+ for a bad locale;
+        // @ cannot suppress an exception, so this must be caught explicitly.
+        try {
+            $formatter = new \IntlDateFormatter(
+                $this->resolveLocale($locale),
+                \IntlDateFormatter::MEDIUM,
+                \IntlDateFormatter::NONE
+            );
 
-        $formatted = @$formatter->format($value);
+            $formatted = @$formatter->format($value);
 
-        return $formatted === false ? $value->format('Y-m-d') : $formatted;
+            return $formatted === false ? $value->format('Y-m-d') : $formatted;
+        } catch (\Throwable $e) {
+            return $value->format('Y-m-d');
+        }
     }
 
     /**

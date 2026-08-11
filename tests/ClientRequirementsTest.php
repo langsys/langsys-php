@@ -4,17 +4,20 @@ namespace Langsys\SDK\Tests;
 
 use Langsys\SDK\Cache\NullCache;
 use Langsys\SDK\Client;
-use Langsys\SDK\Tests\Format\SpyLogger;
+use Langsys\SDK\Tests\Support\SpyLogger;
 use PHPUnit\Framework\TestCase;
 
 /**
  * Tests for the runtime requirement guard.
  *
  * Composer enforces PHP >= 7.4 and ext-intl, but the documented manual
- * autoload.php install bypasses Composer entirely, so those users get no gate
- * at all. The guard warns (never throws) through both the SDK logger and
- * trigger_error, the latter because a manual install usually has no log path
- * configured.
+ * autoload.php install bypasses Composer entirely, so those users get no gate at
+ * all. The guard warns through the SDK logger and the PHP error log - the latter
+ * because a manual install usually has no log path configured.
+ *
+ * It must NEVER throw. A missing ext-intl degrades to simple placeholder
+ * substitution; taking down a working site to prevent degraded plurals would be
+ * a far worse trade.
  */
 class ClientRequirementsTest extends TestCase
 {
@@ -22,6 +25,16 @@ class ClientRequirementsTest extends TestCase
      * @var \ReflectionProperty
      */
     protected $warnedFlag;
+
+    /**
+     * @var string|null
+     */
+    protected $errorLogFile;
+
+    /**
+     * @var string|false
+     */
+    protected $originalErrorLog;
 
     protected function setUp(): void
     {
@@ -31,6 +44,8 @@ class ClientRequirementsTest extends TestCase
 
     protected function tearDown(): void
     {
+        $this->stopCapturingErrorLog();
+
         // Restore the suppressed state the bootstrap set up, so later tests
         // are unaffected.
         $this->warnedFlag->setValue(null, true);
@@ -43,26 +58,64 @@ class ClientRequirementsTest extends TestCase
         ], $options));
     }
 
-    public function testMissingIntlIsReportedToTheLogger()
+    /**
+     * Redirect error_log() into a temp file so it can be asserted on.
+     *
+     * @return void
+     */
+    protected function startCapturingErrorLog()
+    {
+        $this->errorLogFile = tempnam(sys_get_temp_dir(), 'langsys-errlog-');
+        $this->originalErrorLog = ini_get('error_log');
+        ini_set('error_log', $this->errorLogFile);
+    }
+
+    /**
+     * @return string
+     */
+    protected function capturedErrorLog()
+    {
+        if ($this->errorLogFile === null || !is_file($this->errorLogFile)) {
+            return '';
+        }
+
+        return (string) file_get_contents($this->errorLogFile);
+    }
+
+    /**
+     * @return void
+     */
+    protected function stopCapturingErrorLog()
+    {
+        if ($this->errorLogFile === null) {
+            return;
+        }
+
+        ini_set('error_log', $this->originalErrorLog === false ? '' : $this->originalErrorLog);
+
+        if (is_file($this->errorLogFile)) {
+            @unlink($this->errorLogFile);
+        }
+
+        $this->errorLogFile = null;
+    }
+
+    protected function requireMissingIntl()
     {
         if (extension_loaded('intl')) {
             $this->markTestSkipped('This test covers the missing-intl warning');
         }
+    }
+
+    public function testMissingIntlIsReportedToTheLogger()
+    {
+        $this->requireMissingIntl();
 
         $this->warnedFlag->setValue(null, false);
+        $this->startCapturingErrorLog();
 
         $logger = new SpyLogger();
-
-        // trigger_error would otherwise be converted into a test error.
-        $previous = set_error_handler(function () {
-            return true;
-        }, E_USER_WARNING);
-
-        try {
-            $this->makeClient(['logger' => $logger]);
-        } finally {
-            set_error_handler($previous);
-        }
+        $this->makeClient(['logger' => $logger]);
 
         $warnings = $logger->messagesAt('warning');
 
@@ -70,72 +123,97 @@ class ClientRequirementsTest extends TestCase
         $this->assertStringContainsString('ext-intl', $warnings[0]);
     }
 
-    public function testRequirementWarningAlsoRaisesAPhpWarning()
+    public function testRequirementWarningReachesThePhpErrorLog()
     {
-        if (extension_loaded('intl')) {
-            $this->markTestSkipped('This test covers the missing-intl warning');
-        }
+        $this->requireMissingIntl();
 
         $this->warnedFlag->setValue(null, false);
+        $this->startCapturingErrorLog();
 
-        $raised = [];
-        $previous = set_error_handler(function ($errno, $errstr) use (&$raised) {
-            $raised[] = $errstr;
-            return true;
-        }, E_USER_WARNING);
+        $this->makeClient();
 
-        try {
-            $this->makeClient();
-        } finally {
-            set_error_handler($previous);
-        }
-
-        $this->assertNotEmpty($raised, 'A PHP warning must surface even without SDK logging configured');
-        $this->assertStringContainsString('ext-intl', $raised[0]);
+        $this->assertStringContainsString(
+            'ext-intl',
+            $this->capturedErrorLog(),
+            'The warning must surface even when SDK logging is not configured'
+        );
     }
 
     public function testWarningIsEmittedOnlyOncePerProcess()
     {
-        if (extension_loaded('intl')) {
-            $this->markTestSkipped('This test covers the missing-intl warning');
-        }
+        $this->requireMissingIntl();
 
         $this->warnedFlag->setValue(null, false);
+        $this->startCapturingErrorLog();
 
-        $raised = [];
-        $previous = set_error_handler(function ($errno, $errstr) use (&$raised) {
-            $raised[] = $errstr;
-            return true;
-        }, E_USER_WARNING);
+        $this->makeClient();
+        $this->makeClient();
+        $this->makeClient();
 
-        try {
-            $this->makeClient();
-            $this->makeClient();
-            $this->makeClient();
-        } finally {
-            set_error_handler($previous);
-        }
+        $this->assertSame(
+            1,
+            substr_count($this->capturedErrorLog(), 'ext-intl'),
+            'Constructing many Clients must not spam the error log'
+        );
+    }
 
-        $this->assertCount(1, $raised, 'Constructing many Clients must not spam the error log');
+    public function testErrorLogWarningCanBeDisabled()
+    {
+        $this->requireMissingIntl();
+
+        $this->warnedFlag->setValue(null, false);
+        $this->startCapturingErrorLog();
+
+        $logger = new SpyLogger();
+        $this->makeClient(['logger' => $logger, 'warn_runtime_requirements' => false]);
+
+        $this->assertStringNotContainsString('ext-intl', $this->capturedErrorLog());
+
+        // The logger leg still fires - a host framework that surfaces the SDK
+        // logger itself should not lose the diagnosis entirely.
+        $this->assertNotEmpty($logger->messagesAt('warning'));
     }
 
     /**
-     * The guard must never prevent the SDK from working - a missing extension
-     * degrades gracefully rather than breaking construction.
+     * Regression test for a defect reported by the Laravel wrapper.
+     *
+     * This previously used trigger_error(), which routes through the installed
+     * error handler. Laravel's HandleExceptions converts PHP errors into thrown
+     * ErrorExceptions, so on any Laravel host without ext-intl, CONSTRUCTING THE
+     * CLIENT THREW instead of degrading - inverting the entire intent of the
+     * guard and breaking the render it was meant to protect.
+     *
+     * error_log() cannot be intercepted by an error handler, so this holds for
+     * any framework that escalates errors, not just Laravel.
      */
-    public function testGuardNeverThrows()
+    public function testGuardNeverThrowsUnderAnErrorHandlerThatConvertsErrorsToExceptions()
     {
         $this->warnedFlag->setValue(null, false);
+        $this->startCapturingErrorLog();
 
-        $previous = set_error_handler(function () {
-            return true;
-        }, E_USER_WARNING);
+        // Mirrors Illuminate\Foundation\Bootstrap\HandleExceptions.
+        set_error_handler(function ($level, $message, $file = '', $line = 0) {
+            throw new \ErrorException($message, 0, $level, $file, $line);
+        });
 
         try {
             $client = $this->makeClient();
             $this->assertInstanceOf(Client::class, $client);
         } finally {
-            set_error_handler($previous);
+            restore_error_handler();
         }
+    }
+
+    /**
+     * The guard must never prevent the SDK from working.
+     */
+    public function testGuardNeverThrows()
+    {
+        $this->warnedFlag->setValue(null, false);
+        $this->startCapturingErrorLog();
+
+        $client = $this->makeClient();
+
+        $this->assertInstanceOf(Client::class, $client);
     }
 }

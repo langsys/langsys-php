@@ -105,6 +105,27 @@ class PageTranslator
         $this->params = $params;
         $this->currentLocale = $locale;
 
+        try {
+            return $this->translateDocument($html, $locale, $defaultCategory, $selectorCategories, $params);
+        } finally {
+            // Do not retain caller data (or arm interp() for any future code
+            // path outside this call tree) after the call returns, including
+            // when it unwinds on an exception.
+            $this->params = [];
+            $this->currentLocale = null;
+        }
+    }
+
+    /**
+     * @param string $html
+     * @param string $locale
+     * @param string|null $defaultCategory
+     * @param array $selectorCategories
+     * @param array $params
+     * @return string
+     */
+    protected function translateDocument($html, $locale, $defaultCategory, array $selectorCategories, array $params)
+    {
         if (empty($html)) {
             return $html;
         }
@@ -129,7 +150,14 @@ class PageTranslator
         }
 
         // Process head section (extract phrases + apply translations + set lang/charset)
+        // Placeholders must resolve here too, or <title> and meta description
+        // ship raw {name} to the browser while the body renders correctly.
         $headPhrases = $this->headHandler->extractPhrases($doc);
+        $this->headHandler->useInterpolation(
+            empty($params) ? null : $this->client->getInterpolator(),
+            $params,
+            $locale
+        );
         $this->headHandler->process($doc, $locale, $translations, $defaultCategory);
 
         // Process body section (respects data-langsys-category attributes and selector categories)

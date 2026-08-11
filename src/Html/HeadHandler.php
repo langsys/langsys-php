@@ -21,6 +21,21 @@ use Langsys\SDK\Locale\LocaleDetector;
 class HeadHandler
 {
     /**
+     * @var \Langsys\SDK\Format\Interpolator|null
+     */
+    protected $interpolator = null;
+
+    /**
+     * @var array Placeholder values for the current pass.
+     */
+    protected $params = [];
+
+    /**
+     * @var string|null Locale for the current pass.
+     */
+    protected $locale = null;
+
+    /**
      * Meta tags to translate (by name attribute).
      */
     const META_NAMES = [
@@ -281,12 +296,45 @@ class HeadHandler
             $value = $translations[$cat][$phrase];
             // Only return if it's a string and not empty
             if (!is_array($value) && $value !== '' && $value !== null) {
-                return $value;
+                return $this->interpolate($value);
             }
         }
 
-        // Fallback to original
-        return $phrase;
+        // Fallback to original - still interpolated, so a not-yet-translated
+        // title never ships a raw {name} to the browser.
+        return $this->interpolate($phrase);
+    }
+
+    /**
+     * Supply placeholder values for this pass.
+     *
+     * The head is translated through the same catalog as the body, so it must
+     * interpolate too - otherwise <title> and meta description render raw
+     * placeholders while the body resolves them.
+     *
+     * @param \Langsys\SDK\Format\Interpolator|null $interpolator
+     * @param array $params
+     * @param string|null $locale
+     * @return void
+     */
+    public function useInterpolation($interpolator, array $params = [], $locale = null)
+    {
+        $this->interpolator = $interpolator;
+        $this->params = $params;
+        $this->locale = $locale;
+    }
+
+    /**
+     * @param string $text
+     * @return string
+     */
+    protected function interpolate($text)
+    {
+        if ($this->interpolator === null || empty($this->params) || !is_string($text) || $text === '') {
+            return $text;
+        }
+
+        return $this->interpolator->interpolate($text, $this->params, $this->locale);
     }
 
     /**

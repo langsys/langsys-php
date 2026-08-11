@@ -428,8 +428,14 @@ $client->translateContentBlock('<p>Welcome back, {name}</p>', 'homepage', ['name
 $client->translatePage($html, 'homepage', [], ['name' => 'Sarah']);
 ```
 
-In content blocks and pages, placeholders resolve in text nodes **and** in
+In `translateContentBlock()`, placeholders resolve in text nodes **and** in
 translatable attributes (`placeholder`, `alt`, `title`, …).
+
+In `translatePage()`, placeholders resolve in text nodes, in the `<head>`
+(`<title>`, meta description, `og:*`, `twitter:*`), and in attributes on elements
+that are classified as content blocks. An attribute on an element that is *not*
+part of a content block — for example a lone `<input placeholder="Search {site}">`
+beside a paragraph — is currently neither extracted nor interpolated.
 
 #### Behaviour
 

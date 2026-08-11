@@ -255,4 +255,69 @@ class LocaleDetectorTest extends TestCase
         $_SERVER['HTTP_ACCEPT_LANGUAGE'] = '*;q=0.5,de-DE;q=0.4';
         $this->assertEquals('de-de', LocaleDetector::fromBrowser());
     }
+
+    // -----------------------------------------------------------------
+    // fromAcceptLanguage() - same semantics without touching $_SERVER
+    // -----------------------------------------------------------------
+
+    public function testFromAcceptLanguageMatchesFromBrowser(): void
+    {
+        $header = 'fr-FR,fr;q=0.9,en-US;q=0.8';
+        $_SERVER['HTTP_ACCEPT_LANGUAGE'] = $header;
+
+        $this->assertEquals(
+            LocaleDetector::fromBrowser(),
+            LocaleDetector::fromAcceptLanguage($header)
+        );
+    }
+
+    public function testFromAcceptLanguageRejectsEmptyInput(): void
+    {
+        $this->assertNull(LocaleDetector::fromAcceptLanguage(''));
+        $this->assertNull(LocaleDetector::fromAcceptLanguage('   '));
+        $this->assertNull(LocaleDetector::fromAcceptLanguage(null));
+    }
+
+    // -----------------------------------------------------------------
+    // Quality values
+    // -----------------------------------------------------------------
+
+    /**
+     * RFC 7231: q=0 means "not acceptable". An entry at q=0 must never be
+     * selected, even when it is the only candidate in the header.
+     */
+    public function testQualityZeroIsNotAcceptable(): void
+    {
+        $this->assertNull(LocaleDetector::fromAcceptLanguage('de;q=0'));
+        $this->assertNull(LocaleDetector::fromAcceptLanguage('en;q=0,fr;q=0'));
+    }
+
+    public function testQualityZeroEntryIsSkippedInFavourOfAnother(): void
+    {
+        $this->assertEquals('fr-fr', LocaleDetector::fromAcceptLanguage('en;q=0,fr;q=0.5'));
+    }
+
+    /**
+     * A malformed q must discard the entry, not silently default it to 1 -
+     * defaulting would promote a broken entry to top priority, the opposite of
+     * what the sender meant.
+     */
+    public function testMalformedQualityDiscardsTheEntry(): void
+    {
+        $this->assertEquals('fr-fr', LocaleDetector::fromAcceptLanguage('en;q=abc,fr;q=0.5'));
+        $this->assertEquals('fr-fr', LocaleDetector::fromAcceptLanguage('en;q=...,fr;q=0.5'));
+    }
+
+    public function testOutOfRangeQualityDiscardsTheEntry(): void
+    {
+        $this->assertEquals('fr-fr', LocaleDetector::fromAcceptLanguage('en;q=1.5,fr;q=0.9'));
+        $this->assertEquals('fr-fr', LocaleDetector::fromAcceptLanguage('en;q=2,fr;q=0.9'));
+    }
+
+    public function testQualityBoundsAreAccepted(): void
+    {
+        $this->assertEquals('en-en', LocaleDetector::fromAcceptLanguage('en;q=1'));
+        $this->assertEquals('en-en', LocaleDetector::fromAcceptLanguage('en;q=1.000'));
+        $this->assertEquals('en-en', LocaleDetector::fromAcceptLanguage('en;q=0.001'));
+    }
 }

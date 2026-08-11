@@ -52,6 +52,38 @@ jobs:
           LANGSYS_REQUIRE_INTL: '1'
         run: vendor/bin/phpunit
 
+  # The graceful-degradation path (missing ext-intl warns once, falls back to
+  # simple substitution, and NEVER throws) is skipped on every matrix leg above,
+  # because those all have intl. Without this job it is only ever exercised on a
+  # developer laptop that happens to lack the extension.
+  no-intl:
+    name: Degradation without ext-intl
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP without intl
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: curl, json
+          coverage: none
+
+      - name: Assert ext-intl is absent
+        run: |
+          php -r 'if (extension_loaded("intl")) { fwrite(STDERR, "intl present - this job must run WITHOUT it\n"); exit(1); }'
+
+      # ext-intl is a hard composer requirement, so the platform check has to be
+      # bypassed to simulate a host that lost intl after install.
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress --ignore-platform-req=ext-intl
+
+      # LANGSYS_REQUIRE_INTL is deliberately NOT set here: the ICU tests should
+      # skip, and the degradation tests should run.
+      - name: Run test suite
+        run: vendor/bin/phpunit
+
   lint:
     name: Syntax check
     runs-on: ubuntu-latest

@@ -234,6 +234,45 @@ class ClientInterpolationTest extends TestCase
         $this->assertStringNotContainsString('{name}', $result);
     }
 
+    /**
+     * The head is translated from the same catalog as the body, so it must
+     * interpolate too - otherwise <title> and meta description ship raw
+     * placeholders while the body resolves them.
+     */
+    public function testTranslatePageInterpolatesHead()
+    {
+        $client = $this->makeClient(['homepage' => []]);
+        $client->setLocale('es-es');
+
+        $html = '<!DOCTYPE html><html><head>'
+            . '<title>Welcome {name}</title>'
+            . '<meta name="description" content="Hi {name}">'
+            . '<meta property="og:title" content="OG {name}">'
+            . '</head><body><p>Hello, {name}!</p></body></html>';
+
+        $result = $client->translatePage($html, 'homepage', [], ['name' => 'Sarah']);
+
+        $this->assertStringContainsString('<title>Welcome Sarah</title>', $result);
+        $this->assertStringContainsString('Hi Sarah', $result);
+        $this->assertStringContainsString('OG Sarah', $result);
+        $this->assertStringNotContainsString('{name}', $result);
+    }
+
+    public function testTranslatePageHeadParamsDoNotLeakBetweenCalls()
+    {
+        $client = $this->makeClient(['homepage' => []]);
+        $client->setLocale('es-es');
+
+        $html = '<!DOCTYPE html><html><head><title>Welcome {name}</title></head>'
+            . '<body><p>Hi</p></body></html>';
+
+        $client->translatePage($html, 'homepage', [], ['name' => 'Sarah']);
+        $second = $client->translatePage($html, 'homepage');
+
+        $this->assertStringNotContainsString('Sarah', $second);
+        $this->assertStringContainsString('{name}', $second);
+    }
+
     public function testTranslatePageWithoutParamsLeavesPlaceholders()
     {
         $client = $this->makeClient(['homepage' => []]);

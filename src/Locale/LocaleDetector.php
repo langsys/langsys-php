@@ -35,7 +35,24 @@ class LocaleDetector
             return null;
         }
 
-        $acceptLanguage = $_SERVER['HTTP_ACCEPT_LANGUAGE'];
+        return self::fromAcceptLanguage($_SERVER['HTTP_ACCEPT_LANGUAGE']);
+    }
+
+    /**
+     * Detect locale from an explicit Accept-Language header value.
+     *
+     * Same semantics as fromBrowser(), but takes the header directly instead of
+     * reading $_SERVER - so a framework can pass its own request header without
+     * having to fake superglobals.
+     *
+     * @param string $acceptLanguage Raw Accept-Language header value
+     * @return string|null Locale in "xx-yy" format, or null if unable to detect
+     */
+    public static function fromAcceptLanguage($acceptLanguage)
+    {
+        if (!is_string($acceptLanguage) || trim($acceptLanguage) === '') {
+            return null;
+        }
 
         // Preferred: ext-intl, which implements RFC 4647 lookup properly.
         if (function_exists('locale_accept_from_http')) {
@@ -67,8 +84,10 @@ class LocaleDetector
     protected static function highestPriorityLanguage($acceptLanguage)
     {
         $best = null;
-        $bestQuality = -1.0;
-        $position = 0;
+
+        // Starts at 0.0, not -1.0: q=0 means "not acceptable" (RFC 7231), so an
+        // entry at q=0 must never be selected even if it is the only one.
+        $bestQuality = 0.0;
 
         foreach (explode(',', $acceptLanguage) as $part) {
             $part = trim($part);
@@ -83,12 +102,10 @@ class LocaleDetector
                 continue; // Ignore wildcards and anything not a simple tag.
             }
 
-            $quality = 1.0;
-            for ($i = 1; $i < count($bits); $i++) {
-                if (preg_match('/^\s*q\s*=\s*([0-9.]+)\s*$/i', $bits[$i], $m)) {
-                    $quality = (float) $m[1];
-                    break;
-                }
+            $quality = self::parseQuality($bits);
+
+            if ($quality === null) {
+                continue; // Malformed or out-of-range q - discard the entry.
             }
 
             // Strictly greater, so an earlier entry wins an exact tie.
@@ -96,11 +113,40 @@ class LocaleDetector
                 $bestQuality = $quality;
                 $best = self::normalize($tag);
             }
-
-            $position++;
         }
 
         return $best;
+    }
+
+    /**
+     * Read the quality value from an entry's parameters.
+     *
+     * A missing q defaults to 1. A q that is present but malformed or outside
+     * 0..1 makes the whole entry unusable - silently treating "q=abc" as the
+     * default 1 would promote a broken entry to top priority, which is the
+     * opposite of what the sender meant.
+     *
+     * @param array $bits Entry split on ';'
+     * @return float|null Null when the entry should be discarded
+     */
+    protected static function parseQuality(array $bits)
+    {
+        $quality = 1.0;
+
+        for ($i = 1; $i < count($bits); $i++) {
+            if (strpos($bits[$i], '=') === false || stripos(trim($bits[$i]), 'q') !== 0) {
+                continue; // Some other parameter, e.g. an extension.
+            }
+
+            if (!preg_match('/^\s*q\s*=\s*(0(\.\d{1,3})?|1(\.0{1,3})?)\s*$/i', $bits[$i], $m)) {
+                return null;
+            }
+
+            $quality = (float) $m[1];
+            break;
+        }
+
+        return $quality;
     }
 
     /**

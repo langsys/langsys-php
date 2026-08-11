@@ -5,6 +5,55 @@ All notable changes to the Langsys PHP SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-08-11
+
+### Fixed
+
+- **The ext-intl warning became a FATAL error under Laravel.** The runtime
+  requirement guard used `trigger_error(E_USER_WARNING)`, which routes through
+  the installed error handler. Laravel's `HandleExceptions` converts PHP errors
+  into thrown `ErrorException`s, so on any Laravel host without `ext-intl`,
+  **constructing the Client threw instead of degrading** — inverting the entire
+  intent of a guard that exists to keep renders working. Now uses `error_log()`,
+  which cannot be intercepted or escalated by any error handler. Reported by the
+  Laravel wrapper with a reproducing stack trace.
+- **`translatePage()` never interpolated the `<head>`.** `<title>`, meta
+  description, `og:*` and `twitter:*` shipped raw `{name}` placeholders to the
+  browser while the body resolved them correctly.
+- **`LocaleDetector` treated `q=0` as acceptable.** RFC 7231 defines `q=0` as
+  "not acceptable", but `Accept-Language: de;q=0` resolved to `de-de`. A `q` that
+  is malformed (`q=abc`) or out of range (`q=1.5`) now discards that entry rather
+  than silently defaulting it to `q=1`, which had promoted broken entries to top
+  priority.
+- **ICU calls could throw and break the render.** `MessageFormatter::create()`,
+  `NumberFormatter::create()` and `new IntlDateFormatter()` can raise
+  `IntlException` (and `@` does not suppress exceptions), violating this class's
+  promise never to throw. All three are now guarded, as is the `false`-vs-`null`
+  return difference between intl versions.
+- `PageTranslator` no longer retains per-call params after `translatePage()`
+  returns, including when it unwinds on an exception.
+
+### Added
+
+- `LocaleDetector::fromAcceptLanguage($header)` — same semantics as
+  `fromBrowser()` but takes the header explicitly, so a framework can pass its
+  own request header instead of faking `$_SERVER`. Requested by the Laravel wrapper.
+- `warn_runtime_requirements` constructor option to silence the `error_log()` leg
+  of the requirement warning (the SDK logger leg still fires).
+- A CI job that runs the suite **without** `ext-intl`, so the graceful-degradation
+  path is verified on CI rather than only on a developer machine that happens to
+  lack the extension.
+
+### Internal
+
+- `tests/ClientRequirementsTest.php` restored PHP's error handler with
+  `set_error_handler($previous)`, which *pushes* a handler rather than popping
+  one. That silently disabled PHPUnit's error handler for every test that ran
+  afterwards, so warnings across the rest of the suite were swallowed. Now uses
+  `restore_error_handler()`.
+- `SpyLogger` moved to `tests/Support/` so individual test files can be run on
+  their own.
+
 ## [1.0.0] - 2026-08-10
 
 First tagged release.

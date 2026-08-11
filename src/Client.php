@@ -138,7 +138,12 @@ class Client
         // Composer enforces the PHP version and ext-intl, but the documented
         // manual autoload.php install bypasses Composer entirely - so check at
         // runtime too, or those users hit an obscure failure inside the ICU code
-        // with nothing pointing at the cause.
+        // with nothing pointing at the cause. Host frameworks that surface the
+        // SDK logger themselves can silence the error_log leg.
+        if (array_key_exists('warn_runtime_requirements', $options)) {
+            $this->warnRuntimeRequirements = (bool) $options['warn_runtime_requirements'];
+        }
+
         $this->checkRuntimeRequirements();
 
         // Initialize HTTP client
@@ -168,6 +173,11 @@ class Client
      * @var bool Whether runtime requirement warnings have already been emitted.
      */
     protected static $requirementsWarned = false;
+
+    /**
+     * @var bool Whether to write requirement warnings to the PHP error log.
+     */
+    protected $warnRuntimeRequirements = true;
 
     /**
      * Warn about unmet runtime requirements.
@@ -212,6 +222,14 @@ class Client
     /**
      * Emit an unmet-requirement warning through both channels.
      *
+     * Uses error_log() rather than trigger_error(). trigger_error() goes through
+     * the installed error handler, and frameworks routinely convert PHP errors
+     * into exceptions - Laravel's HandleExceptions turns E_USER_WARNING into a
+     * thrown ErrorException - which inverted this warning into a fatal that
+     * broke Client construction on any host without ext-intl. That is the exact
+     * opposite of the intent. error_log() writes straight to the log and cannot
+     * be escalated by any error handler.
+     *
      * @param string $message
      * @param array $context
      * @return void
@@ -220,8 +238,13 @@ class Client
     {
         $this->logger->warning($message, $context);
 
-        // Surfaces in the PHP error log even when SDK logging is disabled.
-        trigger_error($message, E_USER_WARNING);
+        if (!$this->warnRuntimeRequirements) {
+            return;
+        }
+
+        // Surfaces in the PHP error log even when SDK logging is disabled,
+        // which is the normal case for a manual (non-Composer) install.
+        error_log($message);
     }
 
     /**
