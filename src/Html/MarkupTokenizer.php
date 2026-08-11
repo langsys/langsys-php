@@ -123,7 +123,13 @@ class MarkupTokenizer
      */
     public function render($text, array $slots, DOMDocument $doc)
     {
-        $result = $this->rebuild($text, $slots, $doc);
+        // Any DOM failure - most likely slots owned by a different document -
+        // must fall to "lose the markup, keep the meaning" rather than escape.
+        try {
+            $result = $this->rebuild($text, $slots, $doc);
+        } catch (\Throwable $e) {
+            $result = null;
+        }
 
         if ($result === null) {
             return [$doc->createTextNode($this->stripSentinels($text))];
@@ -142,7 +148,22 @@ class MarkupTokenizer
     {
         $stripped = preg_replace(self::SENTINEL_PATTERN, '', $text);
 
-        return $stripped === null ? $text : $stripped;
+        if ($stripped === null) {
+            // The /u pattern fails outright on invalid UTF-8; without a
+            // byte-level fallback the sentinels would ship to the browser.
+            $stripped = $text;
+        }
+
+        // Also removes half-formed or mangled sentinels, which the full
+        // START-digits-END pattern cannot match and would otherwise leak a
+        // private-use character into the output.
+        $bytes = preg_replace(
+            '/\xEE\x80[\x80-\x83]/',
+            '',
+            $stripped
+        );
+
+        return $bytes === null ? $stripped : $bytes;
     }
 
     /**
@@ -200,9 +221,22 @@ class MarkupTokenizer
         $stack = [];        // Open elements: ['index' => int, 'node' => DOMElement].
         $offset = 0;
 
-        if (!preg_match_all(self::SENTINEL_PATTERN, $text, $matches, PREG_OFFSET_CAPTURE)) {
-            // No sentinels at all - plain text.
-            return $text === '' ? [] : [$doc->createTextNode($text)];
+        $found = preg_match_all(self::SENTINEL_PATTERN, $text, $matches, PREG_OFFSET_CAPTURE);
+
+        if ($found === false) {
+            // PCRE failed outright (invalid UTF-8 against the /u pattern).
+            // Must NOT be treated as "no sentinels", or the raw private-use
+            // characters would be emitted as visible text.
+            return null;
+        }
+
+        if ($found === 0) {
+            // No complete sentinels - plain text. Still stripped, because a
+            // truncated or mangled sentinel matches nothing yet would otherwise
+            // render a private-use character to the browser.
+            $plain = $this->stripSentinels($text);
+
+            return $plain === '' ? [] : [$doc->createTextNode($plain)];
         }
 
         foreach ($matches[0] as $position => $match) {
@@ -228,7 +262,12 @@ class MarkupTokenizer
             }
 
             if ($isOpen) {
-                $element = $slots[$index]->cloneNode(false);
+                // importNode, not cloneNode: a clone keeps the slot's ORIGINAL
+                // ownerDocument, and appending a node created by $doc to it
+                // raises "Wrong Document Error". Encode-time and render-time
+                // documents routinely differ - applyBlockTranslations reparses
+                // into a fresh DOMDocument.
+                $element = $doc->importNode($slots[$index], false);
                 $this->appendNode($element, $top, $stack);
                 $stack[] = ['index' => $index, 'node' => $element];
                 continue;
