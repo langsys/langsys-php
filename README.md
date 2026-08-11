@@ -15,7 +15,7 @@ Official PHP SDK for the [Langsys](https://langsys.dev) Translation API. Manage 
 ### Via Composer (Recommended)
 
 ```bash
-composer require langsys/php-sdk
+composer require langsys/langsys-php
 ```
 
 ### Manual Installation (Without Composer)

@@ -1,5 +1,5 @@
 {
-    "name": "langsys/php-sdk",
+    "name": "langsys/langsys-php",
     "description": "PHP SDK for Langsys Translation API",
     "type": "library",
     "license": "MIT",
