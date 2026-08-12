@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`data-langsys-phrase` — keep a run of inline markup as ONE phrase.** Page
+  translation splits at tag boundaries, so
+  `<p>Based on {n} <strong>reviews</strong></p>` produced the separate entries
+  `"Based on {n}"` and `"reviews"` — putting the count in a different catalog
+  entry from the noun it inflects. No ICU plural rule can reach across that
+  boundary, making a correct translation impossible in Russian, Arabic or Polish.
+
+  Marked elements register as a single phrase carrying `{m0o}`/`{m0c}` markup
+  tokens, the same wire format as the JS SDK's `<Phrase>`, so entries are
+  consumable by either SDK. Translators may reorder the tokens and the markup is
+  rebuilt where they end up; element attributes are preserved. Tokens are valid
+  ICU argument names, so a marked phrase can carry a plural.
+
+  Dropped, unbalanced, crossed or unknown-index tokens render the text without
+  markup rather than failing, and a token naming a nonexistent slot is stripped
+  rather than shipped to the browser.
+
 ### Fixed
 
 - **Without `ext-intl`, ICU phrases rendered their raw MessageFormat source to

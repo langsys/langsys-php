@@ -182,6 +182,42 @@ class HtmlParser
     }
 
     /**
+     * @var MarkupTokenizer|null Lazily created.
+     */
+    protected $markupTokenizer = null;
+
+    /**
+     * @return MarkupTokenizer
+     */
+    protected function markupTokenizer()
+    {
+        if ($this->markupTokenizer === null) {
+            $this->markupTokenizer = new MarkupTokenizer();
+        }
+
+        return $this->markupTokenizer;
+    }
+
+    /**
+     * Whether an element is marked as a single keep-together phrase.
+     *
+     * @param DOMElement $element
+     * @return bool
+     */
+    protected function hasPhraseAttribute(DOMElement $element)
+    {
+        if (!$element->hasAttribute('data-langsys-phrase')) {
+            return false;
+        }
+
+        $value = strtolower($element->getAttribute('data-langsys-phrase'));
+
+        // Presence alone means intent, so a bare `data-langsys-phrase` works
+        // like any boolean HTML attribute. Only an explicit off value opts out.
+        return $value !== '0' && $value !== 'false';
+    }
+
+    /**
      * Recursively walk DOM nodes and extract phrases.
      *
      * @param DOMNode $node The node to process
@@ -209,6 +245,19 @@ class HtmlParser
 
         // Handle element nodes
         if ($node instanceof DOMElement) {
+            // data-langsys-phrase marks a run of mixed content as ONE phrase.
+            // Encode it with markup tokens and do NOT descend, or the inline
+            // markup would be split at tag boundaries as usual.
+            if ($this->hasPhraseAttribute($node)) {
+                $encoded = $this->markupTokenizer()->encode($node);
+
+                if ($encoded['text'] !== '') {
+                    $phrases[] = $encoded['text'];
+                }
+
+                return;
+            }
+
             // Extract translatable attributes
             $this->extractAttributePhrases($node, $phrases);
 

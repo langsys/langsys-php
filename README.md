@@ -453,6 +453,52 @@ beside a paragraph — is currently neither extracted nor interpolated.
 The phrase registered with Langsys always keeps its placeholders — interpolation
 only affects what your code receives.
 
+#### Keeping a run together with `data-langsys-phrase`
+
+By default, page translation splits at tag boundaries, so this becomes **two**
+catalog entries — `"Based on {n}"` and `"reviews"`:
+
+```html
+<p>Based on {n} <strong>reviews</strong></p>
+```
+
+That puts the count in a different phrase from the noun it inflects, and no
+plural rule can reach across the boundary. In Russian, Arabic or Polish the noun
+form depends on the number, so a correct translation is impossible.
+
+Mark the element to register the whole run as **one** phrase:
+
+```html
+<p data-langsys-phrase>Based on {n} <strong>reviews</strong></p>
+```
+
+The catalog then receives a single entry with markup tokens:
+
+```
+Based on {n} {m0o}reviews{m0c}
+```
+
+`{m0o}` / `{m0c}` are the opening and closing positions of the first element.
+Translators may **move** them, and the markup is rebuilt where the tokens end up:
+
+```
+На основе {n, plural, one {# {m0o}отзыва{m0c}} other {# {m0o}отзывов{m0c}}}
+  n=1 → На основе 1 <strong>отзыва</strong>
+  n=3 → На основе 3 <strong>отзывов</strong>
+```
+
+Notes:
+
+- This is the same wire format as the JS SDK's `<Phrase>` component, so entries
+  registered by either SDK are usable by the other.
+- Tokens are valid ICU argument names, which is what lets a markup-bearing
+  phrase carry a plural at all.
+- Element attributes (classes, `href`) are preserved — only the position is
+  taken from the translation.
+- Presence alone enables it; `data-langsys-phrase="false"` (or `"0"`) opts out.
+- If a translation drops, unbalances or misnumbers the tokens, the text is
+  rendered without the markup rather than failing.
+
 #### Plurals (ICU MessageFormat)
 
 Full ICU is supported, so plural categories are correct per language — Russian's

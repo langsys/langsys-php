@@ -67,6 +67,11 @@ class PageTranslator
     protected $selectorMatcher = null;
 
     /**
+     * @var MarkupTokenizer
+     */
+    protected $markupTokenizer;
+
+    /**
      * @var array Placeholder values for the current translate() call.
      */
     protected $params = [];
@@ -87,6 +92,7 @@ class PageTranslator
         $this->client = $client;
         $this->htmlParser = new HtmlParser($translatableAttributes);
         $this->headHandler = new HeadHandler();
+        $this->markupTokenizer = new MarkupTokenizer();
     }
 
     /**
@@ -329,6 +335,13 @@ class PageTranslator
             // Determine effective category using priority rules
             $effectiveCategory = $this->determineEffectiveCategory($child, $inheritedCategory);
 
+            // data-langsys-phrase wins over data-langsys-contentblock: it is the
+            // narrower, more explicit instruction ("this run is ONE phrase").
+            if ($this->hasPhraseAttribute($child)) {
+                $this->extractAsTokenizedPhrase($child, $phrases, $effectiveCategory);
+                continue;
+            }
+
             // Check for data-langsys-contentblock - treat entire element as single content block
             if ($this->hasContentBlockAttribute($child)) {
                 $this->extractAsContentBlock($child, $contentBlocks, $effectiveCategory);
@@ -388,6 +401,56 @@ class PageTranslator
      * @param DOMElement $element The element to check
      * @return bool True if element should be treated as a content block
      */
+    /**
+     * Whether an element is marked as a single keep-together phrase.
+     *
+     * `data-langsys-phrase` is the opt-out from splitting at tag boundaries.
+     * Without it, `<p>Based on {n} <strong>reviews</strong></p>` decomposes into
+     * the separate entries "Based on {n}" and "reviews", putting the count in a
+     * different catalog entry from the noun it inflects - so no ICU plural rule
+     * can select the correct form.
+     *
+     * @param DOMElement $element
+     * @return bool
+     */
+    protected function hasPhraseAttribute(DOMElement $element)
+    {
+        if (!$element->hasAttribute('data-langsys-phrase')) {
+            return false;
+        }
+
+        $value = strtolower($element->getAttribute('data-langsys-phrase'));
+
+        // Presence alone means intent, so a bare `data-langsys-phrase` works
+        // like any boolean HTML attribute. Only an explicit off value opts out.
+        return $value !== '0' && $value !== 'false';
+    }
+
+    /**
+     * Extract an element's whole subtree as ONE tokenized phrase.
+     *
+     * @param DOMElement $element
+     * @param array &$phrases
+     * @param string|null $effectiveCategory
+     * @return void
+     */
+    protected function extractAsTokenizedPhrase(DOMElement $element, array &$phrases, $effectiveCategory)
+    {
+        $encoded = $this->markupTokenizer->encode($element);
+
+        if ($encoded['text'] === '') {
+            return; // Nothing translatable.
+        }
+
+        $phrases[] = [
+            'text' => $encoded['text'],
+            'element' => $element,
+            'category' => $effectiveCategory !== null ? $effectiveCategory : '__uncategorized__',
+            'slots' => $encoded['slots'],
+            'tokenized' => true,
+        ];
+    }
+
     protected function hasContentBlockAttribute(DOMElement $element)
     {
         if (!$element->hasAttribute('data-langsys-contentblock')) {
@@ -551,6 +614,13 @@ class PageTranslator
             $originalText = $phraseData['text'];
             // Use item's category or fall back to default
             $itemCategory = isset($phraseData['category']) ? $phraseData['category'] : $defaultCategory;
+
+            // Tokenized phrases rebuild their markup rather than replacing text.
+            if (!empty($phraseData['tokenized'])) {
+                $this->applyTokenizedPhrase($phraseData, $itemCategory, $translations);
+                continue;
+            }
+
             $translated = $this->interp($this->lookupTranslation($originalText, $itemCategory, $translations));
 
             if ($translated !== $originalText) {
@@ -583,6 +653,53 @@ class PageTranslator
 
             // Apply translations within the content block
             $this->applyContentBlockTranslations($block['element'], $blockTranslations);
+        }
+    }
+
+    /**
+     * Apply a translation to a tokenized (data-langsys-phrase) element.
+     *
+     * The markup tokens are supplied as ordinary interpolation params with
+     * sentinel values, so ICU substitutes them inside plural and select
+     * branches exactly as it does any other argument. The element's children
+     * are then rebuilt from the result.
+     *
+     * @param array $phraseData
+     * @param string|null $itemCategory
+     * @param array $translations
+     * @return void
+     */
+    protected function applyTokenizedPhrase(array $phraseData, $itemCategory, array $translations)
+    {
+        $element = $phraseData['element'];
+        $slots = isset($phraseData['slots']) ? $phraseData['slots'] : [];
+
+        $translated = $this->lookupTranslation($phraseData['text'], $itemCategory, $translations);
+
+        $tokenParams = $this->markupTokenizer->tokenParams(count($slots));
+        $merged = array_merge($this->params, $tokenParams);
+
+        $rendered = $this->client->getInterpolator()->interpolate($translated, $merged, $this->currentLocale);
+
+        // A token naming a slot that does not exist is an UNKNOWN KEY to the
+        // interpolator, so it survives verbatim rather than becoming a sentinel
+        // - which would ship a literal "{m7o}" to the browser. Drop the markup
+        // instead and keep the text.
+        if ($this->markupTokenizer->hasTokens($rendered)) {
+            $rendered = preg_replace('/\{m\d+[oc]\}/', '', $rendered);
+            $rendered = $rendered === null ? $translated : $rendered;
+            $slots = [];
+        }
+
+        $nodes = $this->markupTokenizer->render($rendered, $slots, $element->ownerDocument);
+
+        // Replace the element's children with the rebuilt nodes.
+        while ($element->firstChild !== null) {
+            $element->removeChild($element->firstChild);
+        }
+
+        foreach ($nodes as $node) {
+            $element->appendChild($node);
         }
     }
 
