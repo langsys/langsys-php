@@ -67,7 +67,11 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
-          extensions: curl, json
+          # The ':' prefix REMOVES an extension. Listing only curl and json is
+          # not enough - the extensions input adds to the base image, and Ubuntu
+          # PHP builds already ship intl, so this job would run with intl loaded
+          # and report the degradation path as verified when it never ran.
+          extensions: curl, json, :intl
           coverage: none
 
       - name: Assert ext-intl is absent
