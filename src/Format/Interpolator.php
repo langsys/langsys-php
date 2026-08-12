@@ -90,11 +90,25 @@ class Interpolator
         }
 
         if ($this->hasIcuSyntax($text)) {
+            if (!$this->hasIntl()) {
+                // Simple substitution CANNOT handle an ICU construct - its
+                // pattern can't match a slot containing commas and braces - so
+                // the raw MessageFormat source would be emitted to the page.
+                // For a localization product that is worse than an untranslated
+                // phrase, which at least reads as a sentence.
+                $this->warnMissingIntl($text);
+
+                return $this->renderIcuWithoutIntl($text, $params, $locale);
+            }
+
             $formatted = $this->formatIcu($text, $params, $locale);
             if ($formatted !== null) {
                 return $formatted;
             }
-            // ICU unavailable or unparseable - fall through to simple substitution.
+
+            // Parseable ICU failed: fall through to simple substitution, which
+            // leaves the construct untouched. This matches the JS SDK exactly
+            // and is deliberate - see testMalformedIcuFallsBackToTemplateUnchanged.
         }
 
         return $this->substitute($text, $params, $locale);
@@ -182,6 +196,245 @@ class Interpolator
             ]);
             return null;
         }
+    }
+
+    /**
+     * Best-effort ICU rendering without ext-intl.
+     *
+     * Produces a READABLE SENTENCE rather than raw MessageFormat source. It is
+     * not CLDR-correct - that is precisely why ext-intl is a hard requirement -
+     * but every language ends up with prose instead of visible markup.
+     *
+     * Branch selection, in order:
+     *   1. An exact `=N` branch matching the value (standards-correct).
+     *   2. `one` when the value is exactly 1 AND the translator supplied a
+     *      `one` branch. Across CLDR languages that define `one`, n=1 falls in
+     *      it, so this is right far more often than `other` would be.
+     *   3. `other`, the category every plural form is required to provide.
+     *
+     * For `select`, the branch matching the parameter value is used, else
+     * `other`. `#` inside the chosen branch becomes the formatted value.
+     *
+     * @param string $text
+     * @param array $params
+     * @param string|null $locale
+     * @return string
+     */
+    protected function renderIcuWithoutIntl($text, array $params, $locale)
+    {
+        $out = '';
+        $length = strlen($text);
+        $i = 0;
+
+        while ($i < $length) {
+            if ($text[$i] !== '{') {
+                $out .= $text[$i];
+                $i++;
+                continue;
+            }
+
+            $end = $this->matchingBrace($text, $i);
+
+            if ($end === null) {
+                // Unbalanced - emit verbatim rather than looping forever.
+                $out .= substr($text, $i);
+                break;
+            }
+
+            $out .= $this->renderIcuArgument(substr($text, $i + 1, $end - $i - 1), $params, $locale);
+            $i = $end + 1;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Render one ICU argument body (the text between its outer braces).
+     *
+     * @param string $body
+     * @param array $params
+     * @param string|null $locale
+     * @return string
+     */
+    protected function renderIcuArgument($body, array $params, $locale)
+    {
+        $verbatim = '{' . $body . '}';
+
+        $comma = strpos($body, ',');
+
+        // No comma: an ordinary {key} placeholder.
+        if ($comma === false) {
+            $key = trim($body);
+
+            if ($key === '' || !array_key_exists($key, $params) || $params[$key] === null) {
+                return $verbatim;
+            }
+
+            $formatted = $this->formatValue($params[$key], $locale);
+
+            return $formatted === null ? $verbatim : $formatted;
+        }
+
+        $name = trim(substr($body, 0, $comma));
+        $rest = substr($body, $comma + 1);
+
+        $secondComma = strpos($rest, ',');
+        $type = strtolower(trim($secondComma === false ? $rest : substr($rest, 0, $secondComma)));
+
+        if (!array_key_exists($name, $params) || $params[$name] === null) {
+            return $verbatim;
+        }
+
+        $value = $params[$name];
+
+        // Style-less forms: {v, number}, {d, date}, {t, time}.
+        if (in_array($type, ['number', 'date', 'time'], true)) {
+            $formatted = $this->formatValue($value, $locale);
+
+            return $formatted === null ? $verbatim : $formatted;
+        }
+
+        if (!in_array($type, ['plural', 'selectordinal', 'select'], true)) {
+            return $verbatim;
+        }
+
+        if ($secondComma === false) {
+            return $verbatim; // Declared a branch type but supplied no branches.
+        }
+
+        $branches = $this->parseIcuBranches(substr($rest, $secondComma + 1));
+
+        if (empty($branches)) {
+            return $verbatim;
+        }
+
+        $chosen = $this->chooseIcuBranch($type, $value, $branches);
+
+        if ($chosen === null) {
+            return $verbatim;
+        }
+
+        // '#' is the value itself; do it before recursing so a literal '#' in a
+        // nested placeholder's VALUE is not substituted again.
+        $number = $this->formatValue($value, $locale);
+        $chosen = str_replace('#', $number === null ? '' : $number, $chosen);
+
+        // Branch content may hold further placeholders.
+        return $this->renderIcuWithoutIntl($chosen, $params, $locale);
+    }
+
+    /**
+     * Split an ICU branch list into keyword => content.
+     *
+     * @param string $text e.g. "one {# item} other {# items}"
+     * @return array
+     */
+    protected function parseIcuBranches($text)
+    {
+        $branches = [];
+        $length = strlen($text);
+        $i = 0;
+
+        while ($i < $length) {
+            // Read the keyword up to its opening brace.
+            while ($i < $length && $text[$i] !== '{') {
+                $i++;
+            }
+
+            if ($i >= $length) {
+                break;
+            }
+
+            $keyword = trim(substr($text, 0, $i));
+
+            $end = $this->matchingBrace($text, $i);
+
+            if ($end === null) {
+                break;
+            }
+
+            if ($keyword !== '') {
+                $branches[$keyword] = substr($text, $i + 1, $end - $i - 1);
+            }
+
+            // Continue with whatever follows this branch.
+            $text = substr($text, $end + 1);
+            $length = strlen($text);
+            $i = 0;
+        }
+
+        return $branches;
+    }
+
+    /**
+     * Pick a branch without CLDR plural rules.
+     *
+     * @param string $type
+     * @param mixed $value
+     * @param array $branches
+     * @return string|null
+     */
+    protected function chooseIcuBranch($type, $value, array $branches)
+    {
+        if ($type === 'select') {
+            $key = is_scalar($value) ? (string) $value : '';
+
+            if (isset($branches[$key])) {
+                return $branches[$key];
+            }
+
+            return isset($branches['other']) ? $branches['other'] : null;
+        }
+
+        // Exact matches are standards-correct and always safe.
+        if (is_numeric($value)) {
+            $exact = '=' . (0 + $value);
+
+            if (isset($branches[$exact])) {
+                return $branches[$exact];
+            }
+
+            if ((0 + $value) === 1 && isset($branches['one'])) {
+                return $branches['one'];
+            }
+        }
+
+        if (isset($branches['other'])) {
+            return $branches['other'];
+        }
+
+        // No 'other' (technically invalid ICU) - take whatever exists.
+        return reset($branches) === false ? null : reset($branches);
+    }
+
+    /**
+     * Find the '}' matching the '{' at $start, honouring nesting.
+     *
+     * @param string $text
+     * @param int $start
+     * @return int|null
+     */
+    protected function matchingBrace($text, $start)
+    {
+        $depth = 0;
+        $length = strlen($text);
+
+        for ($i = $start; $i < $length; $i++) {
+            if ($text[$i] === '{') {
+                $depth++;
+                continue;
+            }
+
+            if ($text[$i] === '}') {
+                $depth--;
+
+                if ($depth === 0) {
+                    return $i;
+                }
+            }
+        }
+
+        return null;
     }
 
     /**

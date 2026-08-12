@@ -52,6 +52,18 @@ class InterpolatorTest extends TestCase
         $this->markTestSkipped('ext-intl is not available');
     }
 
+    /**
+     * Skip when ext-intl IS present - these cover the degradation path, which
+     * only exists when the extension is absent. The CI "Degradation without
+     * ext-intl" job is where they actually execute.
+     */
+    protected function requireMissingIntl()
+    {
+        if (extension_loaded('intl')) {
+            $this->markTestSkipped('This test covers the no-intl degradation path');
+        }
+    }
+
     // ---------------------------------------------------------------
     // Simple substitution - runs everywhere, no ext-intl needed
     // ---------------------------------------------------------------
@@ -251,6 +263,118 @@ class InterpolatorTest extends TestCase
         $interpolator->interpolate($icu, ['n' => 5], 'en-US');
 
         $this->assertCount(1, $logger->messagesAt('warning'));
+    }
+
+    /**
+     * Without ext-intl an ICU phrase must still read as a SENTENCE.
+     *
+     * Simple substitution cannot match a construct containing commas and nested
+     * braces, so before this fallback existed the raw MessageFormat source was
+     * emitted to the page - worse output than an untranslated phrase.
+     */
+    public function testIcuPluralRendersReadableTextWithoutIntl()
+    {
+        $this->requireMissingIntl();
+
+        $pattern = '{n, plural, one {# item} other {# items}}';
+
+        $this->assertEquals('1 item', $this->interpolator->interpolate($pattern, ['n' => 1], 'en-US'));
+        $this->assertEquals('5 items', $this->interpolator->interpolate($pattern, ['n' => 5], 'en-US'));
+
+        foreach ([1, 5] as $n) {
+            $this->assertStringNotContainsString(
+                'plural',
+                $this->interpolator->interpolate($pattern, ['n' => $n], 'en-US'),
+                'Raw MessageFormat source must never reach the page'
+            );
+        }
+    }
+
+    /**
+     * Exact `=N` branches are standards-correct and safe without CLDR data.
+     */
+    public function testIcuExactBranchIsUsedWithoutIntl()
+    {
+        $this->requireMissingIntl();
+
+        $pattern = '{n, plural, =0 {no items} one {# item} other {# items}}';
+
+        $this->assertEquals('no items', $this->interpolator->interpolate($pattern, ['n' => 0], 'en-US'));
+        $this->assertEquals('1 item', $this->interpolator->interpolate($pattern, ['n' => 1], 'en-US'));
+    }
+
+    /**
+     * A language whose correct category we cannot compute degrades to a single
+     * readable form rather than leaking markup.
+     */
+    public function testRussianPluralDegradesToReadableTextWithoutIntl()
+    {
+        $this->requireMissingIntl();
+
+        $result = $this->interpolator->interpolate(
+            '{n, plural, one {# товар} few {# товара} other {# товаров}}',
+            ['n' => 3],
+            'ru-RU'
+        );
+
+        $this->assertStringNotContainsString('plural', $result);
+        $this->assertStringNotContainsString('{', $result);
+        $this->assertStringContainsString('3', $result);
+    }
+
+    public function testIcuSelectWorksWithoutIntl()
+    {
+        $this->requireMissingIntl();
+
+        $pattern = '{g, select, male {He} female {She} other {They}} replied';
+
+        $this->assertEquals('She replied', $this->interpolator->interpolate($pattern, ['g' => 'female'], 'en-US'));
+        $this->assertEquals('They replied', $this->interpolator->interpolate($pattern, ['g' => 'nonbinary'], 'en-US'));
+    }
+
+    public function testNestedPlaceholdersResolveInsideIcuBranchesWithoutIntl()
+    {
+        $this->requireMissingIntl();
+
+        $this->assertEquals(
+            'Hello Sarah, you have 2 msgs',
+            $this->interpolator->interpolate(
+                'Hello {name}, you have {n, plural, one {# msg} other {# msgs}}',
+                ['name' => 'Sarah', 'n' => 2],
+                'en-US'
+            )
+        );
+    }
+
+    public function testStyleLessIcuFormsResolveWithoutIntl()
+    {
+        $this->requireMissingIntl();
+
+        $this->assertEquals(
+            '1234 units',
+            $this->interpolator->interpolate('{v, number} units', ['v' => 1234], 'en-US')
+        );
+    }
+
+    /**
+     * A malformed pattern must not hang or mangle - it is emitted verbatim.
+     */
+    public function testMalformedIcuIsLeftVerbatimWithoutIntl()
+    {
+        $this->requireMissingIntl();
+
+        $broken = '{n, plural, one {# item} other {# items}';
+
+        $this->assertEquals($broken, $this->interpolator->interpolate($broken, ['n' => 2], 'en-US'));
+    }
+
+    public function testUnknownArgumentInIcuIsLeftVerbatimWithoutIntl()
+    {
+        $this->requireMissingIntl();
+
+        $pattern = '{missing, plural, one {# item} other {# items}}';
+
+        $this->assertEquals($pattern, $this->interpolator->interpolate($pattern, ['n' => 2], 'en-US'));
     }
 
     public function testNumberFallsBackToPlainStringWithoutIntl()

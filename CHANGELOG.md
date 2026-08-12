@@ -5,6 +5,28 @@ All notable changes to the Langsys PHP SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Without `ext-intl`, ICU phrases rendered their raw MessageFormat source to
+  end users.** Simple substitution cannot match a construct containing commas
+  and nested braces, so a phrase like
+  `{n, plural, one {# товар} few {# товара} other {# товаров}}` was emitted
+  verbatim into the page — worse output than an untranslated phrase, which at
+  least reads as a sentence.
+
+  ICU phrases now degrade to a readable sentence. Branch selection is: an exact
+  `=N` branch when one matches (standards-correct), then `one` when the value is
+  exactly 1 and the translator supplied a `one` branch, then `other`. `select`
+  matches the parameter value, falling back to `other`. `#` becomes the value,
+  and nested placeholders inside the chosen branch still resolve.
+
+  This is **not** CLDR-correct — that is exactly why `ext-intl` is required —
+  but every language now produces prose rather than visible markup. Behaviour
+  with `ext-intl` present is unchanged, and a malformed pattern is still emitted
+  verbatim, matching the JS SDK.
+
 ## [1.0.2] - 2026-08-12
 
 ### Fixed
