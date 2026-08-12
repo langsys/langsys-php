@@ -8,6 +8,7 @@ use Langsys\SDK\Client;
 use Langsys\SDK\Config;
 use Langsys\SDK\Cache\NullCache;
 use Langsys\SDK\Tests\Mock\MockHttpClient;
+use Langsys\SDK\Html\HtmlParser;
 
 class PageTranslatorTest extends TestCase
 {
@@ -303,7 +304,7 @@ class PageTranslatorTest extends TestCase
     {
         // Multiple text nodes = content block
         // <p><strong>Hello</strong> World</p> has 2 phrases: "Hello" and "World"
-        $customId = md5('__uncategorized__|Hello|World');
+        $customId = (new HtmlParser())->generateCustomId('__uncategorized__', ['Hello', 'World']);
 
         $this->setTranslations([
             '__uncategorized__' => [
@@ -326,7 +327,7 @@ class PageTranslatorTest extends TestCase
     public function testContentBlockWithMultiplePhrases(): void
     {
         // Nav with multiple links
-        $customId = md5('nav|Home|About|Contact');
+        $customId = (new HtmlParser())->generateCustomId('nav', ['Home', 'About', 'Contact']);
 
         $this->setTranslations([
             'nav' => [
@@ -472,7 +473,7 @@ class PageTranslatorTest extends TestCase
 
     public function testTranslatePlaceholderAttribute(): void
     {
-        $customId = md5('__uncategorized__|Enter your name');
+        $customId = (new HtmlParser())->generateCustomId('__uncategorized__', ['Enter your name']);
 
         $this->setTranslations([
             '__uncategorized__' => [
@@ -492,7 +493,7 @@ class PageTranslatorTest extends TestCase
 
     public function testTranslateAltAttribute(): void
     {
-        $customId = md5('__uncategorized__|Logo image');
+        $customId = (new HtmlParser())->generateCustomId('__uncategorized__', ['Logo image']);
 
         $this->setTranslations([
             '__uncategorized__' => [
@@ -516,7 +517,7 @@ class PageTranslatorTest extends TestCase
 
     public function testTranslateSubmitButtonValue(): void
     {
-        $customId = md5('__uncategorized__|Submit');
+        $customId = (new HtmlParser())->generateCustomId('__uncategorized__', ['Submit']);
 
         $this->setTranslations([
             '__uncategorized__' => [
@@ -540,8 +541,8 @@ class PageTranslatorTest extends TestCase
 
     public function testTranslateFullPage(): void
     {
-        $navCustomId = md5('homepage|Home|About');
-        $formCustomId = md5('homepage|Your email|Subscribe');
+        $navCustomId = (new HtmlParser())->generateCustomId('homepage', ['Home', 'About']);
+        $formCustomId = (new HtmlParser())->generateCustomId('homepage', ['Your email', 'Subscribe']);
 
         $this->setTranslations([
             'homepage' => [
@@ -986,7 +987,7 @@ class PageTranslatorTest extends TestCase
     {
         // Without data-langsys-contentblock, nested paragraphs would be separate phrases
         // With it, they become a single content block
-        $customId = md5('__uncategorized__|Header|First paragraph|Second paragraph');
+        $customId = (new HtmlParser())->generateCustomId('__uncategorized__', ['Header', 'First paragraph', 'Second paragraph']);
 
         $this->setTranslations([
             '__uncategorized__' => [
@@ -1016,7 +1017,7 @@ class PageTranslatorTest extends TestCase
 
     public function testContentBlockAttributeWithCategory(): void
     {
-        $customId = md5('widgets|Widget Title|Widget Content');
+        $customId = (new HtmlParser())->generateCustomId('widgets', ['Widget Title', 'Widget Content']);
 
         $this->setTranslations([
             'widgets' => [
@@ -1117,7 +1118,7 @@ class PageTranslatorTest extends TestCase
     public function testContentBlockAttributeWithSelectorCategory(): void
     {
         // Selector category should work with data-langsys-contentblock
-        $customId = md5('Cards|Card Title|Card Description');
+        $customId = (new HtmlParser())->generateCustomId('Cards', ['Card Title', 'Card Description']);
 
         $this->setTranslations([
             'Cards' => [
@@ -1147,7 +1148,7 @@ class PageTranslatorTest extends TestCase
     public function testContentBlockPreservesNestedStructure(): void
     {
         // Complex nested structure should be preserved as content block
-        $customId = md5('__uncategorized__|Name|Email|Submit');
+        $customId = (new HtmlParser())->generateCustomId('__uncategorized__', ['Name', 'Email', 'Submit']);
 
         $this->setTranslations([
             '__uncategorized__' => [

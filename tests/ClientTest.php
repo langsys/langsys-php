@@ -5,6 +5,7 @@ namespace Langsys\SDK\Tests;
 use Langsys\SDK\Client;
 use Langsys\SDK\Cache\NullCache;
 use Langsys\SDK\Exception\LangsysException;
+use Langsys\SDK\Html\HtmlParser;
 use Langsys\SDK\Tests\Mock\MockHttpClient;
 use PHPUnit\Framework\TestCase;
 
@@ -293,8 +294,9 @@ class ClientTest extends TestCase
     {
         $mockHttp = new MockHttpClient();
 
-        // The customId is md5('__uncategorized__|Hello|World')
-        $customId = md5('__uncategorized__|Hello|World');
+        // Derive the id rather than hardcoding a hash, so the test survives a
+        // change to the hashing scheme (it must stay in sync with the JS SDKs).
+        $customId = (new HtmlParser())->generateCustomId('__uncategorized__', ['Hello', 'World']);
 
         $mockHttp->setResponse('GET', 'translations', [
             'data' => [
@@ -352,8 +354,7 @@ class ClientTest extends TestCase
     {
         $mockHttp = new MockHttpClient();
 
-        // The customId is md5('homepage|Hello')
-        $customId = md5('homepage|Hello');
+        $customId = (new HtmlParser())->generateCustomId('homepage', ['Hello']);
 
         $mockHttp->setResponse('GET', 'translations', [
             'data' => [

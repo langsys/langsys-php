@@ -216,6 +216,31 @@ class HtmlParserTest extends TestCase
         $this->assertEquals($id1, $id2);
     }
 
+    public function testGenerateCustomIdMatchesJsForm()
+    {
+        // Cross-SDK contract: must equal md5(JSON.stringify([category, tokens]))
+        // from the JS SDKs. json_encode with unescaped slashes + unicode produces
+        // a byte-identical string to JSON.stringify, and md5() is standard.
+        $this->assertSame(
+            md5('["Blog",["Hello","World"]]'),
+            $this->parser->generateCustomId('Blog', ['Hello', 'World'])
+        );
+
+        // No category: '' is hashed, and the reserved sentinel + null normalize to
+        // the same id (the JS side passes the raw '' for an uncategorized block).
+        $expected = md5('["",["Hello","World"]]');
+        $this->assertSame($expected, $this->parser->generateCustomId('', ['Hello', 'World']));
+        $this->assertSame($expected, $this->parser->generateCustomId(null, ['Hello', 'World']));
+        $this->assertSame($expected, $this->parser->generateCustomId('__uncategorized__', ['Hello', 'World']));
+
+        // Slashes and non-ASCII stay unescaped - verified byte-identical to the JS
+        // SDK's generateCustomId (which now UTF-8-encodes before hashing).
+        $this->assertSame(
+            md5('["a/b",["Café","e/mail"]]'),
+            $this->parser->generateCustomId('a/b', ['Café', 'e/mail'])
+        );
+    }
+
     public function testMalformedHtml()
     {
         // Unclosed tags

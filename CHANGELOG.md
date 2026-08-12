@@ -5,6 +5,39 @@ All notable changes to the Langsys PHP SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] - 2026-08-12
+
+### Fixed
+
+- **Content block `custom_id`s did not match the JS SDKs.** PHP hashed
+  `md5('category|phrase1|phrase2')` while the JS SDKs hash
+  `md5(JSON.stringify([category, tokens]))`, so the *same* content block
+  registered under two different ids depending on which SDK saw it first —
+  producing duplicate entries in the catalog every Langsys SDK shares.
+
+  `generateCustomId()` now JSON-encodes with `JSON_UNESCAPED_SLASHES |
+  JSON_UNESCAPED_UNICODE`, which is byte-identical to `JSON.stringify`, and
+  normalises the reserved `__uncategorized__` sentinel and `null` to `''` — the
+  JS side passes a raw category and never the sentinel. That also reconciles the
+  two PHP callers, which previously defaulted differently
+  (`translateContentBlock()` to `__uncategorized__`, `createContentBlock()` to
+  `null`) and so disagreed with each other.
+
+  **Upgrade note:** existing content blocks will be assigned new ids and
+  re-register on first use. Previously-registered blocks under the old ids are
+  orphaned and can be removed from the Translation Manager.
+
+- **`Utilities::getLocaleData()` returned an empty array on a locale-code format
+  mismatch.** The API keys its response by the display locale formatted in the
+  organisation's configured `locale_code_format`, which need not match the string
+  we sent (`en-US` vs `en-us`). Since a single display locale is requested, the
+  only entry is now taken regardless of key formatting.
+
+### Internal
+
+- Tests no longer hardcode `md5()` content-block ids; they derive them via
+  `generateCustomId()` so they survive a change to the hashing scheme.
+
 ## [1.0.1] - 2026-08-11
 
 ### Fixed
