@@ -321,4 +321,80 @@ class TranslatableItemsTest extends TestCase
         $this->items->setBatchLimit(100);
         $this->assertEquals(100, $this->items->getBatchLimit());
     }
+
+    // =========================================================================
+    // The '__uncategorized__' sentinel must never reach the wire
+    // =========================================================================
+
+    /**
+     * '__uncategorized__' keys the catalog locally; the API expects an absent
+     * category. Sending the sentinel creates a literal category by that name.
+     */
+    public function testPhrasesDoNotSendTheUncategorizedSentinel()
+    {
+        $this->http->setResponse('POST', 'translatable-items', ['status' => true]);
+
+        $this->items->createPhrases([
+            ['phrase' => 'Hello', 'category' => '__uncategorized__'],
+        ]);
+
+        $item = $this->http->getLastRequest()['data']['translatable_items'][0];
+
+        $this->assertNull($item['category']);
+    }
+
+    public function testPhrasesStillSendARealCategory()
+    {
+        $this->http->setResponse('POST', 'translatable-items', ['status' => true]);
+
+        $this->items->createPhrases([
+            ['phrase' => 'Hello', 'category' => 'Greetings'],
+        ]);
+
+        $item = $this->http->getLastRequest()['data']['translatable_items'][0];
+
+        $this->assertSame('Greetings', $item['category']);
+    }
+
+    public function testSingleContentBlockDoesNotSendTheUncategorizedSentinel()
+    {
+        $this->http->setResponse('POST', 'translatable-items', ['status' => true]);
+
+        $this->items->createContentBlock('<p>Hello</p>', '__uncategorized__');
+
+        $item = $this->http->getLastRequest()['data']['translatable_items'][0];
+
+        $this->assertArrayNotHasKey('category', $item);
+    }
+
+    public function testBatchedContentBlocksDoNotSendTheUncategorizedSentinel()
+    {
+        $this->http->setResponse('POST', 'translatable-items', ['status' => true]);
+
+        $this->items->createContentBlocks([
+            ['html' => '<p>Hello</p>', 'category' => '__uncategorized__'],
+        ]);
+
+        $item = $this->http->getLastRequest()['data']['translatable_items'][0];
+
+        $this->assertArrayNotHasKey('category', $item);
+    }
+
+    /**
+     * Normalising the category must not change the content-block identity -
+     * generateCustomId() already hashes the sentinel and null identically, and
+     * a divergence here would orphan every block registered before this change.
+     */
+    public function testNormalisingCategoryDoesNotChangeTheCustomId()
+    {
+        $this->http->setResponse('POST', 'translatable-items', ['status' => true]);
+
+        $this->items->createContentBlock('<p>Hello</p>', '__uncategorized__');
+        $withSentinel = $this->http->getLastRequest()['data']['translatable_items'][0]['custom_id'];
+
+        $this->items->createContentBlock('<p>Hello</p>', null);
+        $withNull = $this->http->getLastRequest()['data']['translatable_items'][0]['custom_id'];
+
+        $this->assertSame($withSentinel, $withNull);
+    }
 }

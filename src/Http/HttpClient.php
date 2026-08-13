@@ -258,13 +258,26 @@ class HttpClient
      */
     protected function handleResponse($response, $httpCode)
     {
-        $data = json_decode($response, true);
+        $body = is_string($response) ? trim($response) : '';
 
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new ApiException(
-                'Failed to parse JSON response: ' . json_last_error_msg(),
-                $httpCode
-            );
+        if ($body === '') {
+            // Some endpoints answer 204 with no content-type and a zero-length
+            // body. Decoding that unconditionally throws a parse error on a
+            // SUCCESSFUL response, so branch on the status before parsing.
+            $data = [];
+
+            if ($httpCode >= 200 && $httpCode < 300) {
+                return $data;
+            }
+        } else {
+            $data = json_decode($body, true);
+
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new ApiException(
+                    'Failed to parse JSON response: ' . json_last_error_msg(),
+                    $httpCode
+                );
+            }
         }
 
         if ($httpCode === 401) {
