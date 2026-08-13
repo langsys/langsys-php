@@ -178,7 +178,16 @@ class HtmlParser
         //   createContentBlock default null) agree with each other.
         $cat = ($category === null || $category === '__uncategorized__') ? '' : $category;
 
-        return md5(json_encode([$cat, array_values($phrases)], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+        $encoded = json_encode([$cat, array_values($phrases)], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+        // json_encode returns false on invalid UTF-8, and md5(false) is md5('') -
+        // which would collapse EVERY such content block onto one id. Fall back to
+        // a serialization that cannot fail so distinct blocks stay distinct.
+        if ($encoded === false) {
+            $encoded = serialize([$cat, array_values($phrases)]);
+        }
+
+        return md5($encoded);
     }
 
     /**
@@ -245,18 +254,16 @@ class HtmlParser
 
         // Handle element nodes
         if ($node instanceof DOMElement) {
-            // data-langsys-phrase marks a run of mixed content as ONE phrase.
-            // Encode it with markup tokens and do NOT descend, or the inline
-            // markup would be split at tag boundaries as usual.
-            if ($this->hasPhraseAttribute($node)) {
-                $encoded = $this->markupTokenizer()->encode($node);
-
-                if ($encoded['text'] !== '') {
-                    $phrases[] = $encoded['text'];
-                }
-
-                return;
-            }
+            // NOTE: data-langsys-phrase is deliberately NOT honoured here.
+            //
+            // It is a translatePage() feature, applied by PageTranslator, which
+            // rebuilds the element's children from markup tokens. Content blocks
+            // are applied by a different path that has no tokenized branch, so
+            // honouring the marker here registered a tokenized catalog entry
+            // that could never be rendered - paying for an entry, and polluting
+            // the shared catalog, for no effect.
+            //
+            // Inside a content block a marked run therefore splits as usual.
 
             // Extract translatable attributes
             $this->extractAttributePhrases($node, $phrases);

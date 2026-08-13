@@ -30,10 +30,16 @@ class PhraseAttributeTest extends TestCase
         $this->parser = new HtmlParser();
     }
 
-    protected function makeClient(array $translations)
+    /**
+     * @var MockHttpClient|null
+     */
+    protected $mock;
+
+    protected function makeClient(array $translations, $keyType = 'read')
     {
         $mock = new MockHttpClient();
-        $mock->setResponse('GET', 'authorize-project/p', ['data' => ['key_type' => 'read']]);
+        $this->mock = $mock;
+        $mock->setResponse('GET', 'authorize-project/p', ['data' => ['key_type' => $keyType]]);
         $mock->setResponse('GET', 'translations', ['data' => $translations]);
 
         $client = new Client('k', 'p', ['cache' => new NullCache()]);
@@ -57,6 +63,41 @@ class PhraseAttributeTest extends TestCase
         return $client;
     }
 
+    /**
+     * Every phrase string sent to the registration endpoint for a page.
+     *
+     * Uses a write key so registration actually fires, then reads the recorded
+     * POST bodies - asserting on what would really reach the shared catalog
+     * rather than on an internal method's return value.
+     *
+     * @param string $inner Body HTML
+     * @return array
+     */
+    protected function registeredFor($inner)
+    {
+        $client = $this->makeClient(['home' => []], 'write');
+        $client->setLocale('es-es');
+        $client->translatePage($this->pageWith($inner), 'home');
+        $client->flushPendingRegistrations();
+
+        $found = [];
+
+        foreach ($this->mock->getRequests() as $request) {
+            if ($request['method'] !== 'POST') {
+                continue;
+            }
+
+            $json = json_encode($request, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            preg_match_all('/"phrase":"((?:[^"\\\\]|\\\\.)*)"/', $json, $m);
+
+            foreach ($m[1] as $phrase) {
+                $found[] = stripcslashes($phrase);
+            }
+        }
+
+        return $found;
+    }
+
     protected function paragraphOf($html)
     {
         preg_match('#<p[^>]*>.*?</p>#s', $html, $m);
@@ -76,12 +117,26 @@ class PhraseAttributeTest extends TestCase
         );
     }
 
-    public function testMarkerKeepsRunAsOnePhrase()
+    /**
+     * The marker is a translatePage() feature. HtmlParser deliberately ignores
+     * it: content blocks are applied by a path with no tokenized branch, so
+     * honouring it there would register an entry that could never be rendered.
+     */
+    public function testHtmlParserIgnoresTheMarker()
     {
         $this->assertEquals(
-            ['Based on {n} {m0o}reviews{m0c}'],
+            ['Based on {n}', 'reviews'],
             $this->parser->extractPhrases('<p data-langsys-phrase>Based on {n} <strong>reviews</strong></p>')
         );
+    }
+
+    public function testMarkerKeepsRunAsOnePhraseOnAPage()
+    {
+        $registered = $this->registeredFor('<p data-langsys-phrase>Based on {n} <strong>reviews</strong></p>');
+
+        // Registered as ONE tokenized phrase, not split at the tag boundary.
+        $this->assertContains('Based on {n} {m0o}reviews{m0c}', $registered);
+        $this->assertNotContains('reviews', $registered);
     }
 
     /**
@@ -89,29 +144,30 @@ class PhraseAttributeTest extends TestCase
      */
     public function testBareAttributeIsTruthy()
     {
-        $bare = $this->parser->extractPhrases('<p data-langsys-phrase>a <b>b</b></p>');
-        $explicit = $this->parser->extractPhrases('<p data-langsys-phrase="true">a <b>b</b></p>');
-
-        $this->assertEquals($bare, $explicit);
-        $this->assertCount(1, $bare);
+        $this->assertSame(
+            $this->registeredFor('<p data-langsys-phrase>a <b>b</b></p>'),
+            $this->registeredFor('<p data-langsys-phrase="true">a <b>b</b></p>')
+        );
     }
 
     public function testExplicitFalseOptsOut()
     {
         foreach (['false', 'False', '0'] as $value) {
-            $this->assertCount(
-                2,
-                $this->parser->extractPhrases('<p data-langsys-phrase="' . $value . '">a <b>b</b></p>'),
-                'Value "' . $value . '" must opt out'
+            $registered = $this->registeredFor('<p data-langsys-phrase="' . $value . '">a <b>b</b></p>');
+
+            $this->assertNotContains(
+                'a {m0o}b{m0c}',
+                $registered,
+                'Value "' . $value . '" must opt out of tokenization'
             );
         }
     }
 
     public function testNestedMarkupNumbersInPreOrder()
     {
-        $this->assertEquals(
-            ['{m0o}go {m1o}now{m1c}{m0c} please'],
-            $this->parser->extractPhrases('<p data-langsys-phrase><a href="#">go <em>now</em></a> please</p>')
+        $this->assertContains(
+            '{m0o}go {m1o}now{m1c}{m0c} please',
+            $this->registeredFor('<p data-langsys-phrase><a href="#">go <em>now</em></a> please</p>')
         );
     }
 
@@ -225,12 +281,46 @@ class PhraseAttributeTest extends TestCase
         $this->assertStringContainsString('Lee los documentos ahora', $p);
     }
 
-    public function testMarkerTakesPrecedenceOverContentBlock()
+    /**
+     * Adding the marker must not silently un-translate the element's
+     * title/alt/placeholder - those live outside the tokenized text.
+     */
+    public function testAttributesInsideAMarkedSubtreeAreStillTranslated()
     {
-        $phrases = $this->parser->extractPhrases(
-            '<p data-langsys-phrase data-langsys-contentblock="true">a <b>b</b></p>'
+        $client = $this->makeClient([
+            'home' => [
+                'Read the {m0o}docs{m0c} now' => 'Lee la {m0o}documentación{m0c} ahora',
+                'Tooltip' => 'Consejo',
+                'Logo' => 'Logotipo',
+            ],
+        ]);
+        $client->setLocale('es-es');
+
+        $out = $client->translatePage(
+            $this->pageWith(
+                '<p data-langsys-phrase title="Tooltip">Read the <a href="/d">docs</a> now <img alt="Logo"></p>'
+            ),
+            'home'
         );
 
-        $this->assertEquals(['a {m0o}b{m0c}'], $phrases);
+        $this->assertStringContainsString('title="Consejo"', $out);
+        $this->assertStringContainsString('alt="Logotipo"', $out);
+    }
+
+    public function testAttributesInsideAMarkedSubtreeAreRegistered()
+    {
+        $registered = $this->registeredFor(
+            '<p data-langsys-phrase title="Tooltip">Read the <a href="/d">docs</a> now</p>'
+        );
+
+        $this->assertContains('Tooltip', $registered);
+    }
+
+    public function testMarkerTakesPrecedenceOverContentBlock()
+    {
+        $this->assertContains(
+            'a {m0o}b{m0c}',
+            $this->registeredFor('<p data-langsys-phrase data-langsys-contentblock="true">a <b>b</b></p>')
+        );
     }
 }

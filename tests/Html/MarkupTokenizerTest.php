@@ -297,6 +297,61 @@ class MarkupTokenizerTest extends TestCase
     }
 
     // ---------------------------------------------------------------
+    // Opaque subtrees
+    // ---------------------------------------------------------------
+
+    /**
+     * script/style bodies must never enter the catalog. If they did they would
+     * be registered as translatable text AND the catalog could rewrite them -
+     * a translation for a <script> body is applied straight back into the page.
+     */
+    public function testScriptContentIsNotEncodedIntoThePhrase()
+    {
+        $result = $this->tokenizer->encode($this->element('Total: <script>var t = 0;</script>'));
+
+        $this->assertEquals('Total: {m0o}{m0c}', $result['text']);
+        $this->assertStringNotContainsString('var t', $result['text']);
+    }
+
+    public function testTranslateNoSubtreeIsNotEncoded()
+    {
+        $result = $this->tokenizer->encode($this->element('Run <code translate="no">rm -rf /</code>'));
+
+        $this->assertEquals('Run {m0o}{m0c}', $result['text']);
+        $this->assertStringNotContainsString('rm -rf', $result['text']);
+    }
+
+    public function testOpaqueSubtreeIsPreservedOnRender()
+    {
+        $encoded = $this->tokenizer->encode($this->element('Total: <script>var t = 0;</script>'));
+
+        $params = $this->tokenizer->tokenParams(count($encoded['slots']));
+        $text = str_replace(['{m0o}', '{m0c}'], [$params['m0o'], $params['m0c']], $encoded['text']);
+
+        $this->assertEquals(
+            'Total: <script>var t = 0;</script>',
+            $this->renderToHtml($text, $encoded['slots'])
+        );
+    }
+
+    /**
+     * DOMDocument::importNode returns the SAME node when the source already
+     * belongs to the target document - the normal case here - so importing
+     * directly aliased one element across every occurrence of a token.
+     */
+    public function testRepeatedTokenPairProducesSeparateElements()
+    {
+        $slots = [$this->element('<a href="/d">x</a>')->firstChild->cloneNode(false)];
+
+        $html = $this->renderToHtml(
+            $this->open(0) . 'Lee' . $this->close(0) . ' los ' . $this->open(0) . 'docs' . $this->close(0),
+            $slots
+        );
+
+        $this->assertEquals('<a href="/d">Lee</a> los <a href="/d">docs</a>', $html);
+    }
+
+    // ---------------------------------------------------------------
     // Round trip
     // ---------------------------------------------------------------
 

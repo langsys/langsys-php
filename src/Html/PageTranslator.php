@@ -442,13 +442,61 @@ class PageTranslator
             return; // Nothing translatable.
         }
 
+        $category = $effectiveCategory !== null ? $effectiveCategory : '__uncategorized__';
+
         $phrases[] = [
             'text' => $encoded['text'],
             'element' => $element,
-            'category' => $effectiveCategory !== null ? $effectiveCategory : '__uncategorized__',
+            'category' => $category,
             'slots' => $encoded['slots'],
             'tokenized' => true,
         ];
+
+        // Translatable attributes are not part of the tokenized text, so without
+        // this they would be silently dropped - adding the marker to keep a
+        // sentence together would un-translate the element's title/alt/placeholder.
+        foreach ($this->collectAttributePhrases($element) as $attributePhrase) {
+            $phrases[] = [
+                'text' => $attributePhrase,
+                'element' => null,
+                'category' => $category,
+                'attributeOnly' => true,
+            ];
+        }
+    }
+
+    /**
+     * Collect translatable attribute values from an element and its descendants.
+     *
+     * @param DOMElement $element
+     * @return array
+     */
+    protected function collectAttributePhrases(DOMElement $element)
+    {
+        $found = [];
+        $attributes = $this->htmlParser->getTranslatableAttributes();
+
+        foreach ($attributes as $attr) {
+            if ($element->hasAttribute($attr)) {
+                $value = trim($element->getAttribute($attr));
+                if ($value !== '') {
+                    $found[] = $value;
+                }
+            }
+        }
+
+        foreach ($element->getElementsByTagName('*') as $descendant) {
+            foreach ($attributes as $attr) {
+                if ($descendant->hasAttribute($attr)) {
+                    $value = trim($descendant->getAttribute($attr));
+                    if ($value !== '') {
+                        $found[] = $value;
+                    }
+                }
+            }
+        }
+
+        return array_values(array_unique($found));
     }
 
     protected function hasContentBlockAttribute(DOMElement $element)
@@ -700,6 +748,46 @@ class PageTranslator
 
         foreach ($nodes as $node) {
             $element->appendChild($node);
+        }
+
+        // Attributes live outside the tokenized text, so translate them here.
+        $this->applyAttributeTranslations($element, $itemCategory, $translations);
+    }
+
+    /**
+     * Translate translatable attributes on an element and its descendants.
+     *
+     * @param DOMElement $element
+     * @param string|null $itemCategory
+     * @param array $translations
+     * @return void
+     */
+    protected function applyAttributeTranslations(DOMElement $element, $itemCategory, array $translations)
+    {
+        $attributes = $this->htmlParser->getTranslatableAttributes();
+
+        $targets = [$element];
+        foreach ($element->getElementsByTagName('*') as $descendant) {
+            $targets[] = $descendant;
+        }
+
+        foreach ($targets as $target) {
+            foreach ($attributes as $attr) {
+                if (!$target->hasAttribute($attr)) {
+                    continue;
+                }
+
+                $value = $target->getAttribute($attr);
+                if (trim($value) === '') {
+                    continue;
+                }
+
+                $translated = $this->interp($this->lookupTranslation($value, $itemCategory, $translations));
+
+                if ($translated !== $value) {
+                    $target->setAttribute($attr, $translated);
+                }
+            }
         }
     }
 

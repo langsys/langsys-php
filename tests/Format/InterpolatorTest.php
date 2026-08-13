@@ -377,6 +377,73 @@ class InterpolatorTest extends TestCase
         $this->assertEquals($pattern, $this->interpolator->interpolate($pattern, ['n' => 2], 'en-US'));
     }
 
+    /**
+     * A parameter value that itself looks like ICU must not be re-scanned.
+     * Substituting the value into the branch before recursing made this recurse
+     * until memory was exhausted - an uncatchable fatal in a class that promises
+     * never to crash.
+     */
+    public function testIcuValueThatLooksLikeIcuDoesNotRecurseForever()
+    {
+        $this->requireMissingIntl();
+
+        $result = $this->interpolator->interpolate(
+            '{n, plural, other {#}}',
+            ['n' => '{n, plural, other {#}}'],
+            'en'
+        );
+
+        $this->assertNotEquals('', $result);
+    }
+
+    /**
+     * A nested plural supplies its own '#'; the outer value must not clobber it.
+     */
+    public function testNestedPluralKeepsItsOwnHashValue()
+    {
+        $this->requireMissingIntl();
+
+        $this->assertEquals(
+            '7 b / 5 a',
+            $this->interpolator->interpolate(
+                '{a, plural, other {{b, plural, other {# b}} / # a}}',
+                ['a' => 5, 'b' => 7],
+                'en'
+            )
+        );
+    }
+
+    public function testDeeplyNestedIcuDoesNotExhaustMemory()
+    {
+        $this->requireMissingIntl();
+
+        $deep = str_repeat('{n, plural, other {', 200) . '#' . str_repeat('}}', 200);
+
+        $this->assertNotEquals('', $this->interpolator->interpolate($deep, ['n' => 1], 'en'));
+    }
+
+    /**
+     * 1, 1.0 and "1.0" must all take the `one` branch.
+     */
+    public function testOneBranchSelectedForFloatAndNumericStringWithoutIntl()
+    {
+        $this->requireMissingIntl();
+
+        $pattern = '{n, plural, one {# item} other {# items}}';
+
+        foreach ([1, 1.0, '1', '1.0'] as $value) {
+            $this->assertStringContainsString(
+                'item',
+                $this->interpolator->interpolate($pattern, ['n' => $value], 'en'),
+                'Value ' . var_export($value, true) . ' must take the one branch'
+            );
+            $this->assertStringNotContainsString(
+                'items',
+                $this->interpolator->interpolate($pattern, ['n' => $value], 'en')
+            );
+        }
+    }
+
     public function testNumberFallsBackToPlainStringWithoutIntl()
     {
         if (extension_loaded('intl')) {

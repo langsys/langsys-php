@@ -57,6 +57,30 @@ class MarkupTokenizer
     const SENTINEL_PATTERN = '/\x{E000}(\d+)\x{E001}|\x{E002}(\d+)\x{E003}/u';
 
     /**
+     * Elements whose contents must never be translated or registered.
+     * Mirrors PageTranslator::SKIP_ELEMENTS.
+     */
+    const OPAQUE_ELEMENTS = [
+        'script', 'style', 'noscript', 'template', 'svg', 'math',
+    ];
+
+    /**
+     * Whether an element's contents must be preserved verbatim.
+     *
+     * @param DOMElement $element
+     * @return bool
+     */
+    protected function isOpaque(DOMElement $element)
+    {
+        if (in_array(strtolower($element->tagName), self::OPAQUE_ELEMENTS, true)) {
+            return true;
+        }
+
+        return $element->getAttribute('translate') === 'no'
+            || $element->getAttribute('data-notrans') !== '';
+    }
+
+    /**
      * Encode an element's children into a single tokenized phrase.
      *
      * @param DOMElement $element The element whose CHILDREN are encoded
@@ -193,6 +217,22 @@ class MarkupTokenizer
 
             if ($child instanceof DOMElement) {
                 $index = count($slots);
+
+                // Never let script/style bodies - or anything the author marked
+                // translate="no" - into the catalog. They would be registered as
+                // translatable text, billed, possibly leak inline config, and
+                // worst of all the catalog could rewrite them: a translation for
+                // a <script> body is applied straight back into the element.
+                //
+                // The subtree is preserved rather than dropped, by storing a DEEP
+                // clone and emitting an empty token pair. It renders back
+                // untouched and contributes nothing to the phrase.
+                if ($this->isOpaque($child)) {
+                    $slots[] = $child->cloneNode(true);
+                    $out .= '{m' . $index . 'o}{m' . $index . 'c}';
+                    continue;
+                }
+
                 $slots[] = $child->cloneNode(false); // Shallow: tag + attributes only.
 
                 $out .= '{m' . $index . 'o}'
@@ -262,12 +302,19 @@ class MarkupTokenizer
             }
 
             if ($isOpen) {
-                // importNode, not cloneNode: a clone keeps the slot's ORIGINAL
-                // ownerDocument, and appending a node created by $doc to it
-                // raises "Wrong Document Error". Encode-time and render-time
-                // documents routinely differ - applyBlockTranslations reparses
-                // into a fresh DOMDocument.
-                $element = $doc->importNode($slots[$index], false);
+                // Clone FIRST, then import only if the clone belongs to another
+                // document. importNode() returns the SAME node when the source
+                // already belongs to $doc - which is the normal case here, since
+                // slots are cloned from the live document - so importing
+                // directly would alias one element across every occurrence of
+                // the token. A translation repeating a token pair then moved the
+                // single element instead of producing two.
+                $clone = $slots[$index]->cloneNode($slots[$index]->hasChildNodes());
+
+                $element = $clone->ownerDocument === $doc
+                    ? $clone
+                    : $doc->importNode($clone, true);
+
                 $this->appendNode($element, $top, $stack);
                 $stack[] = ['index' => $index, 'node' => $element];
                 continue;

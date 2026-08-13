@@ -54,6 +54,11 @@ class Interpolator
     const FALLBACK_LOCALE = 'en';
 
     /**
+     * Maximum ICU nesting depth handled by the no-intl fallback.
+     */
+    const MAX_ICU_DEPTH = 24;
+
+    /**
      * @var LoggerInterface|null
      */
     protected $logger;
@@ -220,15 +225,35 @@ class Interpolator
      * @param string|null $locale
      * @return string
      */
-    protected function renderIcuWithoutIntl($text, array $params, $locale)
+    protected function renderIcuWithoutIntl($text, array $params, $locale, $hash = null, $depth = 0)
     {
+        // Bail on pathological nesting rather than exhausting memory. Catalog
+        // content is not caller-controlled, but a deeply nested pattern would
+        // otherwise take the whole render down with an uncatchable fatal.
+        if ($depth > self::MAX_ICU_DEPTH) {
+            return $text;
+        }
+
         $out = '';
         $length = strlen($text);
         $i = 0;
 
         while ($i < $length) {
-            if ($text[$i] !== '{') {
-                $out .= $text[$i];
+            $char = $text[$i];
+
+            // '#' is the enclosing plural's value. Emitted HERE during the walk
+            // rather than substituted into the branch before recursing: doing it
+            // by substitution let a value that itself looked like ICU be
+            // re-scanned (unbounded recursion), and let an outer '#' overwrite a
+            // nested plural's own '#'.
+            if ($char === '#' && $hash !== null) {
+                $out .= $hash;
+                $i++;
+                continue;
+            }
+
+            if ($char !== '{') {
+                $out .= $char;
                 $i++;
                 continue;
             }
@@ -241,7 +266,13 @@ class Interpolator
                 break;
             }
 
-            $out .= $this->renderIcuArgument(substr($text, $i + 1, $end - $i - 1), $params, $locale);
+            $out .= $this->renderIcuArgument(
+                substr($text, $i + 1, $end - $i - 1),
+                $params,
+                $locale,
+                $depth
+            );
+
             $i = $end + 1;
         }
 
@@ -256,7 +287,7 @@ class Interpolator
      * @param string|null $locale
      * @return string
      */
-    protected function renderIcuArgument($body, array $params, $locale)
+    protected function renderIcuArgument($body, array $params, $locale, $depth = 0)
     {
         $verbatim = '{' . $body . '}';
 
@@ -314,13 +345,19 @@ class Interpolator
             return $verbatim;
         }
 
-        // '#' is the value itself; do it before recursing so a literal '#' in a
-        // nested placeholder's VALUE is not substituted again.
+        // The branch is walked with THIS argument's value as its '#'. A nested
+        // plural inside it supplies its own, so the outer value cannot clobber
+        // the inner one, and a value that happens to contain '#' or braces is
+        // never re-scanned.
         $number = $this->formatValue($value, $locale);
-        $chosen = str_replace('#', $number === null ? '' : $number, $chosen);
 
-        // Branch content may hold further placeholders.
-        return $this->renderIcuWithoutIntl($chosen, $params, $locale);
+        return $this->renderIcuWithoutIntl(
+            $chosen,
+            $params,
+            $locale,
+            $number === null ? '' : $number,
+            $depth + 1
+        );
     }
 
     /**
@@ -346,6 +383,12 @@ class Interpolator
             }
 
             $keyword = trim(substr($text, 0, $i));
+
+            // A plural may carry an `offset:N` prefix before its branches;
+            // without stripping it the first branch is keyed "offset:1 one".
+            if (preg_match('/^offset\s*:\s*\S+\s+(.*)$/s', $keyword, $m)) {
+                $keyword = trim($m[1]);
+            }
 
             $end = $this->matchingBrace($text, $i);
 
@@ -388,13 +431,19 @@ class Interpolator
 
         // Exact matches are standards-correct and always safe.
         if (is_numeric($value)) {
-            $exact = '=' . (0 + $value);
+            $number = (float) $value;
 
-            if (isset($branches[$exact])) {
-                return $branches[$exact];
+            foreach ($branches as $keyword => $content) {
+                // Compare numerically so "=1" matches 1, "1.0" and "1".
+                if (strlen($keyword) > 1 && $keyword[0] === '='
+                    && is_numeric(substr($keyword, 1))
+                    && (float) substr($keyword, 1) === $number) {
+                    return $content;
+                }
             }
 
-            if ((0 + $value) === 1 && isset($branches['one'])) {
+            // Loose compare: 1, 1.0 and "1.0" must all take the `one` branch.
+            if ($number === 1.0 && isset($branches['one'])) {
                 return $branches['one'];
             }
         }
