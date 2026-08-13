@@ -732,9 +732,14 @@ class ClientTest extends TestCase
     }
 
     /**
-     * write_enabled is authoritative in both directions - the server can refuse
-     * a plain write key (suspended subscription, revoked grant) and the SDK
-     * must respect that rather than infer capability from the key type.
+     * write_enabled is authoritative in both directions.
+     *
+     * No server condition produces this combination today - ApiKey::allowsWrite()
+     * returns true unconditionally for a WRITE key, and a suspended subscription
+     * short-circuits with a 402 before the flag is computed. This pins the
+     * direction of trust rather than a live behaviour: if the server ever gains
+     * a reason to refuse a write key, the SDK must follow the flag rather than
+     * re-derive capability from the key type.
      */
     public function testWriteEnabledOverridesWriteKeyType()
     {
