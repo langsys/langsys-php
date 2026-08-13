@@ -1306,6 +1306,35 @@ class PageTranslatorTest extends TestCase
         $this->assertStringContainsString('Navigation', $key);
     }
 
+    /**
+     * A catalog value that is a nested map is a content block, never a missing
+     * phrase. Client::translate() branches that way; this path must agree, or
+     * text colliding with a block id re-registers on every single render.
+     */
+    public function testTextCollidingWithAContentBlockIdIsNotRegisteredAsAPhrase(): void
+    {
+        $blockId = md5('some-content-block');
+
+        // The catalog holds that id as a content block (a nested map).
+        $this->setTranslations([
+            '__uncategorized__' => [
+                $blockId => ['Inner phrase' => 'Frase interna'],
+            ],
+        ]);
+        $this->mockHttp->setResponse('POST', 'translatable-items', ['status' => true]);
+
+        $translator = new PageTranslator($this->client);
+        $translator->translate(
+            '<!DOCTYPE html><html><head></head><body><p>' . $blockId . '</p></body></html>',
+            'es-es'
+        );
+
+        $this->assertFalse(
+            $this->postedPhrase($blockId),
+            'A content-block id present in the catalog must not be registered as a phrase'
+        );
+    }
+
     // =========================================================================
     // Helpers for the tests above
     // =========================================================================

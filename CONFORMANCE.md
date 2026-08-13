@@ -1,6 +1,6 @@
 # Conformance — langsys/php-sdk
 
-Spec version implemented: **v2**
+Spec version implemented: **v4**
 Profile: **server**
 
 Every rule maps to the test that proves it. A rule with no test is NOT IMPLEMENTED —
@@ -24,7 +24,7 @@ and re-running. A regression test never seen red is a guess.
 | Rule | Status | Evidence |
 |---|---|---|
 | GATE-1 | provisional | `tests/ClientTest.php::testCanWriteWithIpWriteKeyThatServerReportsWriteEnabled`, `::testCannotWriteWithIpWriteKeyThatServerReportsNotWriteEnabled`, `::testWriteEnabledOverridesWriteKeyType`, `::testTreatsMissingWriteEnabledAsReadOnly`, `tests/Html/PageTranslatorTest.php::testRegistersWithIpWriteKeyWhenServerSaysWriteEnabled` |
-| GATE-2 | n/a (profile: server) | Synchronous SDK — no unknown window exists. Withdrawn for sync profiles in v2; the residual obligation is REG-10, which is **not implemented** |
+| GATE-2 | n/a (profile: server) | Synchronous SDK — no unknown window exists. Withdrawn for sync profiles in v2; the residual obligation is REG-10, now partially met |
 | GATE-3 | provisional | `tests/ClientTest.php::testWriteDecisionIsNeverWrittenToTheCache`, `::testCacheHitStillResolvesTheWriteDecisionForThisRequest`, `::testResetRequestStateClearsTheWriteDecision` |
 | GATE-4 | provisional | `tests/ClientTest.php::testWriteDecisionIsNeverWrittenToTheCache` — the `authorize-project` row (strip from within `data`). The `/translations` row is satisfied structurally: `Translations::getTranslationMap()` returns `$response['data']`, so the envelope never reaches the cache — **untested**, and the refactor that would break it is invisible |
 | GATE-5 | provisional | `tests/Html/PageTranslatorTest.php::testDoesNotRecordRegistrationThatNeverHappened` |
@@ -51,9 +51,9 @@ and re-running. A regression test never seen red is a guess.
 | REG-7 | n/a (profile: server) | Synchronous — one send in flight by construction |
 | REG-8 | **not implemented** | On a failed send the queue is retained (not cleared), but there is no retry and no backoff, and at shutdown there is no later context to retry into |
 | REG-9 | **not implemented** | `TranslatableItems::createPhrases()` and `::createContentBlocks()` chunk to the server limit, and `Client::syncBatchLimit()` reads it from `langsys_settings`. But `PageTranslator::registerNewItemsWithCategory()` loops **one POST per content block**, inside the request |
-| REG-10 | **not implemented** | Three behaviours across four call sites: `registerPhrases()`/`registerContentBlock()` throw; `PageTranslator` swallows; `flushPendingRegistrations()` clears both queues and returns `['success' => true]` for work it discarded |
+| REG-10 | provisional | `tests/ClientTest.php::testFlushReportsFailureAndCountWhenTheRequestMayNotWrite`, `::testFlushReportsSuccessWhenEverythingWasAccepted`, `::testFlushWithNothingQueuedIsSuccessNotASkip`. `flushPendingRegistrations()` now reports `success => false` and a `skipped` count for work it did not send. **Partial**: the throw-vs-swallow split across `registerPhrases()` and `PageTranslator` is unchanged, so the "exactly one behaviour" half is not met |
 | REG-11 | **not implemented** | No ellipsis diagnostic |
-| REG-12 | **not implemented** | `Client::translate()` branches structurally on `is_array($value)` and refuses to queue a content-block id. But `PageTranslator::findNewPhrasesWithCategory()` skips only when *present and not an array*, so the two paths disagree — which v2 explicitly forbids |
+| REG-12 | provisional | `tests/Html/PageTranslatorTest.php::testTextCollidingWithAContentBlockIdIsNotRegisteredAsAPhrase`. Both paths now treat presence alone as known, so the presence and structure checks agree |
 
 ## The discovery-report (hint) lane
 
@@ -91,8 +91,8 @@ and re-running. A regression test never seen red is a guess.
 |---|---|---|
 | WIRE-1 | provisional | `HttpClient::getHeaders()` sends `X-Authorization`; no cookie or query-parameter path exists |
 | WIRE-2 | provisional | `tests/Http/HttpClientTest.php` — 9 tests covering empty bodies on 2xx, 401, 422 and 5xx, plus genuinely malformed JSON still failing |
-| WIRE-3 | provisional | Category: `tests/Resources/TranslatableItemsTest.php::testPhrasesDoNotSendTheUncategorizedSentinel` and the three sibling tests, incl. `::testNormalisingCategoryDoesNotChangeTheCustomId`. **Locale half untested and possibly non-conforming** — `LocaleDetector::normalize()` produces lowercase `xx-yy` (`en-us`), not canonical BCP 47 (`en-US`). Consistent SDK-wide, but it is a deviation and wants a ruling |
-| WIRE-4 | **not implemented** | `Client::translate()` and `::translateContentBlock()` propagate `ApiException` when the catalog fetch fails, so an API outage throws into the caller's render path. Only `translatePage()` catches. Verified by substituting a throwing HTTP client |
+| WIRE-3 | provisional | Category: `tests/Resources/TranslatableItemsTest.php::testPhrasesDoNotSendTheUncategorizedSentinel` and the three sibling tests, incl. `::testNormalisingCategoryDoesNotChangeTheCustomId`. Locale: `tests/Locale/LocaleDetectorTest.php`. The lowercase `xx-yy` form is **correct** — v4 corrected the rule from "canonical BCP 47" after checking the backend, where `locales.code` is lowercase and case-sensitively compared |
+| WIRE-4 | provisional | `tests/ClientTest.php::testTranslateReturnsSourceWhenTheApiIsUnreachable` and four siblings covering interpolation, the queue staying empty, `translateContentBlock()` and `lookupContent()`. All three entry points now degrade; evidence is `tests/Mock/ThrowingHttpClient.php` |
 
 ## Conformance meta
 
@@ -103,18 +103,26 @@ and re-running. A regression test never seen red is a guess.
 
 ## Known gaps, ranked by what they cost
 
-1. **WIRE-4** — `translate()` throws on API failure. This is the only gap that can take down a
-   customer's page: it sits on every render path, and an outage or a transient cURL error
-   surfaces as a 500 rather than untranslated text. Highest priority.
-2. **REG-10** — `flushPendingRegistrations()` reports `['success' => true]` for registrations it
-   discarded. A caller that correctly checks the return value is told it worked.
-3. **REG-9** — one POST per content block inside the request; a first uncached render of a page
-   with 40 new blocks is 40 sequential blocking POSTs while the visitor waits.
-4. **REG-3 / REG-8** — a failure during the shutdown flush is unrecoverable and silent. Blocked
-   on the spec's Open item; logging is the interim MUST and is partially in place.
-5. **GRANT-1…4** — no write-grant support.
-6. **REG-12** — the presence and structure checks disagree between `translate()` and
-   `PageTranslator`. Requires a page to display a bare md5 that is also a block id in the same
-   category, so the practical risk is negligible; listed because v2 requires the paths to agree.
-7. **OBS-1**, **REG-11** — diagnostics.
-8. **CONF-1** — blocked on the central contract fixture.
+1. **REG-9** — `PageTranslator` sends one POST per content block inside the request. A first
+   uncached render of a page with 40 new blocks is 40 sequential blocking POSTs while the
+   visitor waits. Now the most expensive remaining gap.
+2. **REG-10 (partial)** — the return value no longer lies, but the *behaviour* still differs by
+   entry point: `registerPhrases()`/`registerContentBlock()` throw while `PageTranslator`
+   swallows. The rule asks for exactly one behaviour.
+3. **REG-3 / REG-8** — a failure during the shutdown flush is unrecoverable and silent. Blocked
+   on the spec's Open item; logging is the interim MUST and is in place.
+4. **GRANT-1…4** — no write-grant support. Without it an `ip_write` key cannot write for an
+   authenticated user from a non-allow-listed address, which is the case grants exist to serve.
+5. **OBS-1** — a write-expected key that resolves `write_enabled: false` and never queues
+   anything produces no diagnostic at all.
+6. **REG-11** — no ellipsis diagnostic.
+7. **GATE-4, second row** — satisfied structurally but untested; the refactor that breaks it
+   (caching the whole response rather than `data`) looks like pure cleanup.
+8. **CONF-1** — blocked on the central contract fixture, which gates every `provisional` above.
+
+## History
+
+Written against spec v2 and updated through v4. Three rules moved from *not implemented* to
+*provisional* after the fixes on this branch: WIRE-4, REG-10 and REG-12. Writing this file is
+what surfaced WIRE-4, which was the most costly defect in the SDK and was not on anyone's list
+before the rules were checked one at a time against running code.

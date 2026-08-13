@@ -888,9 +888,13 @@ class PageTranslator
                 continue;
             }
 
-            // Check if exists in translations
+            // Check if exists in translations. Presence alone means known: a
+            // nested map is a content block, never a missing phrase, so text
+            // colliding with a block id must not be registered as a phrase.
+            // Client::translate() branches the same way - the two checks have
+            // to agree or the colliding text re-registers on every render.
             $categoryTranslations = isset($translations[$cat]) ? $translations[$cat] : [];
-            if (array_key_exists($text, $categoryTranslations) && !is_array($categoryTranslations[$text])) {
+            if (array_key_exists($text, $categoryTranslations)) {
                 continue;
             }
 

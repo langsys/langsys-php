@@ -480,7 +480,24 @@ class Client
             }
         }
 
-        $translations = $this->getTranslations($locale);
+        try {
+            $translations = $this->getTranslations($locale);
+        } catch (\Exception $e) {
+            // This method sits on every render path, so the API being
+            // unreachable must degrade to source text rather than convert a
+            // working page into a 500. Nothing is queued: a failed catalog
+            // fetch cannot tell a miss from a hit, and guessing would
+            // re-register phrases that already exist.
+            $this->logger->error('Translation lookup failed - returning source phrase', [
+                'phrase' => $phrase,
+                'category' => $category,
+                'locale' => $locale,
+                'error' => $e->getMessage(),
+            ]);
+
+            return is_array($params) ? Interpolator::interpolate($phrase, $params, $locale) : $phrase;
+        }
+
         $categoryTranslations = isset($translations[$category]) ? $translations[$category] : [];
 
         if (array_key_exists($phrase, $categoryTranslations)) {
@@ -526,7 +543,20 @@ class Client
             }
         }
 
-        $translations = $this->getTranslations($locale);
+        try {
+            $translations = $this->getTranslations($locale);
+        } catch (\Exception $e) {
+            // Same contract as translate(): degrade rather than throw. The
+            // documented "block or token missing" return covers this.
+            $this->logger->error('Content lookup failed', [
+                'content_block_id' => $contentBlockId,
+                'locale' => $locale,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+
         $categoryTranslations = isset($translations[$category]) ? $translations[$category] : [];
 
         if (isset($categoryTranslations[$contentBlockId][$phrase])) {
@@ -952,8 +982,21 @@ class Client
         // Generate customId for this content block
         $customId = $parser->generateCustomId($category, $phrases);
 
-        // Get translations
-        $translations = $this->getTranslations($locale);
+        // Get translations. As in translate(), an unreachable API degrades to
+        // the source HTML rather than throwing into the caller's render.
+        try {
+            $translations = $this->getTranslations($locale);
+        } catch (\Exception $e) {
+            $this->logger->error('Content block lookup failed - returning source HTML', [
+                'custom_id' => $customId,
+                'category' => $category,
+                'locale' => $locale,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $html;
+        }
+
         $categoryTranslations = isset($translations[$category]) ? $translations[$category] : [];
 
         // Check if content block exists
@@ -1222,13 +1265,19 @@ class Client
      * This is called automatically at the end of the request, but you can
      * call it manually if needed.
      *
-     * @return array ['phrases' => count, 'content_blocks' => count, 'success' => bool]
+     * 'success' means every queued item was accepted by the API. It is false
+     * whenever work was discarded or failed - a skipped write is not a
+     * successful one, and a caller checking this must not be told otherwise.
+     * 'skipped' counts items that were never sent.
+     *
+     * @return array ['phrases' => count, 'content_blocks' => count, 'skipped' => count, 'success' => bool]
      */
     public function flushPendingRegistrations()
     {
         $result = [
             'phrases' => 0,
             'content_blocks' => 0,
+            'skipped' => 0,
             'success' => true,
         ];
 
@@ -1237,22 +1286,31 @@ class Client
             return $result;
         }
 
+        $pendingCount = count($this->pendingPhrases) + count($this->pendingContentBlocks);
+
         // Skip if we can't write
         try {
             if (!$this->canWrite()) {
-                $this->logger->warning('Flush skipped - read-only key', [
+                $this->logger->warning('Flush skipped - this request may not write', [
                     'pending_phrases' => count($this->pendingPhrases),
                     'pending_content_blocks' => count($this->pendingContentBlocks),
                 ]);
-                // Clear queues silently
+                // Nothing can send these, so drop them - but report it, rather
+                // than returning a success-shaped result for discarded work.
                 $this->pendingPhrases = [];
                 $this->pendingContentBlocks = [];
+                $result['skipped'] = $pendingCount;
+                $result['success'] = false;
                 return $result;
             }
         } catch (\Exception $e) {
             $this->logger->error('Flush failed - authorization error', [
                 'error' => $e->getMessage(),
+                'pending' => $pendingCount,
             ]);
+            // Left queued deliberately: a manual flush can still retry these.
+            $result['skipped'] = $pendingCount;
+            $result['success'] = false;
             return $result;
         }
 
@@ -1268,6 +1326,7 @@ class Client
                     'count' => count($this->pendingPhrases),
                     'error' => $e->getMessage(),
                 ]);
+                $result['skipped'] += count($this->pendingPhrases);
                 $result['success'] = false;
             }
         }
@@ -1284,6 +1343,7 @@ class Client
                     'count' => count($this->pendingContentBlocks),
                     'error' => $e->getMessage(),
                 ]);
+                $result['skipped'] += count($this->pendingContentBlocks);
                 $result['success'] = false;
             }
         }

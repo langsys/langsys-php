@@ -7,6 +7,7 @@ use Langsys\SDK\Cache\FileCache;
 use Langsys\SDK\Cache\NullCache;
 use Langsys\SDK\Exception\LangsysException;
 use Langsys\SDK\Tests\Mock\MockHttpClient;
+use Langsys\SDK\Tests\Mock\ThrowingHttpClient;
 use Langsys\SDK\Html\HtmlParser;
 use PHPUnit\Framework\TestCase;
 
@@ -839,8 +840,146 @@ class ClientTest extends TestCase
     }
 
     // =========================================================================
+    // An unreachable API must never throw into a render path
+    // =========================================================================
+
+    /**
+     * translate() sits on every render path. If the SDK's own dependency being
+     * down converts a working page into a 500, our outage becomes the
+     * customer's outage.
+     */
+    public function testTranslateReturnsSourceWhenTheApiIsUnreachable()
+    {
+        $client = $this->createClientWithThrowingHttp();
+
+        $this->assertSame('Hello', $client->translate('Hello'));
+    }
+
+    public function testTranslateStillInterpolatesWhenTheApiIsUnreachable()
+    {
+        $client = $this->createClientWithThrowingHttp();
+
+        $this->assertSame(
+            'Based on 5 reviews',
+            $client->translate('Based on {n} reviews', 'ProductCard', ['n' => 5])
+        );
+    }
+
+    /**
+     * A failed catalog fetch cannot tell a miss from a hit, so nothing may be
+     * queued - guessing would re-register phrases that already exist.
+     */
+    public function testTranslateQueuesNothingWhenTheApiIsUnreachable()
+    {
+        $client = $this->createClientWithThrowingHttp();
+
+        $client->translate('Hello');
+
+        $this->assertFalse($client->hasPendingRegistrations());
+    }
+
+    public function testTranslateContentBlockReturnsSourceHtmlWhenTheApiIsUnreachable()
+    {
+        $client = $this->createClientWithThrowingHttp();
+
+        $html = '<p>Hello</p><p>World</p>';
+
+        $this->assertSame($html, $client->translateContentBlock($html));
+    }
+
+    public function testLookupContentReturnsNullWhenTheApiIsUnreachable()
+    {
+        $client = $this->createClientWithThrowingHttp();
+
+        $this->assertNull($client->lookupContent('Cat', 'block-id', 'Hello'));
+    }
+
+    // =========================================================================
+    // A skipped write is not a successful one
+    // =========================================================================
+
+    public function testFlushReportsFailureAndCountWhenTheRequestMayNotWrite()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'read', 'write_enabled' => false],
+        ]);
+        $mockHttp->setResponse('GET', 'translations', ['data' => ['__uncategorized__' => []]]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+        $client->setLocale('es-es');
+        $client->translate('Hello');
+        $client->translate('World');
+
+        $result = $client->flushPendingRegistrations();
+
+        $this->assertFalse($result['success'], 'Discarded work must not be reported as success');
+        $this->assertSame(2, $result['skipped']);
+        $this->assertSame(0, $result['phrases']);
+    }
+
+    public function testFlushReportsSuccessWhenEverythingWasAccepted()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'write', 'write_enabled' => true],
+        ]);
+        $mockHttp->setResponse('GET', 'translations', ['data' => ['__uncategorized__' => []]]);
+        $mockHttp->setResponse('POST', 'translatable-items', ['status' => true]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+        $client->setLocale('es-es');
+        $client->translate('Hello');
+
+        $result = $client->flushPendingRegistrations();
+
+        $this->assertTrue($result['success']);
+        $this->assertSame(0, $result['skipped']);
+        $this->assertSame(1, $result['phrases']);
+    }
+
+    public function testFlushWithNothingQueuedIsSuccessNotASkip()
+    {
+        $mockHttp = new MockHttpClient();
+        $client = $this->createClientWithMockHttp($mockHttp);
+
+        $result = $client->flushPendingRegistrations();
+
+        $this->assertTrue($result['success']);
+        $this->assertSame(0, $result['skipped']);
+    }
+
+    // =========================================================================
     // Helper methods
     // =========================================================================
+
+    /**
+     * Create a client whose every API call fails.
+     */
+    private function createClientWithThrowingHttp()
+    {
+        $client = $this->createClientWithMockHttp(new MockHttpClient());
+        $client->setLocale('es-es');
+
+        $throwing = new ThrowingHttpClient();
+        $reflection = new \ReflectionClass($client);
+
+        $httpProperty = $reflection->getProperty('http');
+        $httpProperty->setAccessible(true);
+        $httpProperty->setValue($client, $throwing);
+
+        foreach (['translations', 'translatableItems'] as $resourceName) {
+            $property = $reflection->getProperty($resourceName);
+            $property->setAccessible(true);
+            $resource = $property->getValue($client);
+
+            $resourceHttp = (new \ReflectionClass($resource))->getProperty('http');
+            $resourceHttp->setAccessible(true);
+            $resourceHttp->setValue($resource, $throwing);
+        }
+
+        return $client;
+    }
 
     /**
      * Create a client with injected mock HTTP client.
