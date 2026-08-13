@@ -50,6 +50,19 @@ class Client
     protected $projectData;
 
     /**
+     * Whether THIS request may register content, as computed by the server.
+     *
+     * Deliberately not part of $projectData and never written to $this->cache:
+     * the server derives it from the caller's IP and any write grant, so the
+     * same key legitimately answers true for one request and false for the
+     * next. Persisting it would apply one caller's decision to every later
+     * request sharing the cache. Null means "not yet resolved this request".
+     *
+     * @var bool|null
+     */
+    protected $writeEnabled = null;
+
+    /**
      * @var Translations
      */
     protected $translations;
@@ -214,6 +227,10 @@ class Client
     /**
      * Authorize and get project information.
      *
+     * Note that the returned array never contains 'write_enabled'. That flag is
+     * per-request and is held separately so it cannot be cached - use
+     * canWrite() to read it.
+     *
      * @param bool $force Force re-authorization even if cached
      * @return array Project data including key_type
      */
@@ -231,6 +248,12 @@ class Client
         if (!$force) {
             $cached = $this->cache->get($cacheKey);
             if ($cached !== null) {
+                // Entries written by older SDK versions still carry the write
+                // decision. Drop it rather than trust a value that was computed
+                // for whichever request happened to populate the cache.
+                if (is_array($cached)) {
+                    unset($cached['write_enabled']);
+                }
                 $this->projectData = $cached;
                 $this->syncBatchLimit();
                 $this->logger->debug('Authorization from cache', [
@@ -243,13 +266,32 @@ class Client
         $response = $this->http->get('authorize-project/' . $this->config->getProjectId());
 
         if (isset($response['data'])) {
-            $this->projectData = $response['data'];
+            $data = $response['data'];
+
+            // Capture the server's per-request write decision, then strip it so
+            // it can never reach $this->cache (a file/Redis cache shared by
+            // every request on the host, and by the fleet on Redis).
+            if (array_key_exists('write_enabled', $data)) {
+                $this->writeEnabled = (bool) $data['write_enabled'];
+                unset($data['write_enabled']);
+            } else {
+                // No flag means an API too old to compute one. Refuse to fall
+                // back to key_type: it cannot express IP- or grant-based write
+                // access, which is the bug this replaced.
+                $this->writeEnabled = false;
+                $this->logger->warning('Authorization response carries no write_enabled flag - treating this session as read-only', [
+                    'project_id' => $this->config->getProjectId(),
+                ]);
+            }
+
+            $this->projectData = $data;
             $this->syncBatchLimit();
             $this->cache->set($cacheKey, $this->projectData);
             $keyType = isset($this->projectData['key_type']) ? $this->projectData['key_type'] : 'unknown';
             $this->logger->info('Project authorized', [
                 'project_id' => $this->config->getProjectId(),
                 'key_type' => $keyType,
+                'write_enabled' => $this->writeEnabled,
             ]);
             return $this->projectData;
         }
@@ -270,14 +312,51 @@ class Client
     }
 
     /**
-     * Check if the API key has write permissions.
+     * Whether this request may register content.
+     *
+     * Branches on the server-computed write_enabled flag, never on key_type.
+     * An 'ip_write' key is read-only from most addresses and write-enabled from
+     * an allow-listed one, so no client-side value can express the answer - the
+     * same key legitimately answers true from one IP and false from another.
+     *
+     * The decision is resolved at most once per request and held in memory
+     * only. A cache hit does not carry it (see authorize()), so an unresolved
+     * decision forces a fresh authorization rather than assuming false.
      *
      * @return bool
      */
     public function canWrite()
     {
-        $data = $this->authorize();
-        return isset($data['key_type']) && $data['key_type'] === 'write';
+        if ($this->writeEnabled === null) {
+            $this->authorize(true);
+
+            if ($this->writeEnabled === null) {
+                // Authorization returned an unexpected shape. Settle on
+                // read-only so we don't re-request on every call.
+                $this->writeEnabled = false;
+            }
+        }
+
+        return $this->writeEnabled === true;
+    }
+
+    /**
+     * Clear state that belongs to a single request.
+     *
+     * Under a long-lived runtime (Octane, Swoole, RoadRunner, a queue worker)
+     * this Client can outlive the request it was built for, which would carry
+     * one caller's write decision into the next caller's request. Call this
+     * between requests. Flush pending registrations first - this does not send
+     * them.
+     *
+     * @return $this
+     */
+    public function resetRequestState()
+    {
+        $this->writeEnabled = null;
+        $this->translationsMemoryCache = [];
+
+        return $this;
     }
 
     /**

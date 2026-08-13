@@ -3,6 +3,7 @@
 namespace Langsys\SDK\Tests;
 
 use Langsys\SDK\Client;
+use Langsys\SDK\Cache\FileCache;
 use Langsys\SDK\Cache\NullCache;
 use Langsys\SDK\Exception\LangsysException;
 use Langsys\SDK\Tests\Mock\MockHttpClient;
@@ -218,7 +219,7 @@ class ClientTest extends TestCase
     {
         $mockHttp = new MockHttpClient();
         $mockHttp->setResponse('GET', 'authorize-project/project-id', [
-            'data' => ['key_type' => 'write'],
+            'data' => ['key_type' => 'write', 'write_enabled' => true],
         ]);
         $mockHttp->setResponse('GET', 'translations', [
             'data' => [
@@ -464,7 +465,7 @@ class ClientTest extends TestCase
     {
         $mockHttp = new MockHttpClient();
         $mockHttp->setResponse('GET', 'authorize-project/project-id', [
-            'data' => ['key_type' => 'write'],
+            'data' => ['key_type' => 'write', 'write_enabled' => true],
         ]);
         $mockHttp->setResponse('GET', 'translations', [
             'data' => [
@@ -600,7 +601,7 @@ class ClientTest extends TestCase
     {
         $mockHttp = new MockHttpClient();
         $mockHttp->setResponse('GET', 'authorize-project/project-id', [
-            'data' => ['key_type' => 'write'],
+            'data' => ['key_type' => 'write', 'write_enabled' => true],
         ]);
         $mockHttp->setResponse('GET', 'translations', [
             'data' => ['__uncategorized__' => []],
@@ -631,7 +632,7 @@ class ClientTest extends TestCase
     {
         $mockHttp = new MockHttpClient();
         $mockHttp->setResponse('GET', 'authorize-project/project-id', [
-            'data' => ['key_type' => 'read'],
+            'data' => ['key_type' => 'read', 'write_enabled' => false],
         ]);
         $mockHttp->setResponse('GET', 'translations', [
             'data' => ['__uncategorized__' => []],
@@ -673,6 +674,7 @@ class ClientTest extends TestCase
         $mockHttp->setResponse('GET', 'authorize-project/project-id', [
             'data' => [
                 'key_type' => 'write',
+                'write_enabled' => true,
                 'langsys_settings' => [
                     'translatable_items' => [
                         'batch_limit' => 50,
@@ -691,7 +693,7 @@ class ClientTest extends TestCase
     {
         $mockHttp = new MockHttpClient();
         $mockHttp->setResponse('GET', 'authorize-project/project-id', [
-            'data' => ['key_type' => 'write'],
+            'data' => ['key_type' => 'write', 'write_enabled' => true],
         ]);
 
         $client = $this->createClientWithMockHttp($mockHttp);
@@ -701,16 +703,152 @@ class ClientTest extends TestCase
     }
 
     // =========================================================================
+    // Write-gate tests
+    // =========================================================================
+
+    public function testCanWriteWithIpWriteKeyThatServerReportsWriteEnabled()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'ip_write', 'write_enabled' => true],
+        ]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+
+        $this->assertTrue($client->canWrite());
+    }
+
+    public function testCannotWriteWithIpWriteKeyThatServerReportsNotWriteEnabled()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'ip_write', 'write_enabled' => false],
+        ]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+
+        $this->assertFalse($client->canWrite());
+    }
+
+    /**
+     * write_enabled is authoritative in both directions - the server can refuse
+     * a plain write key (suspended subscription, revoked grant) and the SDK
+     * must respect that rather than infer capability from the key type.
+     */
+    public function testWriteEnabledOverridesWriteKeyType()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'write', 'write_enabled' => false],
+        ]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+
+        $this->assertFalse($client->canWrite());
+    }
+
+    public function testTreatsMissingWriteEnabledAsReadOnly()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'write'],
+        ]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+
+        $this->assertFalse($client->canWrite(), 'An API too old to compute the flag must not fall back to key_type');
+    }
+
+    // =========================================================================
+    // The write decision must never outlive the request
+    // =========================================================================
+
+    /**
+     * write_enabled is derived from the caller's IP, so persisting it applies
+     * one caller's answer to every later request sharing the cache.
+     */
+    public function testWriteDecisionIsNeverWrittenToTheCache()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'ip_write', 'write_enabled' => true, 'base_locale' => 'en-us'],
+        ]);
+
+        $cache = new FileCache(sys_get_temp_dir() . '/langsys-test-' . uniqid());
+        $client = $this->createClientWithMockHttp($mockHttp, $cache);
+        $client->authorize();
+
+        $cached = $cache->get('auth_project-id');
+
+        $this->assertIsArray($cached);
+        $this->assertArrayNotHasKey('write_enabled', $cached, 'The write decision must not be persisted');
+        $this->assertArrayHasKey('key_type', $cached, 'Static project data is still safe to cache');
+
+        $cache->clear();
+    }
+
+    /**
+     * A cache hit carries no write decision, so the SDK must re-authorize to
+     * get one for THIS request rather than defaulting to false (which would
+     * silently disable registration for the life of the cache entry).
+     */
+    public function testCacheHitStillResolvesTheWriteDecisionForThisRequest()
+    {
+        $cache = new FileCache(sys_get_temp_dir() . '/langsys-test-' . uniqid());
+
+        // Prime the cache the way an earlier, non-write-enabled request would.
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'ip_write', 'write_enabled' => false, 'base_locale' => 'en-us'],
+        ]);
+        $this->createClientWithMockHttp($mockHttp, $cache)->authorize();
+
+        // A later request from an allow-listed IP hits that warm cache.
+        $mockHttp2 = new MockHttpClient();
+        $mockHttp2->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'ip_write', 'write_enabled' => true, 'base_locale' => 'en-us'],
+        ]);
+        $client = $this->createClientWithMockHttp($mockHttp2, $cache);
+
+        $this->assertTrue($client->canWrite(), 'A warm cache must not decide the write question for a new request');
+
+        $cache->clear();
+    }
+
+    /**
+     * Under Octane/Swoole/RoadRunner the Client outlives the request, so the
+     * decision has to be resettable between them.
+     */
+    public function testResetRequestStateClearsTheWriteDecision()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'ip_write', 'write_enabled' => true],
+        ]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+        $this->assertTrue($client->canWrite());
+
+        // Same worker, next request - this one is not allow-listed.
+        $client->resetRequestState();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'ip_write', 'write_enabled' => false],
+        ]);
+
+        $this->assertFalse($client->canWrite());
+    }
+
+    // =========================================================================
     // Helper methods
     // =========================================================================
 
     /**
      * Create a client with injected mock HTTP client.
      */
-    private function createClientWithMockHttp(MockHttpClient $mockHttp)
+    private function createClientWithMockHttp(MockHttpClient $mockHttp, $cache = null)
     {
         $client = new Client('test-api-key', 'project-id', [
-            'cache' => new NullCache(),
+            'cache' => $cache !== null ? $cache : new NullCache(),
         ]);
 
         // Use reflection to inject mock HTTP client

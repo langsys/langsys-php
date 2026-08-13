@@ -33,6 +33,7 @@ class PageTranslatorTest extends TestCase
                 'id' => 'test-project-id',
                 'title' => 'Test Project',
                 'key_type' => 'write',
+                'write_enabled' => true,
                 'base_locale' => 'en-us',
             ],
         ]);
@@ -663,6 +664,7 @@ class PageTranslatorTest extends TestCase
             'data' => [
                 'id' => 'test-project-id',
                 'key_type' => 'read', // Read-only
+                'write_enabled' => false,
             ],
         ]);
 
@@ -1183,5 +1185,186 @@ class PageTranslatorTest extends TestCase
         // Structure should be preserved
         $this->assertStringContainsString('<div class="field">', $result);
         $this->assertStringContainsString('<div class="actions">', $result);
+    }
+
+    // =========================================================================
+    // Write-gate and registration-bookkeeping regression tests
+    // =========================================================================
+
+    /**
+     * An ip_write key called from an allow-listed IP is write-enabled, and the
+     * server says so via write_enabled. Gating on key_type === 'write' rejected
+     * it and silently disabled discovery on the page path.
+     */
+    public function testRegistersWithIpWriteKeyWhenServerSaysWriteEnabled(): void
+    {
+        $this->mockHttp->setResponse('GET', 'authorize-project/test-project-id', [
+            'status' => true,
+            'data' => [
+                'id' => 'test-project-id',
+                'key_type' => 'ip_write',
+                'write_enabled' => true,
+                'base_locale' => 'en-us',
+            ],
+        ]);
+        $this->mockHttp->setResponse('POST', 'translatable-items', ['status' => true]);
+        $this->setTranslations([]);
+
+        $translator = new PageTranslator($this->client);
+        $translator->translate(
+            '<!DOCTYPE html><html><head></head><body><p>Brand new phrase</p></body></html>',
+            'es-es'
+        );
+
+        $this->assertTrue(
+            $this->postedPhrase('Brand new phrase'),
+            'An ip_write key that the server reports as write-enabled must register discovered phrases'
+        );
+    }
+
+    /**
+     * The inverse: an ip_write key from a non-allow-listed IP is read-only for
+     * this request, whatever its type says.
+     */
+    public function testDoesNotRegisterWithIpWriteKeyWhenServerSaysNotWriteEnabled(): void
+    {
+        $this->mockHttp->setResponse('GET', 'authorize-project/test-project-id', [
+            'status' => true,
+            'data' => [
+                'id' => 'test-project-id',
+                'key_type' => 'ip_write',
+                'write_enabled' => false,
+                'base_locale' => 'en-us',
+            ],
+        ]);
+        $this->mockHttp->setResponse('POST', 'translatable-items', ['status' => true]);
+        $this->setTranslations([]);
+
+        $translator = new PageTranslator($this->client);
+        $translator->translate(
+            '<!DOCTYPE html><html><head></head><body><p>Brand new phrase</p></body></html>',
+            'es-es'
+        );
+
+        $this->assertFalse($this->postedPhrase('Brand new phrase'));
+    }
+
+    /**
+     * A render that could not write must not record the phrases it found as
+     * already registered. Doing so suppressed them on every later render until
+     * the cache expired - so fixing the write gate alone would not have
+     * restored discovery on any host that had rendered while it was broken.
+     */
+    public function testDoesNotRecordRegistrationThatNeverHappened(): void
+    {
+        $cache = $this->createFileCache();
+        $client = $this->createMockClientWithCache($cache);
+
+        // First render: the server reports this request as read-only.
+        $this->mockHttp->setResponse('GET', 'authorize-project/test-project-id', [
+            'status' => true,
+            'data' => ['id' => 'test-project-id', 'key_type' => 'ip_write', 'write_enabled' => false],
+        ]);
+        $this->mockHttp->setResponse('POST', 'translatable-items', ['status' => true]);
+        $this->setTranslations([]);
+
+        $html = '<!DOCTYPE html><html><head></head><body><p>Undiscovered phrase</p></body></html>';
+        (new PageTranslator($client))->translate($html, 'es-es');
+
+        $this->assertFalse($this->postedPhrase('Undiscovered phrase'), 'sanity: nothing should have been sent');
+
+        // Second render from a write-enabled request, sharing the same cache.
+        $this->mockHttp->setResponse('GET', 'authorize-project/test-project-id', [
+            'status' => true,
+            'data' => ['id' => 'test-project-id', 'key_type' => 'ip_write', 'write_enabled' => true],
+        ]);
+        $client2 = $this->createMockClientWithCache($cache);
+        (new PageTranslator($client2))->translate($html, 'es-es');
+
+        $this->assertTrue(
+            $this->postedPhrase('Undiscovered phrase'),
+            'The phrase must still be registrable: the earlier skipped write must not have been recorded as done'
+        );
+
+        $this->removeFileCache($cache);
+    }
+
+    /**
+     * The registered-items cache is shared by every request on the host (and
+     * by the fleet on Redis), so its key must be namespaced by project or one
+     * project's record suppresses another project's registrations.
+     */
+    public function testRegisteredItemsCacheKeyIsProjectScoped(): void
+    {
+        $translator = new PageTranslator($this->client);
+
+        $method = new \ReflectionMethod($translator, 'getRegisteredItemsCacheKey');
+        $method->setAccessible(true);
+        $key = $method->invoke($translator, 'Navigation');
+
+        $this->assertStringContainsString('test-project-id', $key);
+        $this->assertStringContainsString('Navigation', $key);
+    }
+
+    // =========================================================================
+    // Helpers for the tests above
+    // =========================================================================
+
+    /**
+     * Whether a phrase was POSTed to the translatable-items endpoint.
+     */
+    private function postedPhrase($phrase)
+    {
+        foreach ($this->mockHttp->getRequests() as $request) {
+            if ($request['method'] !== 'POST' || $request['endpoint'] !== 'translatable-items') {
+                continue;
+            }
+            foreach ($request['data']['translatable_items'] as $item) {
+                if (isset($item['phrase']) && $item['phrase'] === $phrase) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private function createFileCache()
+    {
+        return new \Langsys\SDK\Cache\FileCache(
+            sys_get_temp_dir() . '/langsys-test-' . uniqid()
+        );
+    }
+
+    private function removeFileCache(\Langsys\SDK\Cache\FileCache $cache)
+    {
+        $cache->clear();
+    }
+
+    /**
+     * Same wiring as createMockClient(), but with a real (shared) cache so the
+     * registered-items bookkeeping is actually exercised.
+     */
+    private function createMockClientWithCache($cache)
+    {
+        $client = new Client('test-api-key', 'test-project-id', ['cache' => $cache]);
+
+        $reflection = new \ReflectionClass($client);
+
+        $httpProperty = $reflection->getProperty('http');
+        $httpProperty->setAccessible(true);
+        $httpProperty->setValue($client, $this->mockHttp);
+
+        foreach (['translations', 'translatableItems'] as $resourceName) {
+            $property = $reflection->getProperty($resourceName);
+            $property->setAccessible(true);
+            $resource = $property->getValue($client);
+
+            $resourceHttp = (new \ReflectionClass($resource))->getProperty('http');
+            $resourceHttp->setAccessible(true);
+            $resourceHttp->setValue($resource, $this->mockHttp);
+        }
+
+        return $client;
     }
 }

@@ -151,19 +151,22 @@ class PageTranslator
             $registeredItems
         );
 
-        // Register new items (silent skip if read-only)
+        // Register new items (silent skip if this request may not write)
         if (!empty($newPhrases) || !empty($newContentBlocks)) {
-            $this->registerNewItemsWithCategory($newPhrases, $newContentBlocks, $locale);
+            $registered = $this->registerNewItemsWithCategory($newPhrases, $newContentBlocks, $locale);
 
-            // Mark items as registered in cache (to avoid re-registration on next load)
-            $this->markItemsAsRegisteredWithCategory($newPhrases, $newContentBlocks);
+            // Mark only what the API confirmed, so a skipped or failed write is
+            // retried on the next render instead of being recorded as done.
+            if (!empty($registered['phrases']) || !empty($registered['contentBlocks'])) {
+                $this->markItemsAsRegisteredWithCategory($registered['phrases'], $registered['contentBlocks']);
 
-            // Refresh translations cache
-            try {
-                $this->client->clearCache($locale);
-                $translations = $this->client->getTranslations($locale);
-            } catch (\Exception $e) {
-                // Ignore - use existing translations
+                // Refresh translations cache
+                try {
+                    $this->client->clearCache($locale);
+                    $translations = $this->client->getTranslations($locale);
+                } catch (\Exception $e) {
+                    // Ignore - use existing translations
+                }
             }
         }
 
@@ -713,13 +716,18 @@ class PageTranslator
     /**
      * Get the cache key for registered items.
      *
+     * Namespaced by project like every other key in the SDK: the cache is
+     * shared by every request on the host (and by the fleet on Redis), so an
+     * un-namespaced key lets one project's registration record suppress
+     * another project's registrations.
+     *
      * @param string|null $category Category
      * @return string Cache key
      */
     protected function getRegisteredItemsCacheKey($category = null)
     {
         $cat = $category !== null ? $category : '__uncategorized__';
-        return 'registered_items_' . $cat;
+        return 'registered_items_' . $this->client->getConfig()->getProjectId() . '_' . $cat;
     }
 
     /**
@@ -932,20 +940,28 @@ class PageTranslator
     /**
      * Register new items with per-item categories.
      *
+     * Returns only the items the API actually accepted, so the caller can
+     * record confirmed registrations rather than attempted ones. Marking an
+     * item registered when the write was skipped or failed suppresses it on
+     * every later render until the cache expires - a silent, self-inflicted
+     * content loss that outlives the failure that caused it.
+     *
      * @param array $newPhrases Phrases with their categories
      * @param array $newContentBlocks Content blocks with their categories
      * @param string $locale Target locale
-     * @return void
+     * @return array ['phrases' => [...], 'contentBlocks' => [...]] items confirmed registered
      */
     protected function registerNewItemsWithCategory(array $newPhrases, array $newContentBlocks, $locale)
     {
-        // Silent skip if no write permission
+        $registered = ['phrases' => [], 'contentBlocks' => []];
+
+        // Silent skip if this request may not write
         try {
             if (!$this->client->canWrite()) {
-                return;
+                return $registered;
             }
         } catch (\Exception $e) {
-            return;
+            return $registered;
         }
 
         // Register phrases (grouped by category for efficiency)
@@ -959,8 +975,9 @@ class PageTranslator
                     ];
                 }
                 $this->client->registerPhrases($phraseData);
+                $registered['phrases'] = $newPhrases;
             } catch (\Exception $e) {
-                // Silent failure
+                // Silent failure - leave these unrecorded so a later render retries
             }
         }
 
@@ -973,10 +990,13 @@ class PageTranslator
                     null, // label
                     $block['customId']
                 );
+                $registered['contentBlocks'][] = $block;
             } catch (\Exception $e) {
-                // Silent failure
+                // Silent failure - leave this unrecorded so a later render retries
             }
         }
+
+        return $registered;
     }
 
     /**
