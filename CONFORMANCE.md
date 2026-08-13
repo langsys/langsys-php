@@ -1,6 +1,6 @@
 # Conformance — langsys/php-sdk
 
-Spec version implemented: **v4**
+Spec version implemented: **v6**
 Profile: **server**
 
 Every rule maps to the test that proves it. A rule with no test is NOT IMPLEMENTED —
@@ -18,6 +18,20 @@ item on the spec and is deliberately not being invented here.
 
 Every test cited below was checked to fail against the pre-fix code by stashing `src/`
 and re-running. A regression test never seen red is a guess.
+
+**Which rules are live today.** The capability family (GATE-1, GATE-3) and the whole hint
+lane are **pre-emptive, not live**. `ApiKeyType::IP_WRITE` and its allow-list ship on an
+unmerged backend branch (`feature/838_write_key_gating`); production deploys from `main`,
+where the type is `read` or `write` only. For a plain `write` key `allowsWrite()` returns
+true unconditionally, so `write_enabled` and `key_type === 'write'` always agree — the old
+gate was never wrong in the field, and the decision this SDK was caching was always correct.
+
+Four defects on this branch **were** live on every deployment regardless of key type:
+GATE-5 (the exception path writes false markers with no gating involved), REG-10, WIRE-3
+and WIRE-4. All four surfaced while investigating the gate, which turned out not to be the
+problem. That is the argument for auditing against the whole spec rather than chasing the
+reported symptom — and the reason this section exists, so nobody triages GATE-1 above a
+rule that is serving 500s right now.
 
 ## Capability
 
@@ -111,8 +125,8 @@ and re-running. A regression test never seen red is a guess.
    swallows. The rule asks for exactly one behaviour.
 3. **REG-3 / REG-8** — a failure during the shutdown flush is unrecoverable and silent. Blocked
    on the spec's Open item; logging is the interim MUST and is in place.
-4. **GRANT-1…4** — no write-grant support. Without it an `ip_write` key cannot write for an
-   authenticated user from a non-allow-listed address, which is the case grants exist to serve.
+4. **GRANT-1…4** — no write-grant support. Blocked upstream rather than by us: grants ship
+   with `feature/838_write_key_gating` and cannot be exercised against production today.
 5. **OBS-1** — a write-expected key that resolves `write_enabled: false` and never queues
    anything produces no diagnostic at all.
 6. **REG-11** — no ellipsis diagnostic.
@@ -122,7 +136,20 @@ and re-running. A regression test never seen red is a guess.
 
 ## History
 
-Written against spec v2 and updated through v4. Three rules moved from *not implemented* to
-*provisional* after the fixes on this branch: WIRE-4, REG-10 and REG-12. Writing this file is
-what surfaced WIRE-4, which was the most costly defect in the SDK and was not on anyone's list
-before the rules were checked one at a time against running code.
+Written against spec v2, updated through v6.
+
+**What surfaced while writing it.** WIRE-4 — `translate()` throwing on an API outage, so a
+Langsys outage returned a 500 on every page calling `t()` — was found by checking the rules
+one at a time against running code. It was on nobody's list beforehand and is the most costly
+defect the exercise turned up. WIRE-2 and WIRE-3 were found the same way, by executing the
+check rather than reading the source: both looked correct on inspection.
+
+Three rules moved from *not implemented* to *provisional* on this branch: WIRE-4, REG-10
+(partial) and REG-12.
+
+Two claims in this file were wrong and were corrected rather than quietly dropped. The
+severity of GATE-1 and GATE-3 was overstated as live breakage before checking whether
+`ip_write` exists in production — it does not. And a test docblock asserted the server can
+refuse a plain write key via a suspended subscription; it cannot, since suspension returns
+402 before the flag is computed. The assertion was right and the reasoning was wrong, which
+is the same object as a rule that certifies a bug as fixed.
