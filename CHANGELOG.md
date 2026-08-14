@@ -5,7 +5,21 @@ All notable changes to the Langsys PHP SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.1.0] - 2026-08-14
+
+### Security
+
+- **`data-langsys-phrase` let the translation catalog rewrite `<script>` and
+  `<style>` bodies.** Their contents were encoded into the phrase, so inline JS
+  and CSS were registered to the shared catalog (billed, and potentially leaking
+  inline config), `translate="no"` was silently overridden, and a translation for
+  a `<script>` body was applied straight back into the element — making the
+  catalog a script-injection vector for any page using the marker.
+
+  Opaque subtrees (`script`, `style`, `noscript`, `template`, `svg`, `math`, and
+  anything marked `translate="no"` / `data-notrans`) are now preserved verbatim
+  and contribute nothing to the phrase. Introduced and fixed before release; no
+  tagged version shipped it.
 
 ### Added
 
@@ -45,6 +59,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   but every language now produces prose rather than visible markup. Behaviour
   with `ext-intl` present is unchanged, and a malformed pattern is still emitted
   verbatim, matching the JS SDK.
+
+- **Content blocks containing invalid UTF-8 all collapsed onto one `custom_id`.**
+  `json_encode()` returns `false` on invalid UTF-8 and `md5(false)` is `md5('')`,
+  so every such block shared a single id. Falls back to a serialization that
+  cannot fail.
+
+- Without `ext-intl`, a parameter value that itself looked like ICU caused
+  unbounded recursion and an uncatchable memory-exhaustion fatal; an outer `#`
+  also overwrote a nested plural's own value. Values are no longer re-scanned and
+  each nesting level keeps its own `#`. Deeply nested patterns are bounded.
+
+- Without `ext-intl`, the `one` branch was missed for `1.0` and `"1.0"`, and an
+  `offset:N` prefix mis-keyed the first branch.
+
+### Known limitations
+
+- Without `ext-intl`, ICU **apostrophe quoting** is not handled: a translation
+  using `'{'` as a literal desynchronises brace matching and falls back to
+  emitting the pattern verbatim, and `''` is not unescaped. Only affects hosts
+  missing the required extension.
+
+- `data-langsys-phrase` is a `translatePage()` feature. Inside a content block a
+  marked run still splits at tag boundaries, because content blocks are applied
+  by a path with no tokenized branch.
+
+- Content block `custom_id`s match the JS SDKs for ASCII only. See the note in
+  1.0.2 — the JS SDK's `md5` hashes UTF-16 code units rather than UTF-8 bytes, so
+  any non-ASCII character still yields two ids for one block. Resolving it
+  requires a coordinated change across SDKs.
 
 ## [1.0.2] - 2026-08-12
 
