@@ -84,10 +84,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   marked run still splits at tag boundaries, because content blocks are applied
   by a path with no tokenized branch.
 
-- Content block `custom_id`s match the JS SDKs for ASCII only. See the note in
-  1.0.2 — the JS SDK's `md5` hashes UTF-16 code units rather than UTF-8 bytes, so
-  any non-ASCII character still yields two ids for one block. Resolving it
-  requires a coordinated change across SDKs.
+- Content block `custom_id`s match the JS SDKs **only when paired with
+  `langsys-js-typescript` 0.6.0 or later**. Below that version the JS SDK hashed
+  UTF-16 code units rather than UTF-8 bytes, so any non-ASCII character produced
+  a different id for the same block (and could collide two distinct blocks onto
+  one id). Fixed on the JS side in 0.6.0; this SDK's ids were always the correct
+  values and did not change. Verified against the published 0.6.0 package using
+  `tests/fixtures/custom-id-reference.json`: 12/12.
 
 ## [1.0.2] - 2026-08-12
 
