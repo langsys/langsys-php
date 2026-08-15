@@ -1,0 +1,99 @@
+[
+    {
+        "category": "Blog",
+        "tokens": [
+            "Hello",
+            "World"
+        ],
+        "canonical_json": "[\"Blog\",[\"Hello\",\"World\"]]",
+        "custom_id": "e842b4fa43d2a813dded03f74d2ff5bf"
+    },
+    {
+        "category": "",
+        "tokens": [
+            "Hello",
+            "World"
+        ],
+        "canonical_json": "[\"\",[\"Hello\",\"World\"]]",
+        "custom_id": "129c7fff6e0191131fb4e45845b89550"
+    },
+    {
+        "category": "a/b",
+        "tokens": [
+            "Café",
+            "e/mail"
+        ],
+        "canonical_json": "[\"a/b\",[\"Café\",\"e/mail\"]]",
+        "custom_id": "08871336fa83c616153d636996cf59cb"
+    },
+    {
+        "category": "home",
+        "tokens": [
+            "Don’t miss out"
+        ],
+        "canonical_json": "[\"home\",[\"Don’t miss out\"]]",
+        "custom_id": "78c84ab81cfc4a106fb24d37c5eb1029"
+    },
+    {
+        "category": "home",
+        "tokens": [
+            "éa"
+        ],
+        "canonical_json": "[\"home\",[\"éa\"]]",
+        "custom_id": "e431ac112f131bea0f462b30397c1a9a"
+    },
+    {
+        "category": "home",
+        "tokens": [
+            "ǩa"
+        ],
+        "canonical_json": "[\"home\",[\"ǩa\"]]",
+        "custom_id": "b8fa4ac2eb2fd7f14ef3fd0d69240089"
+    },
+    {
+        "category": "home",
+        "tokens": [
+            "Mon–Fri"
+        ],
+        "canonical_json": "[\"home\",[\"Mon–Fri\"]]",
+        "custom_id": "1f8f1b74e663a0c09388523116cd59b4"
+    },
+    {
+        "category": "inicio",
+        "tokens": [
+            "Bienvenido, ¿cómo estás?"
+        ],
+        "canonical_json": "[\"inicio\",[\"Bienvenido, ¿cómo estás?\"]]",
+        "custom_id": "fa2fd78a840f3e608f1bcd10b84c2b04"
+    },
+    {
+        "category": "home",
+        "tokens": [
+            "☃"
+        ],
+        "canonical_json": "[\"home\",[\"☃\"]]",
+        "custom_id": "d64db93d63a83eeffb038928463b74d7"
+    },
+    {
+        "category": "home",
+        "tokens": [
+            "a😀b"
+        ],
+        "canonical_json": "[\"home\",[\"a😀b\"]]",
+        "custom_id": "42b5b87e44ff094fab41c681002eabc4"
+    },
+    {
+        "category": "home",
+        "tokens": [],
+        "canonical_json": "[\"home\",[]]",
+        "custom_id": "51ba045cdf5b4f3d06ce8fe915742a2c"
+    },
+    {
+        "category": "ключ",
+        "tokens": [
+            "Привет"
+        ],
+        "canonical_json": "[\"ключ\",[\"Привет\"]]",
+        "custom_id": "31146090dd066fdd469ac17b57d45307"
+    }
+]

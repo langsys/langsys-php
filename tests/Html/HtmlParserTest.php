@@ -216,29 +216,66 @@ class HtmlParserTest extends TestCase
         $this->assertEquals($id1, $id2);
     }
 
-    public function testGenerateCustomIdMatchesJsForm()
+    /**
+     * generateCustomId() must equal md5() over the UTF-8 bytes of the canonical
+     * JSON form - md5(JSON.stringify([category, tokens])) as a correct
+     * implementation would compute it.
+     *
+     * Values come from tests/fixtures/custom-id-reference.json, which is the
+     * REFERENCE SET for every Langsys SDK: content block identity is shared, so
+     * an SDK that disagrees with these ids will duplicate catalog entries.
+     *
+     * IMPORTANT - what this does NOT prove. It does not verify agreement with
+     * the JS SDK as that SDK behaves today. The previous version of this test
+     * asserted md5('["Blog",...]') against generateCustomId(), i.e. PHP md5
+     * against PHP md5, which proves the JSON shape and nothing about any other
+     * implementation - and on the strength of it a false parity claim was
+     * shipped in 1.0.2. The JS SDK currently uses a hand-rolled md5 over UTF-16
+     * code units, so it agrees with these ids for ASCII only and additionally
+     * collides with itself above U+00FF. Fixing that is tracked on the JS side;
+     * these fixtures are the target it must reach.
+     *
+     * Verifying cross-SDK agreement therefore means EXECUTING the other SDK
+     * against this file - never re-deriving the expected value in PHP.
+     */
+    public function testGenerateCustomIdMatchesTheReferenceFixtures()
     {
-        // Cross-SDK contract: must equal md5(JSON.stringify([category, tokens]))
-        // from the JS SDKs. json_encode with unescaped slashes + unicode produces
-        // a byte-identical string to JSON.stringify, and md5() is standard.
-        $this->assertSame(
-            md5('["Blog",["Hello","World"]]'),
-            $this->parser->generateCustomId('Blog', ['Hello', 'World'])
-        );
+        $path = dirname(__DIR__) . '/fixtures/custom-id-reference.json';
 
-        // No category: '' is hashed, and the reserved sentinel + null normalize to
-        // the same id (the JS side passes the raw '' for an uncategorized block).
-        $expected = md5('["",["Hello","World"]]');
-        $this->assertSame($expected, $this->parser->generateCustomId('', ['Hello', 'World']));
+        $this->assertFileExists($path);
+
+        $cases = json_decode(file_get_contents($path), true);
+
+        $this->assertNotEmpty($cases, 'Reference fixtures must be readable');
+
+        foreach ($cases as $case) {
+            // The canonical JSON is recorded so other SDKs can hash the exact
+            // same bytes without reimplementing our encoding choices.
+            $this->assertSame(
+                $case['custom_id'],
+                md5($case['canonical_json']),
+                'Fixture is self-consistent: ' . $case['canonical_json']
+            );
+
+            $this->assertSame(
+                $case['custom_id'],
+                $this->parser->generateCustomId($case['category'], $case['tokens']),
+                'generateCustomId must match the reference for ' . $case['canonical_json']
+            );
+        }
+    }
+
+    /**
+     * The reserved sentinel and null both mean "no category" and must hash
+     * identically to an empty string - the JS side passes a raw '' and never
+     * the sentinel, and PHP's two callers default differently.
+     */
+    public function testUncategorizedSentinelNormalizesToEmptyCategory()
+    {
+        $expected = $this->parser->generateCustomId('', ['Hello', 'World']);
+
         $this->assertSame($expected, $this->parser->generateCustomId(null, ['Hello', 'World']));
         $this->assertSame($expected, $this->parser->generateCustomId('__uncategorized__', ['Hello', 'World']));
-
-        // Slashes and non-ASCII stay unescaped - verified byte-identical to the JS
-        // SDK's generateCustomId (which now UTF-8-encodes before hashing).
-        $this->assertSame(
-            md5('["a/b",["Café","e/mail"]]'),
-            $this->parser->generateCustomId('a/b', ['Café', 'e/mail'])
-        );
     }
 
     public function testMalformedHtml()
