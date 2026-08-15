@@ -327,8 +327,8 @@ class PageTranslator
                 continue;
             }
 
-            // Skip elements with translate="no" or data-notrans
-            if ($child->getAttribute('translate') === 'no' || $child->getAttribute('data-notrans')) {
+            // Skip elements excluded from translation entirely.
+            if (HtmlParser::isTranslationExcluded($child)) {
                 continue;
             }
 
@@ -867,8 +867,8 @@ class PageTranslator
 
         // Handle element nodes
         if ($node instanceof DOMElement) {
-            // Skip translate="no" or data-notrans
-            if ($node->getAttribute('translate') === 'no' || $node->getAttribute('data-notrans')) {
+            // Skip elements excluded from translation entirely.
+            if (HtmlParser::isTranslationExcluded($node)) {
                 return;
             }
 

@@ -453,6 +453,30 @@ beside a paragraph — is currently neither extracted nor interpolated.
 The phrase registered with Langsys always keeps its placeholders — interpolation
 only affects what your code receives.
 
+#### Excluding content from translation
+
+Two spellings, both author-facing and equivalent:
+
+```html
+<code translate="no">rm -rf /</code>
+<div data-notrans>Internal build id: 4f2a91</div>
+```
+
+`translate="no"` is the standard HTML attribute. `data-notrans` is an alias for
+hosts whose templating strips unknown bare attributes, or where `translate`
+collides with another tool.
+
+For `data-notrans`, presence alone is intent — the bare attribute works like any
+boolean HTML attribute — and only an explicit `"false"` or `"0"` opts out
+(case-insensitive). Excluded subtrees are never extracted, never registered, and
+never rendered over.
+
+This is also the right way to tell `translatePage()` that a subtree is **already
+translated** — for example content resolved server-side by another mechanism.
+Without it, page translation looks up the already-translated string as a source
+phrase, misses, and registers it, putting translated text into the catalog as a
+new source phrase.
+
 #### Keeping a run together with `data-langsys-phrase`
 
 By default, page translation splits at tag boundaries, so this becomes **two**

@@ -76,8 +76,7 @@ class MarkupTokenizer
             return true;
         }
 
-        return $element->getAttribute('translate') === 'no'
-            || $element->getAttribute('data-notrans') !== '';
+        return HtmlParser::isTranslationExcluded($element);
     }
 
     /**

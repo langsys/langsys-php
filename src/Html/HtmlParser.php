@@ -191,6 +191,42 @@ class HtmlParser
     }
 
     /**
+     * Whether an element is excluded from translation entirely.
+     *
+     * Two spellings, both author-facing: the standard HTML `translate="no"`, and
+     * `data-notrans` as an alias for hosts whose templating strips unknown bare
+     * attributes or where `translate` collides with another tool.
+     *
+     * `data-notrans` follows the same convention as `data-langsys-phrase`:
+     * presence alone is intent, so the bare attribute works like any boolean
+     * HTML attribute, and only an explicit off value opts out.
+     *
+     * This previously tested the raw attribute string for PHP truthiness, which
+     * got both ends backwards: bare `data-notrans` is '' and therefore FALSY, so
+     * the natural form silently did nothing, while `data-notrans="false"` is a
+     * non-empty string and therefore TRUTHY, so the off value excluded. The
+     * failure direction was the dangerous one - content an author had marked to
+     * protect went into the shared catalog.
+     *
+     * @param DOMElement $element
+     * @return bool
+     */
+    public static function isTranslationExcluded(DOMElement $element)
+    {
+        if (strtolower($element->getAttribute('translate')) === 'no') {
+            return true;
+        }
+
+        if (!$element->hasAttribute('data-notrans')) {
+            return false;
+        }
+
+        $value = strtolower(trim($element->getAttribute('data-notrans')));
+
+        return $value !== 'false' && $value !== '0';
+    }
+
+    /**
      * @var MarkupTokenizer|null Lazily created.
      */
     protected $markupTokenizer = null;
@@ -235,11 +271,8 @@ class HtmlParser
      */
     protected function walkNode(DOMNode $node, array &$phrases)
     {
-        // Skip elements with translate="no" or data-notrans
-        if ($node instanceof DOMElement && (
-            $node->getAttribute('translate') === 'no' ||
-            $node->getAttribute('data-notrans')
-        )) {
+        // Skip elements excluded from translation entirely.
+        if ($node instanceof DOMElement && self::isTranslationExcluded($node)) {
             return;
         }
 

@@ -1071,8 +1071,8 @@ class Client
 
         // Handle element nodes
         if ($node instanceof \DOMElement) {
-            // Skip translate="no" or data-notrans
-            if ($node->getAttribute('translate') === 'no' || $node->getAttribute('data-notrans')) {
+            // Skip elements excluded from translation entirely.
+            if (HtmlParser::isTranslationExcluded($node)) {
                 return;
             }
 

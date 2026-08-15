@@ -128,6 +128,46 @@ class HtmlParserTest extends TestCase
         $this->assertNotContains('Do not translate this', $phrases);
     }
 
+    /**
+     * `data-notrans` follows the same convention as `data-langsys-phrase`:
+     * presence is intent, only an explicit off value opts out.
+     *
+     * It previously tested the raw attribute string for PHP truthiness, which
+     * got both ends backwards - bare `data-notrans` is '' and therefore falsy,
+     * so the natural form silently did nothing, while `data-notrans="false"` is
+     * a non-empty string and therefore truthy, so the OFF value excluded. The
+     * failure direction was the dangerous one: content an author marked to
+     * protect went into the shared catalog.
+     */
+    public function testDataNotransPresenceIsIntent()
+    {
+        foreach (['data-notrans', 'data-notrans="true"', 'data-notrans="1"'] as $attr) {
+            $phrases = $this->parser->extractPhrases('<div><p ' . $attr . '>Secret</p><p>Keep</p></div>');
+
+            $this->assertNotContains('Secret', $phrases, $attr . ' must exclude');
+            $this->assertContains('Keep', $phrases);
+        }
+    }
+
+    public function testDataNotransExplicitOffValueOptsOut()
+    {
+        foreach (['data-notrans="false"', 'data-notrans="FALSE"', 'data-notrans="0"'] as $attr) {
+            $this->assertContains(
+                'Secret',
+                $this->parser->extractPhrases('<div><p ' . $attr . '>Secret</p></div>'),
+                $attr . ' must NOT exclude'
+            );
+        }
+    }
+
+    public function testTranslateNoIsCaseInsensitive()
+    {
+        $this->assertNotContains(
+            'Secret',
+            $this->parser->extractPhrases('<div><p translate="NO">Secret</p></div>')
+        );
+    }
+
     public function testRespectTranslateNoOnContainer()
     {
         $html = '<div translate="no"><h1>Skip this heading</h1><p>Skip this paragraph</p></div><div><p>Keep this</p></div>';
