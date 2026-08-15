@@ -163,6 +163,24 @@ class PhraseAttributeTest extends TestCase
         }
     }
 
+    /**
+     * Whitespace around the opt-out value must not defeat it. This trim was
+     * previously present on data-notrans but missing here, so
+     * `data-langsys-phrase=" false "` opted out of neither convention.
+     */
+    public function testOptOutToleratesSurroundingWhitespace()
+    {
+        foreach ([' false ', ' FALSE ', " 0 "] as $value) {
+            $registered = $this->registeredFor('<p data-langsys-phrase="' . $value . '">a <b>b</b></p>');
+
+            $this->assertNotContains(
+                'a {m0o}b{m0c}',
+                $registered,
+                'Value "' . $value . '" must opt out'
+            );
+        }
+    }
+
     public function testNestedMarkupNumbersInPreOrder()
     {
         $this->assertContains(

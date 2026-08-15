@@ -246,19 +246,27 @@ class HtmlParser
     /**
      * Whether an element is marked as a single keep-together phrase.
      *
+     * Presence alone is intent, so a bare `data-langsys-phrase` works like any
+     * boolean HTML attribute; only an explicit off value opts out. Values are
+     * trimmed and lowercased, matching isTranslationExcluded() - the two had
+     * drifted, so `data-langsys-phrase=" false "` opted out of neither
+     * convention while `data-notrans=" false "` opted out of one.
+     *
+     * Static and public because PageTranslator applies the same rule, and the
+     * JS SDK mirrors it: a duplicated literal in two places is how the marker
+     * drifted from its documentation the first time.
+     *
      * @param DOMElement $element
      * @return bool
      */
-    protected function hasPhraseAttribute(DOMElement $element)
+    public static function isPhraseMarked(DOMElement $element)
     {
         if (!$element->hasAttribute('data-langsys-phrase')) {
             return false;
         }
 
-        $value = strtolower($element->getAttribute('data-langsys-phrase'));
+        $value = strtolower(trim($element->getAttribute('data-langsys-phrase')));
 
-        // Presence alone means intent, so a bare `data-langsys-phrase` works
-        // like any boolean HTML attribute. Only an explicit off value opts out.
         return $value !== '0' && $value !== 'false';
     }
 

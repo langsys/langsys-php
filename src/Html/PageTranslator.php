@@ -337,7 +337,7 @@ class PageTranslator
 
             // data-langsys-phrase wins over data-langsys-contentblock: it is the
             // narrower, more explicit instruction ("this run is ONE phrase").
-            if ($this->hasPhraseAttribute($child)) {
+            if (HtmlParser::isPhraseMarked($child)) {
                 $this->extractAsTokenizedPhrase($child, $phrases, $effectiveCategory);
                 continue;
             }
@@ -401,31 +401,6 @@ class PageTranslator
      * @param DOMElement $element The element to check
      * @return bool True if element should be treated as a content block
      */
-    /**
-     * Whether an element is marked as a single keep-together phrase.
-     *
-     * `data-langsys-phrase` is the opt-out from splitting at tag boundaries.
-     * Without it, `<p>Based on {n} <strong>reviews</strong></p>` decomposes into
-     * the separate entries "Based on {n}" and "reviews", putting the count in a
-     * different catalog entry from the noun it inflects - so no ICU plural rule
-     * can select the correct form.
-     *
-     * @param DOMElement $element
-     * @return bool
-     */
-    protected function hasPhraseAttribute(DOMElement $element)
-    {
-        if (!$element->hasAttribute('data-langsys-phrase')) {
-            return false;
-        }
-
-        $value = strtolower($element->getAttribute('data-langsys-phrase'));
-
-        // Presence alone means intent, so a bare `data-langsys-phrase` works
-        // like any boolean HTML attribute. Only an explicit off value opts out.
-        return $value !== '0' && $value !== 'false';
-    }
-
     /**
      * Extract an element's whole subtree as ONE tokenized phrase.
      *
