@@ -497,7 +497,18 @@ Notes:
   taken from the translation.
 - Presence alone enables it; `data-langsys-phrase="false"` (or `"0"`) opts out.
 - If a translation drops, unbalances or misnumbers the tokens, the text is
-  rendered without the markup rather than failing.
+  rendered without the markup rather than failing. The rendered page never
+  contains literal `{m0o}`/`{m0c}` tokens on any path.
+
+**If you server-render with `translatePage()` and then hydrate with a JS SDK**,
+use a JS SDK version whose tokenizer recognises `data-langsys-phrase` (it skips
+subtrees carrying either that or its own `data-ls-phrase`). The marker survives
+into the rendered HTML by design, so a JS tokenizer that does not recognise it
+will walk into a subtree this SDK has already handled and re-register it **split
+at the tag boundaries** — silently undoing the keep-together guarantee for
+exactly the content that needed it. This only applies when a JS tokenizer walks
+server-rendered nodes; a JS app rendering its own components from the catalog
+never sees this SDK's DOM.
 
 #### Plurals (ICU MessageFormat)
 
