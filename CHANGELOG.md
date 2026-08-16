@@ -5,6 +5,42 @@ All notable changes to the Langsys PHP SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **`translatePage()` no longer registers mid-render.** It issued blocking HTTP
+  calls while the user waited: one POST for the phrases, **one POST per new
+  content block**, then a cache clear and a refetch. A page with eight new blocks
+  blocked on ten round trips before a byte was sent, while `translate()` — the
+  other entry point to the same catalog — made none.
+
+  Page registration now routes through the same pending queue as `translate()`,
+  flushed by the shutdown handler or by a host framework's post-response hook
+  (Laravel terminable middleware, Octane `RequestTerminated`). Measured on a page
+  with four new content blocks and four new phrases: **0 requests during render**
+  (was 5 POSTs plus a GET), and **2 batched POSTs at flush** (was 5).
+
+  The per-block N+1 disappears with it — `flushPendingRegistrations()` already
+  batched content blocks through `createContentBlocks()`; only the inline path
+  sent them one at a time.
+
+  **Behaviour change:** a page no longer picks up translations registered by an
+  *earlier* request within the same response, because the post-registration
+  refetch is gone. Those appear on the next request instead. The refetch could
+  never help the items it was sequenced against — freshly registered phrases have
+  no translations yet.
+
+- `Client::queuePhraseForRegistration()` and `queueContentBlockForRegistration()`
+  are now public, so `PageTranslator` uses the same queue rather than a parallel
+  path.
+
+### Added
+
+- `tests/Html/PageRegistrationTest.php` — `translatePage()`'s registration path
+  previously had no test at all, despite being the route by which a whole page
+  reaches the shared catalog.
+
 ## [1.2.0] - 2026-08-16
 
 ### Fixed

@@ -207,13 +207,9 @@ class PageTranslator
             // Mark items as registered in cache (to avoid re-registration on next load)
             $this->markItemsAsRegisteredWithCategory($newPhrases, $newContentBlocks);
 
-            // Refresh translations cache
-            try {
-                $this->client->clearCache($locale);
-                $translations = $this->client->getTranslations($locale);
-            } catch (\Exception $e) {
-                // Ignore - use existing translations
-            }
+            // No refetch: registration is queued now, so nothing has been
+            // created yet and the catalog cannot have changed. The flush clears
+            // the cache after it runs, so the next request sees new translations.
         }
 
         // Apply body translations
@@ -1195,43 +1191,36 @@ class PageTranslator
      */
     protected function registerNewItemsWithCategory(array $newPhrases, array $newContentBlocks, $locale)
     {
-        // Silent skip if no write permission
-        try {
-            if (!$this->client->canWrite()) {
-                return;
-            }
-        } catch (\Exception $e) {
-            return;
+        // QUEUE, do not register inline.
+        //
+        // This used to issue blocking HTTP calls mid-render: one POST for the
+        // phrases, one POST PER new content block, and then a cache clear plus a
+        // refetch - so a page with eight new blocks blocked on ten round trips
+        // before a byte reached the user, while translate() made none.
+        //
+        // The refetch was the reason for the ordering: registration ran inline so
+        // the refreshed catalog could apply within the same response. But the
+        // items just registered have no translations yet, so it could only ever
+        // surface translations an EARLIER request registered and a translator has
+        // since filled - which the next page load picks up anyway.
+        //
+        // Routing through the shared queue also removes the N+1:
+        // flushPendingRegistrations() already batches content blocks through
+        // createContentBlocks(), where this loop sent one request each.
+        //
+        // The write-permission check is deliberately NOT repeated here; the flush
+        // performs it once and clears the queue silently on a read-only key.
+        foreach ($newPhrases as $phrase) {
+            $this->client->queuePhraseForRegistration($phrase['text'], $phrase['category']);
         }
 
-        // Register phrases (grouped by category for efficiency)
-        if (!empty($newPhrases)) {
-            try {
-                $phraseData = [];
-                foreach ($newPhrases as $phrase) {
-                    $phraseData[] = [
-                        'phrase' => $phrase['text'],
-                        'category' => $phrase['category'],
-                    ];
-                }
-                $this->client->registerPhrases($phraseData);
-            } catch (\Exception $e) {
-                // Silent failure
-            }
-        }
-
-        // Register content blocks
         foreach ($newContentBlocks as $block) {
-            try {
-                $this->client->registerContentBlock(
-                    $block['html'],
-                    $block['category'],
-                    null, // label
-                    $block['customId']
-                );
-            } catch (\Exception $e) {
-                // Silent failure
-            }
+            $this->client->queueContentBlockForRegistration(
+                $block['html'],
+                $block['category'],
+                $block['customId'],
+                isset($block['phrases']) ? $block['phrases'] : []
+            );
         }
     }
 

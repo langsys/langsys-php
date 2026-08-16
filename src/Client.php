@@ -1148,7 +1148,18 @@ class Client
      * @param string $category Category for the phrase
      * @return void
      */
-    protected function queuePhraseForRegistration($phrase, $category)
+    /**
+     * Queue a phrase for registration at end of request.
+     *
+     * Public because PageTranslator routes page registration through the same
+     * queue: the two entry points used to differ, with translate() deferring and
+     * translatePage() issuing blocking HTTP calls mid-render.
+     *
+     * @param string $phrase
+     * @param string|null $category
+     * @return void
+     */
+    public function queuePhraseForRegistration($phrase, $category)
     {
         $key = $category . '::' . $phrase;
 
@@ -1199,7 +1210,16 @@ class Client
      * @param array $phrases Extracted phrases
      * @return void
      */
-    protected function queueContentBlockForRegistration($html, $category, $customId, array $phrases)
+    /**
+     * Queue a content block for registration at end of request.
+     *
+     * @param string $html
+     * @param string|null $category
+     * @param string $customId
+     * @param array $phrases
+     * @return void
+     */
+    public function queueContentBlockForRegistration($html, $category, $customId, array $phrases)
     {
         // Skip if already queued
         if (isset($this->pendingContentBlocks[$customId])) {
