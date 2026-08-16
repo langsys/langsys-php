@@ -334,6 +334,25 @@ class PhraseAttributeTest extends TestCase
         $this->assertContains('Tooltip', $registered);
     }
 
+    /**
+     * data-langsys-contentblock deliberately differs from the other two markers:
+     * a BARE attribute does not enable it, because its documented contract
+     * requires a non-empty value. Trimming is shared, though - whitespace must
+     * not defeat the opt-out.
+     */
+    public function testContentBlockAttributeOptOutToleratesWhitespace()
+    {
+        foreach ([' false ', ' FALSE ', ' 0 '] as $value) {
+            $registered = $this->registeredFor(
+                '<div data-langsys-contentblock="' . $value . '"><p>One</p><p>Two</p></div>'
+            );
+
+            // Opted out, so the paragraphs register as individual phrases.
+            $this->assertContains('One', $registered, 'Value "' . $value . '" must opt out');
+            $this->assertContains('Two', $registered);
+        }
+    }
+
     public function testMarkerTakesPrecedenceOverContentBlock()
     {
         $this->assertContains(
