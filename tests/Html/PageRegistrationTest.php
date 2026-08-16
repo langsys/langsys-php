@@ -146,8 +146,14 @@ class PageRegistrationTest extends TestCase
     }
 
     /**
-     * A read-only key must not queue work that can never be sent, and must not
-     * make the render pay for discovering it.
+     * A read-only key must issue no requests, and the flush must drop the queue
+     * silently rather than erroring.
+     *
+     * NOTE the positive assertion first. "No requests were made" passes when the
+     * key was correctly skipped AND, identically, when discovery silently found
+     * nothing at all - so on its own it would keep passing through a refactor
+     * that broke extraction entirely. Asserting the items were queued proves the
+     * capture point is live before asserting what did not happen to them.
      */
     public function testReadOnlyKeyIssuesNoRequestsAndClearsQuietly()
     {
@@ -155,6 +161,12 @@ class PageRegistrationTest extends TestCase
 
         $client->translatePage($this->pageWithNewContent(), 'home');
 
+        // Positive: discovery ran and produced work.
+        $this->assertTrue($client->hasPendingRegistrations());
+        $this->assertNotEmpty($client->getPendingPhrases());
+        $this->assertNotEmpty($client->getPendingContentBlocks());
+
+        // Absence: none of it cost the render anything.
         $this->assertSame(0, $this->countRequests('POST'));
 
         $result = $client->flushPendingRegistrations();
