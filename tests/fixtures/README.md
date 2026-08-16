@@ -44,3 +44,24 @@ parity claim shipped in 1.0.2 on exactly that basis.
 each entry is self-consistent (`md5(canonical_json) === custom_id`), so an
 inconsistent hand-edit fails the suite rather than silently redefining the
 contract.
+
+## `tokenizer-reference.json`
+
+The companion contract: **HTML fragment in, expected token list out**, plus the
+`custom_id` those tokens produce, so the two files compose.
+
+`custom-id-reference.json` pins the hash, but its inputs are synthetic token
+lists that never touch a DOM. A divergence in how two SDKs *derive* tokens from
+HTML therefore passes it silently — which is not hypothetical: the JS SDK
+harvested every `<option>` twice, so any content block containing a `<select>`
+had different ids in the two SDKs while both fixture suites were green. The hash
+was identical; the inputs were not.
+
+Covered: `<select>`/`<optgroup>`, inline-markup splitting, translatable
+attributes including ARIA, button and submit values, `translate="no"` and
+`data-notrans` exclusion, script/style opacity, comments, void elements,
+duplicate ordering, and whitespace collapsing.
+
+Same rules as the id fixtures: verify another SDK by **executing it against this
+file**, adding cases is safe, and changing an existing expectation is a breaking
+change to content block identity in every SDK.

@@ -318,6 +318,46 @@ class HtmlParserTest extends TestCase
         $this->assertSame($expected, $this->parser->generateCustomId('__uncategorized__', ['Hello', 'World']));
     }
 
+    /**
+     * The tokenizer reference fixtures: HTML fragment in, expected token list
+     * out, plus the id those tokens produce.
+     *
+     * `custom-id-reference.json` pins the HASH but its inputs are synthetic
+     * token lists that never touch a DOM — so a divergence in how the two SDKs
+     * *derive* tokens from HTML passes it silently. That is not hypothetical:
+     * the JS SDK harvested every `<option>` twice, so any content block with a
+     * `<select>` had different ids in the two SDKs while both fixture suites
+     * were green.
+     *
+     * Same rule as the id fixtures: verify another SDK by EXECUTING it against
+     * this file, never by re-deriving the expectation in the same language.
+     */
+    public function testTokenizerMatchesTheReferenceFixtures()
+    {
+        $path = dirname(__DIR__) . '/fixtures/tokenizer-reference.json';
+
+        $this->assertFileExists($path);
+
+        $cases = json_decode(file_get_contents($path), true);
+
+        $this->assertNotEmpty($cases);
+
+        foreach ($cases as $case) {
+            $this->assertSame(
+                $case['tokens'],
+                $this->parser->extractPhrases($case['html']),
+                $case['description'] . ' — ' . $case['html']
+            );
+
+            // The two fixture files compose: these tokens must produce the id.
+            $this->assertSame(
+                $case['custom_id'],
+                $this->parser->generateCustomId('home', $case['tokens']),
+                'id for ' . $case['html']
+            );
+        }
+    }
+
     public function testMalformedHtml()
     {
         // Unclosed tags
