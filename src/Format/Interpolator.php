@@ -106,6 +106,21 @@ class Interpolator
                 return $this->renderIcuWithoutIntl($text, $params, $locale);
             }
 
+            // A well-formed pattern whose ARGUMENT is missing is not a parse
+            // failure, so MessageFormatter neither throws nor returns false - it
+            // echoes a bare "{argName}" and destroys the surrounding sentence.
+            // The malformed-ICU fallback below is therefore never reached. Route
+            // these to the branch-selecting renderer instead, which keeps the
+            // sentence and makes the gap visible.
+            //
+            // Reachable without any caller error: the backend promotes a plain
+            // {name} into {name_gender, select, ...} for gendered target locales,
+            // so the argument does not exist in the source phrase the developer
+            // wrote and nothing tells them the target grew one.
+            if ($this->missingIcuArguments($text, $params)) {
+                return $this->renderIcuWithoutIntl($text, $params, $locale);
+            }
+
             $formatted = $this->formatIcu($text, $params, $locale);
             if ($formatted !== null) {
                 return $formatted;
@@ -201,6 +216,30 @@ class Interpolator
             ]);
             return null;
         }
+    }
+
+    /**
+     * ICU argument names referenced by the pattern but absent from $params.
+     *
+     * @param string $text
+     * @param array $params
+     * @return array
+     */
+    protected function missingIcuArguments($text, array $params)
+    {
+        if (!preg_match_all('/\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*,\s*(?:plural|select|selectordinal|number|date|time)\s*[,}]/', $text, $m)) {
+            return [];
+        }
+
+        $missing = [];
+
+        foreach ($m[1] as $name) {
+            if (!array_key_exists($name, $params) || $params[$name] === null) {
+                $missing[$name] = $name;
+            }
+        }
+
+        return array_values($missing);
     }
 
     /**
@@ -312,11 +351,13 @@ class Interpolator
         $secondComma = strpos($rest, ',');
         $type = strtolower(trim($secondComma === false ? $rest : substr($rest, 0, $secondComma)));
 
-        if (!array_key_exists($name, $params) || $params[$name] === null) {
-            return $verbatim;
+        $missing = !array_key_exists($name, $params) || $params[$name] === null;
+
+        if ($missing && !in_array($type, ['plural', 'selectordinal', 'select'], true)) {
+            return $verbatim; // {v, number} etc: nothing sensible to render.
         }
 
-        $value = $params[$name];
+        $value = $missing ? null : $params[$name];
 
         // Style-less forms: {v, number}, {d, date}, {t, time}.
         if (in_array($type, ['number', 'date', 'time'], true)) {
@@ -339,7 +380,15 @@ class Interpolator
             return $verbatim;
         }
 
-        $chosen = $this->chooseIcuBranch($type, $value, $branches);
+        // A missing argument selects `other`, which every plural and select is
+        // required to provide. For select that yields a CORRECT sentence - the
+        // neutral branch is exactly what an unknown gender should render. For
+        // plural nothing can be inferred, so the count itself stays visible as
+        // {name} while the sentence around it survives, which beats both
+        // destroying the sentence and dumping the pattern.
+        $chosen = $missing
+            ? (isset($branches['other']) ? $branches['other'] : null)
+            : $this->chooseIcuBranch($type, $value, $branches);
 
         if ($chosen === null) {
             return $verbatim;
@@ -349,7 +398,7 @@ class Interpolator
         // plural inside it supplies its own, so the outer value cannot clobber
         // the inner one, and a value that happens to contain '#' or braces is
         // never re-scanned.
-        $number = $this->formatValue($value, $locale);
+        $number = $missing ? '{' . $name . '}' : $this->formatValue($value, $locale);
 
         return $this->renderIcuWithoutIntl(
             $chosen,

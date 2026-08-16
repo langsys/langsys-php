@@ -5,6 +5,48 @@ All notable changes to the Langsys PHP SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **A missing ICU argument destroyed the sentence and shipped a bare placeholder
+  to end users.** `MessageFormatter` does not throw or return `false` for a
+  well-formed pattern whose argument is absent — it echoes `{argName}` — so the
+  ICU path "succeeded", the malformed-ICU fallback was never reached, and:
+
+  ```
+  {name_gender, select, male {Bienvenido} female {Bienvenida} other {Bienvenide}} {name}
+    with ['name' => 'Sarah']   ->  '{name_gender} Sarah'      the sentence is gone
+  {count, plural, one {# item} other {# items}}
+    with ['name' => 'Sarah']   ->  '{count}'
+  ```
+
+  **This is reachable without any caller error.** The backend promotes a plain
+  `{name}` into `{name_gender, select, …}` for gendered target locales, so the
+  argument does not exist in the source phrase the developer wrote and nothing
+  tells them the target grew one. Every app translating into a gendered locale
+  hits it.
+
+  A missing argument now selects the `other` branch, which every `plural` and
+  `select` is required to provide:
+
+  ```
+  select  ->  'Bienvenide Sarah'    a CORRECT sentence; `other` is exactly what
+                                    an unknown gender should render
+  plural  ->  '{count} items'       nothing can be inferred for a count, so it
+                                    stays visible while the sentence survives
+  ```
+
+  Note the asymmetry: `select` is recoverable, `plural` is only made less bad.
+  Both beat destroying the sentence.
+
+  Behaviour is now identical with and without `ext-intl` — the two paths
+  previously produced two *different* broken outputs for the same input.
+
+  Reported by the Laravel wrapper, from an unmerged branch by a human colleague
+  (giancapra) that patched the wrapper's own Interpolator; that file was deleted
+  when the wrapper consolidated onto this SDK, so the fix had nowhere to land.
+
 ## [1.3.0] - 2026-08-16
 
 ### Changed

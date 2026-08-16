@@ -357,24 +357,32 @@ class InterpolatorTest extends TestCase
     }
 
     /**
-     * A malformed pattern must not hang or mangle - it is emitted verbatim.
+     * A missing ICU argument keeps the sentence and shows the gap, on BOTH
+     * paths - this used to leave the whole pattern verbatim here while the intl
+     * path echoed a bare "{arg}" and destroyed the sentence. Two different
+     * broken outputs for one input; now one recovery for both.
      */
-    public function testMalformedIcuIsLeftVerbatimWithoutIntl()
+    public function testMissingIcuArgumentRecoversIdenticallyWithoutIntl()
     {
         $this->requireMissingIntl();
 
-        $broken = '{n, plural, one {# item} other {# items}';
+        $this->assertEquals(
+            '{missing} items',
+            $this->interpolator->interpolate(
+                '{missing, plural, one {# item} other {# items}}',
+                ['n' => 2],
+                'en-US'
+            )
+        );
 
-        $this->assertEquals($broken, $this->interpolator->interpolate($broken, ['n' => 2], 'en-US'));
-    }
-
-    public function testUnknownArgumentInIcuIsLeftVerbatimWithoutIntl()
-    {
-        $this->requireMissingIntl();
-
-        $pattern = '{missing, plural, one {# item} other {# items}}';
-
-        $this->assertEquals($pattern, $this->interpolator->interpolate($pattern, ['n' => 2], 'en-US'));
+        $this->assertEquals(
+            'Bienvenide Sarah',
+            $this->interpolator->interpolate(
+                '{name_gender, select, male {Bienvenido} female {Bienvenida} other {Bienvenide}} {name}',
+                ['name' => 'Sarah'],
+                'es-ES'
+            )
+        );
     }
 
     /**
@@ -553,6 +561,91 @@ class InterpolatorTest extends TestCase
         $this->assertEquals(
             $broken,
             $this->interpolator->interpolate($broken, ['n' => 2], 'en-US')
+        );
+    }
+
+    // ---------------------------------------------------------------
+    // Missing ICU arguments
+    //
+    // The backend promotes a plain {name} into {name_gender, select, ...} for
+    // gendered target locales, so the argument does not exist in the source
+    // phrase the developer wrote and nothing tells them the target grew one.
+    // This is therefore reachable without any caller error.
+    //
+    // MessageFormatter does NOT throw or return false for a well-formed pattern
+    // with a missing argument - it echoes a bare "{argName}" - so the
+    // malformed-ICU fallback never fired and the sentence was destroyed.
+    // ---------------------------------------------------------------
+
+    public function testMissingSelectArgumentRendersTheNeutralBranch()
+    {
+        $pattern = '{name_gender, select, male {Bienvenido} female {Bienvenida} other {Bienvenide}} {name}';
+
+        // A select always provides `other`, so the sentence is recoverable and
+        // the result is CORRECT rather than merely readable.
+        $this->assertEquals(
+            'Bienvenide Sarah',
+            $this->interpolator->interpolate($pattern, ['name' => 'Sarah'], 'es-ES')
+        );
+
+        $this->assertStringNotContainsString('{name_gender}', $this->interpolator->interpolate($pattern, ['name' => 'Sarah'], 'es-ES'));
+    }
+
+    public function testMissingSelectArgumentDoesNotAffectTheCompleteCase()
+    {
+        $pattern = '{name_gender, select, male {Bienvenido} female {Bienvenida} other {Bienvenide}} {name}';
+
+        $this->assertEquals(
+            'Bienvenida Sarah',
+            $this->interpolator->interpolate($pattern, ['name' => 'Sarah', 'name_gender' => 'female'], 'es-ES')
+        );
+    }
+
+    /**
+     * A plural has no neutral branch to infer, so the count stays visible while
+     * the sentence around it survives - strictly better than both destroying the
+     * sentence and dumping the raw pattern.
+     */
+    public function testMissingPluralArgumentKeepsTheSentenceAndShowsTheGap()
+    {
+        $result = $this->interpolator->interpolate(
+            '{count, plural, one {# item} other {# items}}',
+            ['name' => 'Sarah'],
+            'es-ES'
+        );
+
+        $this->assertEquals('{count} items', $result);
+        $this->assertStringNotContainsString('plural', $result, 'The pattern must never be dumped to the page');
+    }
+
+    /**
+     * The recovery must not depend on ext-intl: it routes through the same
+     * branch-selecting renderer either way, so a host missing the extension
+     * gets the same output rather than a third behaviour.
+     */
+    public function testMissingArgumentBehavesIdenticallyWithAndWithoutIntl()
+    {
+        // Documents the contract; the no-intl half is exercised by the CI job
+        // that runs the suite without the extension.
+        $this->assertEquals(
+            'Bienvenide Sarah',
+            $this->interpolator->interpolate(
+                '{name_gender, select, male {Bienvenido} female {Bienvenida} other {Bienvenide}} {name}',
+                ['name' => 'Sarah'],
+                'es-ES'
+            )
+        );
+    }
+
+    public function testNullArgumentIsTreatedAsMissing()
+    {
+        $this->assertEquals(
+            'Bienvenide Sarah',
+            $this->interpolator->interpolate(
+                '{name_gender, select, male {Bienvenido} female {Bienvenida} other {Bienvenide}} {name}',
+                ['name' => 'Sarah', 'name_gender' => null],
+                'es-ES'
+            )
         );
     }
 
