@@ -1055,4 +1055,36 @@ class HtmlParserTest extends TestCase
         $result = $this->parser->resolveRelativeUrls('', 'https://example.com');
         $this->assertEquals('', $result);
     }
+
+    // =========================================================================
+    // custom_id must never collapse to a single value
+    // =========================================================================
+
+    /**
+     * json_encode() returns false on invalid UTF-8 and md5(false) === md5(''),
+     * so without a false-check every malformed block hashes to
+     * d41d8cd98f00b204e9800998ecf8427e and aliases unrelated content.
+     */
+    public function testInvalidUtf8BlocksDoNotShareOneCustomId()
+    {
+        $a = $this->parser->generateCustomId('Cat', ["Caf\xE9 one"]);
+        $b = $this->parser->generateCustomId('Cat', ["Totally \xE9 different"]);
+
+        $this->assertNotEquals($a, $b, 'Distinct malformed content must not alias');
+        $this->assertNotEquals(md5(''), $a, 'A block id must never be the md5 of an empty string');
+        $this->assertNotEquals(md5(''), $b);
+    }
+
+    /**
+     * The fallback must not disturb the JS-parity hash for valid input.
+     */
+    public function testValidContentStillHashesToTheJsForm()
+    {
+        $phrases = ['Hello', 'World'];
+
+        $this->assertEquals(
+            md5(json_encode(['Cat', $phrases], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)),
+            $this->parser->generateCustomId('Cat', $phrases)
+        );
+    }
 }

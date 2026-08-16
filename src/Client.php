@@ -25,6 +25,18 @@ use Langsys\SDK\Resources\Utilities;
 class Client
 {
     /**
+     * Key types whose write capability is fully determined by the type itself.
+     * 'ip_write' is deliberately absent - its answer varies by caller.
+     */
+    const KEY_TYPE_READ = 'read';
+    const KEY_TYPE_WRITE = 'write';
+
+    /**
+     * Local sentinel for "no category".
+     */
+    const UNCATEGORIZED = '__uncategorized__';
+
+    /**
      * @var Config
      */
     protected $config;
@@ -272,15 +284,23 @@ class Client
             // it can never reach $this->cache (a file/Redis cache shared by
             // every request on the host, and by the fleet on Redis).
             if (array_key_exists('write_enabled', $data)) {
+                // Present: authoritative, and it wins over key_type in both
+                // directions. This is the only path that can answer for an
+                // 'ip_write' key.
                 $this->writeEnabled = (bool) $data['write_enabled'];
                 unset($data['write_enabled']);
             } else {
-                // No flag means an API too old to compute one. Refuse to fall
-                // back to key_type: it cannot express IP- or grant-based write
-                // access, which is the bug this replaced.
-                $this->writeEnabled = false;
-                $this->logger->warning('Authorization response carries no write_enabled flag - treating this session as read-only', [
+                // Absent means an API too old to compute the flag. That API
+                // also has no 'ip_write' keys and no write grants, so on it
+                // key_type is not a lossy proxy - it is the complete answer.
+                // Failing closed here would silently disable registration for
+                // every deployment until the server ships the flag.
+                $keyType = isset($data['key_type']) ? $data['key_type'] : null;
+                $this->writeEnabled = ($keyType === self::KEY_TYPE_WRITE);
+                $this->logger->info('Authorization response carries no write_enabled flag - falling back to key_type', [
                     'project_id' => $this->config->getProjectId(),
+                    'key_type' => $keyType,
+                    'write_enabled' => $this->writeEnabled,
                 ]);
             }
 
@@ -300,6 +320,31 @@ class Client
     }
 
     /**
+     * Resolve a caller-supplied category to the local catalog key.
+     *
+     * The catalog keys uncategorised items under '__uncategorized__', so an
+     * empty or null category has to become the sentinel on the way in. Left
+     * unnormalised, a lookup under '' misses forever while registration writes
+     * the phrase as uncategorised - so the same phrase is re-registered on
+     * every request and never converges. Mirrors the JS SDKs'
+     * `category || '__uncategorized__'`.
+     *
+     * The opposite conversion happens on the wire, where the sentinel becomes
+     * an absent category - see TranslatableItems::normalizeCategory().
+     *
+     * @param string|null $category
+     * @return string
+     */
+    protected function normalizeCategory($category)
+    {
+        if ($category === null || $category === '') {
+            return self::UNCATEGORIZED;
+        }
+
+        return $category;
+    }
+
+    /**
      * Sync the batch limit from project data to the TranslatableItems resource.
      *
      * @return void
@@ -314,30 +359,64 @@ class Client
     /**
      * Whether this request may register content.
      *
-     * Branches on the server-computed write_enabled flag, never on key_type.
-     * An 'ip_write' key is read-only from most addresses and write-enabled from
-     * an allow-listed one, so no client-side value can express the answer - the
-     * same key legitimately answers true from one IP and false from another.
+     * The server's write_enabled flag is authoritative whenever it is present.
+     * It is never persisted (see authorize()), so a cache hit arrives without
+     * it - and only an 'ip_write' key actually needs a fresh call to recover
+     * it, because that is the one type whose answer varies by caller.
      *
-     * The decision is resolved at most once per request and held in memory
-     * only. A cache hit does not carry it (see authorize()), so an unresolved
-     * decision forces a fresh authorization rather than assuming false.
+     * Resolved at most once per request and held in memory only.
      *
      * @return bool
      */
     public function canWrite()
     {
         if ($this->writeEnabled === null) {
-            $this->authorize(true);
-
-            if ($this->writeEnabled === null) {
-                // Authorization returned an unexpected shape. Settle on
-                // read-only so we don't re-request on every call.
-                $this->writeEnabled = false;
-            }
+            $this->resolveWriteDecision();
         }
 
         return $this->writeEnabled === true;
+    }
+
+    /**
+     * Work out whether this request may write, with the fewest possible calls.
+     *
+     * A 'write' key always may and a 'read' key never may, so for those two the
+     * cached key_type is a complete answer and no network call is warranted -
+     * without this, a read-only deployment with unregistered content pays a
+     * blocking authorization round-trip on every single render, forever.
+     *
+     * The read-key shortcut holds only while this SDK sends no write grant: the
+     * server's gate is `type-allows-write OR valid-grant`, so a grant could make
+     * a read key write-enabled. If grant support is ever added (GRANT-1..4),
+     * 'read' must stop short-circuiting and resolve per request like 'ip_write'.
+     *
+     * @return void
+     */
+    protected function resolveWriteDecision()
+    {
+        // Memory or cache - deliberately not forced.
+        $data = $this->authorize();
+
+        if ($this->writeEnabled !== null) {
+            // authorize() went to the network and already answered.
+            return;
+        }
+
+        $keyType = isset($data['key_type']) ? $data['key_type'] : null;
+
+        if ($keyType === self::KEY_TYPE_WRITE || $keyType === self::KEY_TYPE_READ) {
+            $this->writeEnabled = ($keyType === self::KEY_TYPE_WRITE);
+            return;
+        }
+
+        // 'ip_write', or a type this SDK predates: the answer belongs to this
+        // request and only the server can give it.
+        $this->authorize(true);
+
+        if ($this->writeEnabled === null) {
+            // Unexpected response shape. Settle so we don't re-request per call.
+            $this->writeEnabled = false;
+        }
     }
 
     /**
@@ -468,8 +547,10 @@ class Client
                 $locale = $params;
             }
             $params = $category;
-            $category = '__uncategorized__';
+            $category = self::UNCATEGORIZED;
         }
+
+        $category = $this->normalizeCategory($category);
 
         // Locale is the one deliberate server-side divergence from the JS SDKs.
         if ($locale === null) {
@@ -536,6 +617,8 @@ class Client
      */
     public function lookupContent($category, $contentBlockId, $phrase, $locale = null)
     {
+        $category = $this->normalizeCategory($category);
+
         if ($locale === null) {
             $locale = $this->getLocale();
             if ($locale === null) {
@@ -960,11 +1043,13 @@ class Client
      * @param string $category Category for the content block (default: '__uncategorized__')
      * @return string Translated HTML
      */
-    public function translateContentBlock($html, $category = '__uncategorized__')
+    public function translateContentBlock($html, $category = self::UNCATEGORIZED)
     {
         if (empty($html)) {
             return $html;
         }
+
+        $category = $this->normalizeCategory($category);
 
         $locale = $this->getLocale();
         if ($locale === null) {
@@ -1268,9 +1353,14 @@ class Client
      * 'success' means every queued item was accepted by the API. It is false
      * whenever work was discarded or failed - a skipped write is not a
      * successful one, and a caller checking this must not be told otherwise.
-     * 'skipped' counts items that were never sent.
      *
-     * @return array ['phrases' => count, 'content_blocks' => count, 'skipped' => count, 'success' => bool]
+     * 'skipped' counts items that were never sent, and splits into:
+     *   - 'dropped'  - discarded; nothing will retry them, they are gone
+     *   - 'retained' - still queued; a later flush() can send them
+     * The distinction matters because the two need opposite responses from a
+     * caller, and 'skipped' alone cannot tell them apart.
+     *
+     * @return array ['phrases' => count, 'content_blocks' => count, 'skipped' => count, 'dropped' => count, 'retained' => count, 'success' => bool]
      */
     public function flushPendingRegistrations()
     {
@@ -1278,6 +1368,8 @@ class Client
             'phrases' => 0,
             'content_blocks' => 0,
             'skipped' => 0,
+            'dropped' => 0,
+            'retained' => 0,
             'success' => true,
         ];
 
@@ -1300,6 +1392,7 @@ class Client
                 $this->pendingPhrases = [];
                 $this->pendingContentBlocks = [];
                 $result['skipped'] = $pendingCount;
+                $result['dropped'] = $pendingCount;
                 $result['success'] = false;
                 return $result;
             }
@@ -1310,6 +1403,7 @@ class Client
             ]);
             // Left queued deliberately: a manual flush can still retry these.
             $result['skipped'] = $pendingCount;
+            $result['retained'] = $pendingCount;
             $result['success'] = false;
             return $result;
         }
@@ -1327,6 +1421,7 @@ class Client
                     'error' => $e->getMessage(),
                 ]);
                 $result['skipped'] += count($this->pendingPhrases);
+                $result['retained'] += count($this->pendingPhrases);
                 $result['success'] = false;
             }
         }
@@ -1344,6 +1439,7 @@ class Client
                     'error' => $e->getMessage(),
                 ]);
                 $result['skipped'] += count($this->pendingContentBlocks);
+                $result['retained'] += count($this->pendingContentBlocks);
                 $result['success'] = false;
             }
         }

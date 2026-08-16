@@ -178,7 +178,19 @@ class HtmlParser
         //   createContentBlock default null) agree with each other.
         $cat = ($category === null || $category === '__uncategorized__') ? '' : $category;
 
-        return md5(json_encode([$cat, array_values($phrases)], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+        $encoded = json_encode([$cat, array_values($phrases)], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+        if ($encoded === false) {
+            // json_encode returns false on invalid UTF-8, and md5(false) is
+            // md5('') - so without this every malformed block would collapse to
+            // the same id and alias unrelated content. serialize() is byte-safe
+            // and deterministic, so distinct content stays distinct. Such a
+            // block cannot match the JS-computed id either way: its bytes are
+            // not representable in JSON, so there is no shared id to agree on.
+            $encoded = serialize([$cat, array_values($phrases)]);
+        }
+
+        return md5($encoded);
     }
 
     /**

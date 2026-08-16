@@ -34,7 +34,11 @@ class Interpolator
             return false;
         }
 
-        return preg_match('/\{[^{}]+,\s*(plural|select|selectordinal|number|date|time)\s*,/', $template) === 1;
+        // Byte-for-byte the JS SDK's ICU_PATTERN (interpolate.ts:22). The
+        // trailing [,}] matters: a style-less slot like "{n, number}" is valid
+        // ICU, and requiring a comma there sent it down the simple path, where
+        // it rendered as the literal "{n, number}".
+        return preg_match('/\{[^{}]+,\s*(plural|select|selectordinal|number|date|time)\s*[,}]/', $template) === 1;
     }
 
     /**
@@ -53,29 +57,43 @@ class Interpolator
 
         if (self::isICU($template) && class_exists('MessageFormatter')) {
             $useLocale = ($locale !== null && $locale !== '') ? $locale : 'en';
-            // formatMessage() returns false on a malformed pattern (and may warn);
-            // suppress and fall through to simple interpolation, matching the JS
-            // SDK's try/catch defense-in-depth.
-            $formatted = @\MessageFormatter::formatMessage($useLocale, $template, $params);
-            if ($formatted !== false) {
-                return $formatted;
+            // formatMessage() signals a malformed pattern two different ways:
+            // false by default, but an IntlException when intl.use_exceptions=1
+            // (which '@' does NOT suppress - it only silences diagnostics). Both
+            // have to fall through to simple interpolation, or a malformed ICU
+            // string in a customer's catalog throws into their render path.
+            // Matches the JS SDK's try/catch.
+            try {
+                $formatted = @\MessageFormatter::formatMessage($useLocale, $template, $params);
+                if ($formatted !== false) {
+                    return $formatted;
+                }
+            } catch (\Exception $e) {
+                // Fall through.
             }
         }
 
-        return self::simpleInterpolate($template, $params);
+        return self::simpleInterpolate($template, $params, $locale);
     }
 
     /**
      * Cheap {name} replacement. The [^{},] class excludes ICU-shaped slots so a
      * malformed ICU string that fell through here isn't mangled further.
      *
+     * Numbers and dates get CLDR-formatted output, mirroring what the ICU
+     * defaults ({n, number}, {d, date} -> medium) would produce - and matching
+     * the JS SDK, so one catalog string renders identically in both.
+     *
      * @param string $template
      * @param array $params
+     * @param string|null $locale
      * @return string
      */
-    private static function simpleInterpolate($template, array $params)
+    private static function simpleInterpolate($template, array $params, $locale = null)
     {
-        return preg_replace_callback('/\{([^{},]+)\}/', function ($match) use ($params) {
+        $useLocale = ($locale !== null && $locale !== '') ? $locale : 'en';
+
+        return preg_replace_callback('/\{([^{},]+)\}/', function ($match) use ($params, $useLocale) {
             $key = trim($match[1]);
             if (!array_key_exists($key, $params)) {
                 return $match[0];
@@ -85,13 +103,63 @@ class Interpolator
                 return $match[0];
             }
             if ($value instanceof \DateTimeInterface) {
-                // ISO 8601, matching the JS Date.toISOString() behaviour.
-                return $value->format('c');
+                return self::formatDate($value, $useLocale);
             }
+            // Before the numeric check: is_int() is false for bool, but keeping
+            // this first makes the ordering independent of that.
             if (is_bool($value)) {
                 return $value ? 'true' : 'false';
             }
+            if (is_int($value) || is_float($value)) {
+                return self::formatNumber($value, $useLocale);
+            }
             return (string) $value;
         }, $template);
+    }
+
+    /**
+     * CLDR medium date, matching JS's
+     * Intl.DateTimeFormat(locale, { dateStyle: 'medium' }) - date only, no time.
+     *
+     * @param \DateTimeInterface $value
+     * @param string $locale
+     * @return string
+     */
+    private static function formatDate($value, $locale)
+    {
+        if (class_exists('IntlDateFormatter')) {
+            $formatter = new \IntlDateFormatter($locale, \IntlDateFormatter::MEDIUM, \IntlDateFormatter::NONE);
+            $formatted = $formatter->format($value);
+            if ($formatted !== false) {
+                return $formatted;
+            }
+        }
+
+        // JS falls back to Date.toISOString() on an invalid locale tag: UTC,
+        // milliseconds, 'Z' suffix. format('c') is none of those.
+        $utc = new \DateTime('@' . $value->getTimestamp());
+        $utc->setTimezone(new \DateTimeZone('UTC'));
+
+        return $utc->format('Y-m-d\TH:i:s') . '.' . substr($value->format('u') . '000', 0, 3) . 'Z';
+    }
+
+    /**
+     * CLDR number, matching JS's Intl.NumberFormat(locale).format(value).
+     *
+     * @param int|float $value
+     * @param string $locale
+     * @return string
+     */
+    private static function formatNumber($value, $locale)
+    {
+        if (class_exists('NumberFormatter')) {
+            $formatter = new \NumberFormatter($locale, \NumberFormatter::DECIMAL);
+            $formatted = $formatter->format($value);
+            if ($formatted !== false) {
+                return $formatted;
+            }
+        }
+
+        return (string) $value;
     }
 }

@@ -732,7 +732,13 @@ class ClientTest extends TestCase
     }
 
     /**
-     * write_enabled is authoritative in both directions.
+     * write_enabled is authoritative in both directions, on a fresh response.
+     *
+     * Scope, deliberately narrowed: since the decision is now short-circuited
+     * from a cached key_type for 'read' and 'write' keys (so a warm cache costs
+     * no round-trip), "the flag overrides key_type" is pinned on the
+     * fresh-response path only - which is the only path that can carry a flag,
+     * because it is never cached.
      *
      * No server condition produces this combination today - ApiKey::allowsWrite()
      * returns true unconditionally for a WRITE key, and a suspended subscription
@@ -753,7 +759,14 @@ class ClientTest extends TestCase
         $this->assertFalse($client->canWrite());
     }
 
-    public function testTreatsMissingWriteEnabledAsReadOnly()
+    /**
+     * Today's production API does not emit write_enabled at all - it ships on
+     * an unmerged backend branch. Failing closed on a missing flag would
+     * silently disable registration for every customer, so the SDK falls back
+     * to key_type, which on that API is not a lossy proxy but the complete
+     * answer: an API without the flag has no ip_write keys and no grants.
+     */
+    public function testFallsBackToKeyTypeWhenTheApiOmitsWriteEnabled()
     {
         $mockHttp = new MockHttpClient();
         $mockHttp->setResponse('GET', 'authorize-project/project-id', [
@@ -762,7 +775,93 @@ class ClientTest extends TestCase
 
         $client = $this->createClientWithMockHttp($mockHttp);
 
-        $this->assertFalse($client->canWrite(), 'An API too old to compute the flag must not fall back to key_type');
+        $this->assertTrue($client->canWrite(), 'A write key must keep working against an API that predates the flag');
+    }
+
+    public function testFallsBackToKeyTypeForAReadKeyWhenTheApiOmitsWriteEnabled()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'read'],
+        ]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+
+        $this->assertFalse($client->canWrite());
+    }
+
+    /**
+     * The key-type shortcut must never override a flag the server did send.
+     */
+    public function testPresentFlagWinsOverKeyTypeOnAFreshResponse()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'read', 'write_enabled' => true],
+        ]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+
+        $this->assertTrue($client->canWrite(), 'A sent flag is authoritative even when key_type would say otherwise');
+    }
+
+    // =========================================================================
+    // Resolving the decision must not cost a request per render
+    // =========================================================================
+
+    /**
+     * A read or write key's answer is fully determined by its type, so a warm
+     * cache needs no authorization call. Without this, a read-only deployment
+     * with unregistered content pays a blocking round-trip on every render,
+     * forever - it re-discovers the same items each time by design (GATE-5).
+     */
+    public function testWarmCacheCostsNoAuthorizationCallForAReadKey()
+    {
+        $cache = new FileCache(sys_get_temp_dir() . '/langsys-test-' . uniqid());
+
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'read', 'write_enabled' => false],
+        ]);
+
+        // First request warms the shared cache.
+        $this->createClientWithMockHttp($mockHttp, $cache)->canWrite();
+
+        // Second request, fresh Client, same cache - as under PHP-FPM.
+        $mockHttp->clearRequests();
+        $client = $this->createClientWithMockHttp($mockHttp, $cache);
+
+        $this->assertFalse($client->canWrite());
+        $this->assertSame([], $mockHttp->getRequests(), 'A warm cache must answer a read key with no HTTP call');
+
+        $cache->clear();
+    }
+
+    /**
+     * The inverse: ip_write is the one type whose answer varies by caller, so
+     * it must still resolve per request even on a warm cache.
+     */
+    public function testWarmCacheStillResolvesPerRequestForAnIpWriteKey()
+    {
+        $cache = new FileCache(sys_get_temp_dir() . '/langsys-test-' . uniqid());
+
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'ip_write', 'write_enabled' => false],
+        ]);
+        $this->createClientWithMockHttp($mockHttp, $cache)->canWrite();
+
+        // Same key, next request, now from an allow-listed address.
+        $mockHttp->clearRequests();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'ip_write', 'write_enabled' => true],
+        ]);
+        $client = $this->createClientWithMockHttp($mockHttp, $cache);
+
+        $this->assertTrue($client->canWrite());
+        $this->assertNotEmpty($mockHttp->getRequests(), 'ip_write must not be answered from a cached key_type');
+
+        $cache->clear();
     }
 
     // =========================================================================
@@ -955,8 +1054,122 @@ class ClientTest extends TestCase
     }
 
     // =========================================================================
+    // An empty category must not become a second, unreachable namespace
+    // =========================================================================
+
+    /**
+     * The catalog keys uncategorised items under the sentinel, so a lookup
+     * under '' misses forever while registration writes the phrase as
+     * uncategorised - the phrase is re-registered on every request and never
+     * converges. Mirrors the JS `category || '__uncategorized__'`.
+     */
+    public function testEmptyCategoryResolvesToTheUncategorizedSentinel()
+    {
+        $client = $this->clientWithCatalog([
+            '__uncategorized__' => ['Hello' => 'Hola'],
+        ]);
+
+        $this->assertSame('Hola', $client->translate('Hello', ''));
+    }
+
+    public function testEmptyCategoryDoesNotQueueAnAlreadyRegisteredPhrase()
+    {
+        $client = $this->clientWithCatalog([
+            '__uncategorized__' => ['Hello' => 'Hola'],
+        ]);
+
+        $client->translate('Hello', '');
+
+        $this->assertFalse(
+            $client->hasPendingRegistrations(),
+            'A phrase that already exists must not re-register because the category was empty'
+        );
+    }
+
+    public function testNullCategoryResolvesToTheUncategorizedSentinel()
+    {
+        $client = $this->clientWithCatalog([
+            '__uncategorized__' => ['Hello' => 'Hola'],
+        ]);
+
+        $this->assertSame('Hola', $client->translate('Hello', null));
+    }
+
+    public function testLookupContentAcceptsAnEmptyCategory()
+    {
+        $client = $this->clientWithCatalog([
+            '__uncategorized__' => ['blk' => ['Hello' => 'Hola']],
+        ]);
+
+        $this->assertSame('Hola', $client->lookupContent('', 'blk', 'Hello'));
+    }
+
+    // =========================================================================
+    // Flush must distinguish work that is gone from work that can be retried
+    // =========================================================================
+
+    public function testFlushReportsDroppedWhenTheRequestMayNotWrite()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'read', 'write_enabled' => false],
+        ]);
+        $mockHttp->setResponse('GET', 'translations', ['data' => ['__uncategorized__' => []]]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+        $client->setLocale('es-es');
+        $client->translate('Hello');
+
+        $result = $client->flushPendingRegistrations();
+
+        $this->assertSame(1, $result['dropped'], 'Nothing will retry these');
+        $this->assertSame(0, $result['retained']);
+        $this->assertFalse($client->hasPendingRegistrations());
+    }
+
+    public function testFlushReportsRetainedWhenAuthorizationFails()
+    {
+        $client = $this->createClientWithMockHttp(new MockHttpClient());
+        $client->setLocale('es-es');
+
+        // Queue against a working catalog, then take the API away.
+        $reflection = new \ReflectionClass($client);
+        $pending = $reflection->getProperty('pendingPhrases');
+        $pending->setAccessible(true);
+        $pending->setValue($client, ['__uncategorized__::Hello' => ['phrase' => 'Hello', 'category' => '__uncategorized__']]);
+
+        $throwing = new ThrowingHttpClient();
+        $httpProperty = $reflection->getProperty('http');
+        $httpProperty->setAccessible(true);
+        $httpProperty->setValue($client, $throwing);
+
+        $result = $client->flushPendingRegistrations();
+
+        $this->assertSame(1, $result['retained'], 'A later flush can still send these');
+        $this->assertSame(0, $result['dropped']);
+        $this->assertTrue($client->hasPendingRegistrations());
+    }
+
+    // =========================================================================
     // Helper methods
     // =========================================================================
+
+    /**
+     * A write-enabled client serving a fixed catalog.
+     */
+    private function clientWithCatalog(array $catalog)
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'write', 'write_enabled' => true],
+        ]);
+        $mockHttp->setResponse('GET', 'translations', ['data' => $catalog]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+        $client->setLocale('es-es');
+
+        return $client;
+    }
 
     /**
      * Create a client whose every API call fails.

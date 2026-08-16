@@ -26,6 +26,14 @@ where the type is `read` or `write` only. For a plain `write` key `allowsWrite()
 true unconditionally, so `write_enabled` and `key_type === 'write'` always agree — the old
 gate was never wrong in the field, and the decision this SDK was caching was always correct.
 
+This cuts both ways, and an earlier revision of this branch got it wrong in the
+other direction: it treated a **missing** `write_enabled` as read-only, which would have
+silently disabled registration for every customer until backend 838 deployed. The flag is
+now preferred when present and `key_type` is the fallback when absent — on an API without
+the flag there are no `ip_write` keys and no grants, so `key_type` is the complete answer
+there rather than a lossy proxy. See `CHANGELOG.md` for the release-sequencing constraint,
+which nothing in this repo enforces.
+
 Four defects on this branch **were** live on every deployment regardless of key type:
 GATE-5 (the exception path writes false markers with no gating involved), REG-10, WIRE-3
 and WIRE-4. All four surfaced while investigating the gate, which turned out not to be the
@@ -37,7 +45,7 @@ rule that is serving 500s right now.
 
 | Rule | Status | Evidence |
 |---|---|---|
-| GATE-1 | provisional | `tests/ClientTest.php::testCanWriteWithIpWriteKeyThatServerReportsWriteEnabled`, `::testCannotWriteWithIpWriteKeyThatServerReportsNotWriteEnabled`, `::testWriteEnabledOverridesWriteKeyType`, `::testTreatsMissingWriteEnabledAsReadOnly`, `tests/Html/PageTranslatorTest.php::testRegistersWithIpWriteKeyWhenServerSaysWriteEnabled` |
+| GATE-1 | provisional | `tests/ClientTest.php::testCanWriteWithIpWriteKeyThatServerReportsWriteEnabled`, `::testCannotWriteWithIpWriteKeyThatServerReportsNotWriteEnabled`, `::testWriteEnabledOverridesWriteKeyType`, `::testFallsBackToKeyTypeWhenTheApiOmitsWriteEnabled`, `::testPresentFlagWinsOverKeyTypeOnAFreshResponse`, `tests/Html/PageTranslatorTest.php::testRegistersWithIpWriteKeyWhenServerSaysWriteEnabled` |
 | GATE-2 | n/a (profile: server) | Synchronous SDK — no unknown window exists. Withdrawn for sync profiles in v2; the residual obligation is REG-10, now partially met |
 | GATE-3 | provisional | `tests/ClientTest.php::testWriteDecisionIsNeverWrittenToTheCache`, `::testCacheHitStillResolvesTheWriteDecisionForThisRequest`, `::testResetRequestStateClearsTheWriteDecision` |
 | GATE-4 | provisional | `tests/ClientTest.php::testWriteDecisionIsNeverWrittenToTheCache` — the `authorize-project` row (strip from within `data`). The `/translations` row is satisfied structurally: `Translations::getTranslationMap()` returns `$response['data']`, so the envelope never reaches the cache — **untested**, and the refactor that would break it is invisible |
@@ -65,7 +73,7 @@ rule that is serving 500s right now.
 | REG-7 | n/a (profile: server) | Synchronous — one send in flight by construction |
 | REG-8 | **not implemented** | On a failed send the queue is retained (not cleared), but there is no retry and no backoff, and at shutdown there is no later context to retry into |
 | REG-9 | **not implemented** | `TranslatableItems::createPhrases()` and `::createContentBlocks()` chunk to the server limit, and `Client::syncBatchLimit()` reads it from `langsys_settings`. But `PageTranslator::registerNewItemsWithCategory()` loops **one POST per content block**, inside the request |
-| REG-10 | provisional | `tests/ClientTest.php::testFlushReportsFailureAndCountWhenTheRequestMayNotWrite`, `::testFlushReportsSuccessWhenEverythingWasAccepted`, `::testFlushWithNothingQueuedIsSuccessNotASkip`. `flushPendingRegistrations()` now reports `success => false` and a `skipped` count for work it did not send. **Partial**: the throw-vs-swallow split across `registerPhrases()` and `PageTranslator` is unchanged, so the "exactly one behaviour" half is not met |
+| REG-10 | provisional | `tests/ClientTest.php::testFlushReportsFailureAndCountWhenTheRequestMayNotWrite`, `::testFlushReportsSuccessWhenEverythingWasAccepted`, `::testFlushWithNothingQueuedIsSuccessNotASkip`. `flushPendingRegistrations()` now reports `success => false` and a `skipped` count for work it did not send. `::testFlushReportsDroppedWhenTheRequestMayNotWrite`, `::testFlushReportsRetainedWhenAuthorizationFails` — the result now separates work that is gone from work a later flush can send. **Partial**: the throw-vs-swallow split across `registerPhrases()` and `PageTranslator` is unchanged, so the "exactly one behaviour" half is not met |
 | REG-11 | **not implemented** | No ellipsis diagnostic |
 | REG-12 | provisional | `tests/Html/PageTranslatorTest.php::testTextCollidingWithAContentBlockIdIsNotRegisteredAsAPhrase`. Both paths now treat presence alone as known, so the presence and structure checks agree |
 
@@ -106,7 +114,7 @@ rule that is serving 500s right now.
 | WIRE-1 | provisional | `HttpClient::getHeaders()` sends `X-Authorization`; no cookie or query-parameter path exists |
 | WIRE-2 | provisional | `tests/Http/HttpClientTest.php` — 9 tests covering empty bodies on 2xx, 401, 422 and 5xx, plus genuinely malformed JSON still failing |
 | WIRE-3 | provisional | Category: `tests/Resources/TranslatableItemsTest.php::testPhrasesDoNotSendTheUncategorizedSentinel` and the three sibling tests, incl. `::testNormalisingCategoryDoesNotChangeTheCustomId`. Locale: `tests/Locale/LocaleDetectorTest.php`. The lowercase `xx-yy` form is **correct** — v4 corrected the rule from "canonical BCP 47" after checking the backend, where `locales.code` is lowercase and case-sensitively compared |
-| WIRE-4 | provisional | `tests/ClientTest.php::testTranslateReturnsSourceWhenTheApiIsUnreachable` and four siblings covering interpolation, the queue staying empty, `translateContentBlock()` and `lookupContent()`. All three entry points now degrade; evidence is `tests/Mock/ThrowingHttpClient.php` |
+| WIRE-4 | provisional | `tests/ClientTest.php::testTranslateReturnsSourceWhenTheApiIsUnreachable` and four siblings covering interpolation, the queue staying empty, `translateContentBlock()` and `lookupContent()`. All three entry points now degrade, and none queues on a failed fetch (a miss is indistinguishable from a hit, so registering on a guess would turn every outage into a write storm). Evidence is `tests/Mock/ThrowingHttpClient.php` |
 
 ## Conformance meta
 
