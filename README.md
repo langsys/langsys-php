@@ -1,5 +1,13 @@
 # Langsys PHP SDK
 
+[![packagist](https://img.shields.io/packagist/v/langsys/langsys-php.svg?style=flat)](https://packagist.org/packages/langsys/langsys-php)
+[![build](https://img.shields.io/github/actions/workflow/status/langsys/langsys-php/ci.yml?style=flat)](https://github.com/langsys/langsys-php/actions)
+[![last commit](https://img.shields.io/github/last-commit/langsys/langsys-php.svg?style=flat)](https://github.com/langsys/langsys-php/commits)
+[![commit activity](https://img.shields.io/github/commit-activity/m/langsys/langsys-php.svg?style=flat)](https://github.com/langsys/langsys-php/pulse)
+[![php](https://img.shields.io/packagist/dependency-v/langsys/langsys-php/php?style=flat)](https://packagist.org/packages/langsys/langsys-php)
+[![downloads](https://img.shields.io/packagist/dm/langsys/langsys-php.svg?style=flat)](https://packagist.org/packages/langsys/langsys-php)
+[![license](https://img.shields.io/packagist/l/langsys/langsys-php.svg?style=flat)](./LICENSE)
+
 Official PHP SDK for the [Langsys](https://langsys.dev) Translation API. Manage translations, register phrases, and sync your application's translatable content.
 
 ## Requirements
