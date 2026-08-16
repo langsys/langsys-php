@@ -87,18 +87,43 @@ The ratio is the tell: **a real reachability gap is narrow; total failure across
 every file is the harness.** Same rule that caught a spurious 0/17 against the
 JS SDK.
 
-Current results, which differ by leg:
+Current results:
 
-| run | parsed | note |
+| run | parsed | why |
 |---|---|---|
-| `vendor/bin/phpunit` | 25/25 | no gap |
-| `php -n vendor/bin/phpunit` | 24/25 | `-n` drops ext-redis too, so `RedisCacheTest` skips wholesale and `Cache/RedisCache.php` never compiles |
+| local, with `redis-server` running | 25/25 | `RedisCacheTest` connects, so `RedisCache` is instantiated and compiled |
+| local `php -n` | 24/25 | `-n` resets `extension_dir`, so ext-redis is absent and the class skips at the extension guard |
+| **every CI leg, including `no-intl`** | **24/25** | ext-redis *is* installed, but there is **no Redis server**, so `setUp()` skips at the connection check — which sits *above* the `new RedisCache(...)` line, so the class still never autoloads |
 
-CI's `no-intl` job has that same hole for the same reason — its `extensions:
-curl, json, :intl` carries no redis. It is covered twice regardless: the six-leg
-matrix loads `redis` so the file executes there, and the `lint` job runs `php -l`
-over all of `src` and `tests` whatever extensions a leg happens to have. That
-last property is the point of keeping the lint job even though the matrix looks
+**`Cache/RedisCache.php` is never compiled by any CI leg, and its 8 tests have
+never executed in CI.** Not on `no-intl` and not on the six-leg matrix: the
+matrix installs `redis` but the workflow has no `services:` block, so all eight
+tests skip with *"Cannot connect to Redis server"* on every leg. Only `php -l` in
+the `lint` job touches the file at all. The driver is exercised solely on
+developer machines that happen to be running `redis-server` — which is why the
+local run above reports 25/25 and CI does not.
+
+**The local `php -n` stand-in agrees with CI on every visible number — 491 tests,
+1076 assertions, 18 skipped, and the same missing file — while being wrong about
+the cause.** Locally the extension is missing; in CI the extension is present and
+the *server* is missing. Identical output, different mechanism, and the matching
+totals are exactly what would certify a bad stand-in as validated. If you change
+anything about Redis coverage, measure it on CI rather than trusting `-n`.
+
+Two other traps found while measuring this, both of which produced confident
+wrong numbers:
+
+- `php -n -d extension=redis` **silently loads nothing** — `-n` resets
+  `extension_dir`, so the `.so` is never found. It produced a run identical to
+  plain `-n`, which is what exposed it; pass `-d extension_dir=$(php -i | grep
+  '^extension_dir' | awk '{print $3}')` alongside it.
+- Reading `extension_loaded('redis')` in the workflow tells you nothing about
+  whether the *tests* ran. The extension guard and the connection guard are
+  different lines with different consequences.
+
+It is covered for syntax regardless: the `lint` job runs `php -l` over all of
+`src` and `tests` whatever extensions a leg happens to have. That property is the
+point of keeping the lint job even though the matrix looks
 like it subsumes it — **linting does not require a file to be reachable, and
 executing does.**
 
