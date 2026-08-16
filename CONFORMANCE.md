@@ -45,7 +45,7 @@ rule that is serving 500s right now.
 
 | Rule | Status | Evidence |
 |---|---|---|
-| GATE-1 | provisional | `tests/ClientTest.php::testCanWriteWithIpWriteKeyThatServerReportsWriteEnabled`, `::testCannotWriteWithIpWriteKeyThatServerReportsNotWriteEnabled`, `::testWriteEnabledOverridesWriteKeyType`, `::testFallsBackToKeyTypeWhenTheApiOmitsWriteEnabled`, `::testPresentFlagWinsOverKeyTypeOnAFreshResponse`, `tests/Html/PageTranslatorTest.php::testRegistersWithIpWriteKeyWhenServerSaysWriteEnabled` |
+| GATE-1 | provisional | `tests/ClientTest.php::testCanWriteWithIpWriteKeyThatServerReportsWriteEnabled`, `::testCannotWriteWithIpWriteKeyThatServerReportsNotWriteEnabled`, `::testWriteEnabledOverridesWriteKeyType`, `::testFallsBackToKeyTypeWhenTheApiOmitsWriteEnabled`, `::testPresentFlagWinsOverKeyTypeOnAFreshResponse`, `tests/Html/PageTranslatorTest.php::testRegistersWithIpWriteKeyWhenServerSaysWriteEnabled`. **Depends on GRANT-1…4 being unimplemented**: `read` and `write` keys are answered from the cached `key_type` with no round-trip, which a write grant would invalidate — see the GRANT row |
 | GATE-2 | n/a (profile: server) | Synchronous SDK — no unknown window exists. Withdrawn for sync profiles in v2; the residual obligation is REG-10, now partially met |
 | GATE-3 | provisional | `tests/ClientTest.php::testWriteDecisionIsNeverWrittenToTheCache`, `::testCacheHitStillResolvesTheWriteDecisionForThisRequest`, `::testResetRequestStateClearsTheWriteDecision` |
 | GATE-4 | provisional | `tests/ClientTest.php::testWriteDecisionIsNeverWrittenToTheCache` — the `authorize-project` row (strip from within `data`). The `/translations` row is satisfied structurally: `Translations::getTranslationMap()` returns `$response['data']`, so the envelope never reaches the cache — **untested**, and the refactor that would break it is invisible |
@@ -93,7 +93,7 @@ rule that is serving 500s right now.
 
 | Rule | Status | Evidence |
 |---|---|---|
-| GRANT-1 … GRANT-4 | **not implemented** | `HttpClient::getHeaders()` sends only `X-Authorization`. No `X-Write-Grant` support, no grant provider. Note this is not merely a missing feature: without it, an `ip_write` key cannot write for an authenticated user from a non-allow-listed address, which is the case grants exist to serve |
+| GRANT-1 … GRANT-4 | **not implemented** | `HttpClient::getHeaders()` sends only `X-Authorization`. No `X-Write-Grant` support, no grant provider. Not merely a missing feature: without it an `ip_write` key cannot write for an authenticated user from a non-allow-listed address, which is the case grants exist to serve. **⚠️ Implementing this requires a change elsewhere.** [GATE-1](#gate-1)'s implementation short-circuits a `read` key to `false` from the cached `key_type` with no per-request call — correct only while no grant is sent, since the server's gate is `type-allows-write OR valid-grant`. Adding grant support MUST also remove the `KEY_TYPE_READ` short-circuit in `Client::resolveWriteDecision()` so read keys resolve per request. Enforced by `tests/Http/HttpClientTest.php::testNoWriteGrantHeaderIsSent`, which fails the moment an `X-Write-Grant` header appears |
 
 ## Caching
 
@@ -135,6 +135,8 @@ rule that is serving 500s right now.
    on the spec's Open item; logging is the interim MUST and is in place.
 4. **GRANT-1…4** — no write-grant support. Blocked upstream rather than by us: grants ship
    with `feature/838_write_key_gating` and cannot be exercised against production today.
+   Carries a prerequisite: implementing it also requires removing the read-key
+   short-circuit that GATE-1's implementation relies on. See both rows.
 5. **OBS-1** — a write-expected key that resolves `write_enabled: false` and never queues
    anything produces no diagnostic at all.
 6. **REG-11** — no ellipsis diagnostic.

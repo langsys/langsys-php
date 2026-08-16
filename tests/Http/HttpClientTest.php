@@ -92,6 +92,50 @@ class HttpClientTest extends TestCase
         );
     }
 
+    // =========================================================================
+    // Tripwire for the read-key short-circuit
+    // =========================================================================
+
+    /**
+     * TRIPWIRE — when this test fails, a fix is required elsewhere.
+     *
+     * `Client::resolveWriteDecision()` answers a 'read' key `false` straight from
+     * the cached key_type, with no per-request call. That is only correct while
+     * this SDK sends no write grant: the server's gate is
+     * `type-allows-write OR valid-grant`, so a grant can make a read key
+     * write-enabled, and a cached key_type could never know.
+     *
+     * Any grant implementation must send the token as `X-Write-Grant` (GRANT-4),
+     * so this assertion breaks the moment grant support lands.
+     *
+     * **When it does: remove the `KEY_TYPE_READ` short-circuit in
+     * `Client::resolveWriteDecision()` so read keys resolve per request, like
+     * 'ip_write'.** Do not simply update this test.
+     *
+     * Deliberately asserted on the header rather than on a config flag: a header
+     * is what the server actually gates on, so this fires regardless of how
+     * grant support is eventually configured.
+     */
+    public function testNoWriteGrantHeaderIsSent()
+    {
+        $client = new HttpClient(new Config([
+            'api_key' => 'test-api-key',
+            'project_id' => 'test-project-id',
+        ]));
+
+        $method = new \ReflectionMethod($client, 'getHeaders');
+        $method->setAccessible(true);
+        $headers = $method->invoke($client);
+
+        foreach ($headers as $header) {
+            $this->assertStringStartsNotWith(
+                'X-Write-Grant',
+                $header,
+                'Grant support has landed - remove the read-key short-circuit in Client::resolveWriteDecision()'
+            );
+        }
+    }
+
     public function testErrorMessageIsTakenFromTheBodyWhenPresent()
     {
         try {
