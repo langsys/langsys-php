@@ -476,20 +476,7 @@ class PageTranslator
 
     protected function hasContentBlockAttribute(DOMElement $element)
     {
-        if (!$element->hasAttribute('data-langsys-contentblock')) {
-            return false;
-        }
-
-        $value = strtolower(trim($element->getAttribute('data-langsys-contentblock')));
-
-        // Truthy check: attribute exists and is not empty, "0", or "false".
-        //
-        // NOTE the deliberate difference from data-langsys-phrase and
-        // data-notrans: here a BARE attribute does NOT enable, because this
-        // attribute's documented contract requires a non-empty value. Trimming
-        // is new - without it `=" false "` enabled, i.e. whitespace defeated the
-        // opt-out, which is the same defect fixed on the other two attributes.
-        return $value !== '' && $value !== '0' && $value !== 'false';
+        return HtmlParser::isContentBlockMarked($element);
     }
 
     /**

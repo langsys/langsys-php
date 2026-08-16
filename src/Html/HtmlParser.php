@@ -244,6 +244,33 @@ class HtmlParser
     }
 
     /**
+     * Whether an element is marked as a single content block.
+     *
+     * Same convention as isPhraseMarked() and isTranslationExcluded(): presence
+     * alone is intent, only an explicit off value opts out, values trimmed and
+     * lowercased.
+     *
+     * A bare attribute previously did NOTHING here, because the documented
+     * contract required a non-empty value - so `data-langsys-contentblock` on
+     * its own silently had no effect. That is the same failure shape as the
+     * data-notrans bug: a marker that looks applied and isn't. All three markers
+     * now behave identically, so there is one rule to learn rather than three.
+     *
+     * @param DOMElement $element
+     * @return bool
+     */
+    public static function isContentBlockMarked(DOMElement $element)
+    {
+        if (!$element->hasAttribute('data-langsys-contentblock')) {
+            return false;
+        }
+
+        $value = strtolower(trim($element->getAttribute('data-langsys-contentblock')));
+
+        return $value !== '0' && $value !== 'false';
+    }
+
+    /**
      * Whether an element is marked as a single keep-together phrase.
      *
      * Presence alone is intent, so a bare `data-langsys-phrase` works like any

@@ -5,6 +5,55 @@ All notable changes to the Langsys PHP SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-08-16
+
+### Fixed
+
+- **`data-notrans` did the opposite of protecting content.** The check tested the
+  raw attribute string for PHP truthiness, which inverted both ends: a bare
+  `data-notrans` is `''` and therefore falsy, so the natural form silently did
+  nothing and the content was extracted and **registered into the shared
+  catalog**; while every explicit value was a non-empty string and therefore
+  truthy, so even `data-notrans="false"` excluded. There was no value an author
+  could write to opt back in.
+
+  Now: presence is intent, only `"false"` or `"0"` opts out, trimmed and
+  case-insensitive. `translate="no"` is case-insensitive too.
+
+- Whitespace defeated the opt-out on `data-langsys-phrase` and
+  `data-langsys-contentblock`: `=" false "` enabled the marker rather than
+  opting out.
+
+### Changed
+
+- **All three markers now follow one rule.** `data-langsys-phrase`,
+  `data-langsys-contentblock` and `data-notrans` are enabled by presence alone
+  and disabled only by an explicit `"false"`/`"0"`, trimmed and case-insensitive.
+
+  **Behaviour change:** a bare or empty `data-langsys-contentblock` previously
+  did nothing, because its contract required a non-empty value. It now enables
+  the marker. This removes the last silent no-op among the markers — the same
+  failure shape as the `data-notrans` bug, where a marker looks applied and
+  isn't. Anyone relying on an empty value being ignored should remove the
+  attribute instead.
+
+### Added
+
+- `HtmlParser::isTranslationExcluded()`, `isPhraseMarked()` and
+  `isContentBlockMarked()` — public statics carrying the single definition of
+  each rule. These previously lived as duplicated private logic across five call
+  sites with three different semantics, and one copy was dead. The JS SDK mirrors
+  them under matching names.
+- **`tests/fixtures/tokenizer-reference.json`** — HTML fragment in, expected
+  token list out, plus the resulting `custom_id`. The existing id fixtures pin
+  the hash but take synthetic token lists, so a divergence in how two SDKs derive
+  tokens from HTML passed them silently. That was live: the JS SDK harvested every
+  `<option>` twice, giving different ids for any content block containing a
+  `<select>` while both suites were green.
+- Both exclusion attributes are documented for the first time, including that
+  they are the supported way to tell `translatePage()` a subtree is already
+  translated.
+
 ## [1.1.0] - 2026-08-14
 
 ### Security

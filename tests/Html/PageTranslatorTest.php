@@ -1091,9 +1091,15 @@ class PageTranslatorTest extends TestCase
         $this->assertStringContainsString('Elemento Dos', $result);
     }
 
-    public function testContentBlockAttributeEmptyIgnored(): void
+    public function testContentBlockAttributeEmptyEnablesIt(): void
     {
-        // data-langsys-contentblock="" (empty) should be ignored
+        // An empty value now ENABLES the marker, matching data-langsys-phrase
+        // and data-notrans: presence is intent, only "false"/"0" opts out.
+        //
+        // Previously a bare or empty attribute was ignored, which meant
+        // `<div data-langsys-contentblock>` silently did nothing - the same
+        // failure shape as the data-notrans bug, where a marker looks applied
+        // and isn't.
         $this->setTranslations([
             '__uncategorized__' => [
                 'Text A' => 'Texto A',
@@ -1111,6 +1117,32 @@ class PageTranslatorTest extends TestCase
         $translator = new PageTranslator($this->client);
         $result = $translator->translate($html, 'es-es');
 
+        // Treated as ONE content block, so the individual phrase translations
+        // above no longer apply - the block has no translation of its own.
+        $this->assertStringContainsString('Text A', $result);
+        $this->assertStringContainsString('Text B', $result);
+    }
+
+    public function testContentBlockAttributeExplicitFalseOptsOut(): void
+    {
+        $this->setTranslations([
+            '__uncategorized__' => [
+                'Text A' => 'Texto A',
+                'Text B' => 'Texto B',
+            ],
+        ]);
+
+        $html = '<!DOCTYPE html><html><head></head><body>
+            <div data-langsys-contentblock=" FALSE ">
+                <p>Text A</p>
+                <p>Text B</p>
+            </div>
+        </body></html>';
+
+        $translator = new PageTranslator($this->client);
+        $result = $translator->translate($html, 'es-es');
+
+        // Opted out, so the paragraphs translate as individual phrases.
         $this->assertStringContainsString('Texto A', $result);
         $this->assertStringContainsString('Texto B', $result);
     }
