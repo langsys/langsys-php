@@ -1,5 +1,27 @@
 # Cross-SDK fixtures
 
+Three reference files, one per boundary in the pipeline, each asserted against by
+langsys-js-typescript as well as this SDK:
+
+| file | boundary |
+|---|---|
+| `interpolation-reference.json` | template + params -> rendered string |
+| `tokenizer-reference.json` | HTML -> tokens -> canonical JSON -> custom_id |
+| `custom-id-reference.json` | category + tokens -> custom_id |
+
+**Why one per boundary rather than one suite.** Every cross-SDK defect found so
+far lived in a *gap between* checks that were each individually correct. The
+`<option>` double-harvest survived because the id fixtures take synthetic token
+lists that never touch a DOM — the hash was verified, the thing producing its
+input was not. The missing-ICU-argument bug survived because nothing pinned what
+a phrase renders as.
+
+> A chain of correct checks is not a correct check of the chain.
+
+The fix isn't better checks, it's a reference file at each boundary — and each one
+only proves anything because a *different implementation* executes it.
+
+
 ## `custom-id-reference.json`
 
 **This is a shared contract, not a snapshot of PHP's behaviour.** Content block
