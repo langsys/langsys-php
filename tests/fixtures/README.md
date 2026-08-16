@@ -72,3 +72,30 @@ duplicate ordering, and whitespace collapsing.
 Same rules as the id fixtures: verify another SDK by **executing it against this
 file**, adding cases is safe, and changing an existing expectation is a breaking
 change to content block identity in every SDK.
+
+## `interpolation-reference.json`
+
+**What a phrase renders as** — template, params, locale, expected output.
+
+The other two files pin markup tokens and content-block ids. Nothing pinned the
+rendered sentence, and that is where the fourth cross-SDK defect lived: a missing
+ICU argument produced different broken output in each SDK (PHP echoed a bare
+`{arg}` and destroyed the sentence; JS dumped the entire raw pattern), and
+neither suite noticed, because **every test on both sides supplied complete
+params.**
+
+Cases deliberately include the states nobody thinks to test: an argument absent,
+an argument explicitly `null`, and a genuine `0`. That last pair matters most —
+`null` must render `{count} items` while `0` renders `0 items`, because coercing
+`null` to zero makes a data-fetch failure indistinguishable from an empty cart in
+the page, in a screenshot, and in a support ticket.
+
+Each case carries `requires_intl`, **measured** by generating the file twice —
+once with the extension and once without — rather than inferred from the
+template. Only 4 of 19 cases actually depend on it, and they are not the ones you
+would guess: the ICU missing-argument recoveries are intl-independent, while a
+plain `{id}` placeholder is not, because it needs CLDR number formatting.
+
+Dates are deliberately absent: `IntlDateFormatter` output depends on the runtime
+timezone and ICU version, so a date fixture pins the environment rather than the
+contract.

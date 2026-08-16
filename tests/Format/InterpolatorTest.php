@@ -564,6 +564,47 @@ class InterpolatorTest extends TestCase
         );
     }
 
+    /**
+     * The interpolation reference fixtures, asserted against by other Langsys
+     * SDKs so a shared catalog renders the same sentence everywhere.
+     *
+     * This file exists because three of the four cross-SDK defects found so far
+     * had a standing check afterwards and the fourth did not: markup tokens and
+     * content-block ids are pinned by the other two fixture files, but nothing
+     * pinned what a phrase RENDERS AS. Both SDKs shipped different broken output
+     * for a missing ICU argument, and neither suite noticed, because every test
+     * on both sides supplied complete params.
+     *
+     * ICU cases skip without ext-intl - the recovery path is shared, but real
+     * plural-rule selection is not.
+     */
+    public function testInterpolationMatchesTheReferenceFixtures()
+    {
+        $path = dirname(__DIR__) . '/fixtures/interpolation-reference.json';
+
+        $this->assertFileExists($path);
+
+        $cases = json_decode(file_get_contents($path), true);
+
+        $this->assertNotEmpty($cases);
+
+        foreach ($cases as $case) {
+            // requires_intl is MEASURED at generation time by running each case
+            // with and without the extension, not guessed from the template -
+            // a plain {id} placeholder needs intl for locale number formatting
+            // while an ICU recovery case does not.
+            if (!empty($case['requires_intl']) && !extension_loaded('intl')) {
+                continue;
+            }
+
+            $this->assertSame(
+                $case['expected'],
+                $this->interpolator->interpolate($case['template'], $case['params'], $case['locale']),
+                $case['description'] . ' — ' . $case['template']
+            );
+        }
+    }
+
     // ---------------------------------------------------------------
     // Missing ICU arguments
     //
