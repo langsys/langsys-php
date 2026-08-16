@@ -57,6 +57,13 @@ harvested every `<option>` twice, so any content block containing a `<select>`
 had different ids in the two SDKs while both fixture suites were green. The hash
 was identical; the inputs were not.
 
+Each entry records `category` and `canonical_json` alongside `custom_id` for the
+same reason the id fixtures do: **every input to the hash must be present, or the
+column is unverifiable from outside while still looking verified.** The first
+version of this file omitted `category`, so a consumer could check `html` ->
+`tokens` but not `tokens` -> `custom_id` — the id column read as authoritative
+and could not be reproduced by anyone.
+
 Covered: `<select>`/`<optgroup>`, inline-markup splitting, translatable
 attributes including ARIA, button and submit values, `translate="no"` and
 `data-notrans` exclusion, script/style opacity, comments, void elements,

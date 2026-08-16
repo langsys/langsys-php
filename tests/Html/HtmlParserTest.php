@@ -349,10 +349,20 @@ class HtmlParserTest extends TestCase
                 $case['description'] . ' — ' . $case['html']
             );
 
+            // Every input to the hash is recorded, so another SDK can
+            // reproduce the id without knowing our defaults. The category was
+            // originally omitted, which made this column unverifiable from
+            // outside - it looked checked while being uncheckable.
+            $this->assertSame(
+                $case['custom_id'],
+                md5($case['canonical_json']),
+                'fixture is self-consistent: ' . $case['canonical_json']
+            );
+
             // The two fixture files compose: these tokens must produce the id.
             $this->assertSame(
                 $case['custom_id'],
-                $this->parser->generateCustomId('home', $case['tokens']),
+                $this->parser->generateCustomId($case['category'], $case['tokens']),
                 'id for ' . $case['html']
             );
         }

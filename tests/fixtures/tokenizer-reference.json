@@ -6,6 +6,8 @@
             "S",
             "M"
         ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"S\",\"M\"]]",
         "custom_id": "6376867e1891718e8c6a1c77d5a862f0"
     },
     {
@@ -15,6 +17,8 @@
             "Size",
             "S"
         ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"Size\",\"S\"]]",
         "custom_id": "09392d59fb6b87a89aeecc0a7edf4633"
     },
     {
@@ -24,6 +28,8 @@
             "Based on {n}",
             "reviews"
         ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"Based on {n}\",\"reviews\"]]",
         "custom_id": "81e058c38e0b4003679927ddb438fe70"
     },
     {
@@ -32,6 +38,8 @@
         "tokens": [
             "Hello World"
         ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"Hello World\"]]",
         "custom_id": "af67ea1452cd089aabff342e31651cb9"
     },
     {
@@ -42,6 +50,8 @@
             "docs",
             "now"
         ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"Read the\",\"docs\",\"now\"]]",
         "custom_id": "4125fc93615a40afced996de6f0a4444"
     },
     {
@@ -52,6 +62,8 @@
             "icon",
             "Your email"
         ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"Email\",\"icon\",\"Your email\"]]",
         "custom_id": "5a9b8eaa39182811716b8df4eadb6864"
     },
     {
@@ -64,6 +76,8 @@
             "slider",
             "x"
         ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"Close\",\"Closes the dialog\",\"Half\",\"slider\",\"x\"]]",
         "custom_id": "6f9c12bb0848b7e275e2a1880a8e4810"
     },
     {
@@ -74,12 +88,16 @@
             "Go",
             "Submit"
         ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"Send\",\"Go\",\"Submit\"]]",
         "custom_id": "0f4a111a72c55510b1f9d913fceb3f2b"
     },
     {
         "description": "text input values are NOT harvested",
         "html": "<input type=\"text\" value=\"user typed\">",
         "tokens": [],
+        "category": "home",
+        "canonical_json": "[\"home\",[]]",
         "custom_id": "51ba045cdf5b4f3d06ce8fe915742a2c"
     },
     {
@@ -88,6 +106,8 @@
         "tokens": [
             "Keep"
         ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"Keep\"]]",
         "custom_id": "599b51157531f4d67329951c0fe71356"
     },
     {
@@ -96,6 +116,8 @@
         "tokens": [
             "Keep"
         ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"Keep\"]]",
         "custom_id": "599b51157531f4d67329951c0fe71356"
     },
     {
@@ -104,6 +126,8 @@
         "tokens": [
             "Keep"
         ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"Keep\"]]",
         "custom_id": "599b51157531f4d67329951c0fe71356"
     },
     {
@@ -114,6 +138,8 @@
             "var a=1;",
             ".a{}"
         ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"Keep\",\"var a=1;\",\".a{}\"]]",
         "custom_id": "467ca66d26dad2dec740cc0108633c71"
     },
     {
@@ -123,6 +149,8 @@
             "a",
             "b"
         ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"a\",\"b\"]]",
         "custom_id": "240f7f856a9f2d05e7129de637aa3b1b"
     },
     {
@@ -131,6 +159,8 @@
         "tokens": [
             "Multiple spaces here"
         ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"Multiple spaces here\"]]",
         "custom_id": "9b920d6fd67eef24aefebc7209d742e4"
     },
     {
@@ -140,6 +170,8 @@
             "Item",
             "Item"
         ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"Item\",\"Item\"]]",
         "custom_id": "59548e132df8c21e4d61220acb4ed75c"
     },
     {
@@ -149,6 +181,8 @@
             "a",
             "b"
         ],
+        "category": "home",
+        "canonical_json": "[\"home\",[\"a\",\"b\"]]",
         "custom_id": "240f7f856a9f2d05e7129de637aa3b1b"
     }
 ]
