@@ -86,6 +86,33 @@ version of this file omitted `category`, so a consumer could check `html` ->
 `tokens` but not `tokens` -> `custom_id` — the id column read as authoritative
 and could not be reproduced by anyone.
 
+### `html` is a content *fragment* — how you feed it matters
+
+**Implementations whose tokenizer takes a root *element* must wrap the fragment
+in a container and tokenize the container.** Do not pass the fragment's top-level
+node as the root: a tokenizer that walks `root.childNodes` deliberately excludes
+the root itself — in the JS SDKs the root is the consumer's own wrapper
+(`<div use:translate>`), which is their markup, not translatable content — so
+that node's own attributes are silently dropped.
+
+This SDK never hits the ambiguity because `extractPhrases()` takes an HTML
+*string* and does the wrapping internally. That is precisely why the note has to
+be written down rather than left to be inferred from our usage.
+
+It misleads on exactly **two of the seventeen cases**, both being the ones where
+the top-level node itself carries the attributes:
+
+| case | unwrapped (wrong) | wrapped (correct) |
+|---|---|---|
+| `[5]` `<input placeholder="Email" title="Your email" alt="icon">` | `[]` | 3 tokens |
+| `[6]` `<div aria-label="Close" …>x</div>` | `["x"]` | 5 tokens |
+
+Every other case keeps its content strictly below the top-level node, so both
+harness shapes agree and the mistake stays invisible. Fifteen of seventeen green
+reads as a working harness with two SDK bugs — the inversion is the whole hazard,
+and it cost langsys-js-typescript two false failures. **Check the harness before
+the implementation when the failures are few and structurally alike.**
+
 Covered: `<select>`/`<optgroup>`, inline-markup splitting, translatable
 attributes including ARIA, button and submit values, `translate="no"` and
 `data-notrans` exclusion, script/style opacity, comments, void elements,
