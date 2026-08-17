@@ -21,12 +21,62 @@ An earlier revision of this branch failed closed on a missing flag, which would
 have silently disabled all phrase and content-block registration for every
 customer, with a warning log as the only signal. Do not reintroduce that.
 
-**2. Content-block `custom_id` values change (see `e5fbed8`).** Every
-pre-existing content block re-registers under a new id on first render after
-upgrade. Before releasing, confirm end-to-end against a real project that
-existing **human** translations re-attach — not only that machine translations
-are reused — and assign an owner for cleaning up items orphaned under the old
-ids. This is unverified at time of writing.
+**2. Content-block `custom_id` values change, and this DESTROYS existing human
+translations (see `e5fbed8`). Do not release until resolved.**
+
+Verified end-to-end against a local dataset on 2026-08-17, not inferred: a
+content block registered under the old id, given attributed human translations,
+then re-registered with identical content under the new JSON-form id, comes back
+**untranslated** — every phrase `null`. The human translations remain bound to
+the old id and are not reachable from the new block. Machine translation was
+disabled for the test, so nothing masked the result.
+
+Tested with the project's translation memory both ON and OFF; it made no
+difference. The code explains why: `TranslationService::handleMatchingPhrasesTranslations()`
+deliberately skips reuse for content-block phrases ("a content-block phrase is
+context-dependent — reusing a same-text translation produced in an unrelated
+context would corrupt the block") and routes them to machine translation
+instead. The reuse-by-content path that `e5fbed8`'s message relies on applies to
+**standalone phrases only**.
+
+The production case is worse than the test case. With machine translation
+enabled — the default — the re-registered block is machine translated in
+context, so the page still looks translated while the paid human translation has
+silently stopped being served. Nothing errors, nothing logs, and the regression
+is only visible by reading the output in each locale.
+
+**Orphan / migration plan** — owner required, recommendation first:
+
+- **A. Rewrite the ids in the backend before this SDK ships (recommended).** A
+  migration that recomputes `content_blocks.custom_id` into the JSON form and
+  updates `translations.custom_id` (and `translation_memory.custom_id`) to match
+  keeps every existing translation attached, produces no re-registration, no
+  machine-translation churn and no orphans. It belongs to langsys2: both the id
+  computation and the affected rows live there. The SDK change then becomes a
+  no-op for existing content.
+- **B. Ship, then reconcile.** Re-point orphaned translations onto the new ids
+  afterwards by matching project + category + phrase set. Strictly worse than A:
+  there is a window in which customers are served machine translations in place
+  of human ones, and reconciliation has to reconstruct the mapping A already has.
+- **C. Accept the loss and re-translate.** Not viable anywhere human translation
+  was paid for, which is the case that matters.
+
+**Decision (2026-08-17): Option A, owned by langsys2.** Matching the JS SDKs
+byte-for-byte is correct and stays — all SDKs must compute identical
+`custom_id` hashes, and the behaviour spec will pin the exact serialization
+including encoding edge cases. So `e5fbed8` needs no code change; only its
+commit message is wrong, and this entry supersedes it.
+
+**This release is blocked until the langsys2 re-keying migration has landed and
+been verified.** That migration is the specific unblocking event — not a review
+sign-off, and not this SDK reaching readiness, since the damage is done by the
+backend's reaction to what the SDK sends rather than by SDK code. Its agreed
+shape: a pre-flight residue report, a collision-merge rule that prefers human
+translations over machine ones, and idempotent re-runnability so it can be
+applied again once the whole SDK fleet is upgraded.
+
+Until that migration is verified, releasing this SDK converts paid human
+translation into machine output on every project using content blocks.
 
 ### Fixed
 

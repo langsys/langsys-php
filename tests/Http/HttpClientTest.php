@@ -115,6 +115,11 @@ class HttpClientTest extends TestCase
      * Deliberately asserted on the header rather than on a config flag: a header
      * is what the server actually gates on, so this fires regardless of how
      * grant support is eventually configured.
+     *
+     * Matched case-insensitively - HTTP header names are case-insensitive, so a
+     * guard that only catches one casing is a guard someone bypasses by
+     * accident. (It still reads `getHeaders()` rather than the wire; closing
+     * that gap needs the contract fixture CONF-1 is waiting on.)
      */
     public function testNoWriteGrantHeaderIsSent()
     {
@@ -128,8 +133,8 @@ class HttpClientTest extends TestCase
         $headers = $method->invoke($client);
 
         foreach ($headers as $header) {
-            $this->assertStringStartsNotWith(
-                'X-Write-Grant',
+            $this->assertStringNotContainsStringIgnoringCase(
+                'write-grant',
                 $header,
                 'Grant support has landed - remove the read-key short-circuit in Client::resolveWriteDecision()'
             );
