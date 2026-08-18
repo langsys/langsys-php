@@ -12,6 +12,23 @@ jobs:
     name: PHP ${{ matrix.php }}
     runs-on: ubuntu-latest
 
+    # The Redis driver had never executed in CI. ext-redis IS present on the
+    # runner, but nothing listened on 6379, so every RedisCacheTest skipped at
+    # the connection check - which sits above the `new RedisCache(...)` line, so
+    # src/Cache/RedisCache.php was not even compiled on any leg while the suite
+    # reported green. This service is what makes those 8 tests real; the
+    # LANGSYS_REQUIRE_REDIS below is what stops them going quiet again.
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     strategy:
       fail-fast: false
       matrix:
@@ -50,6 +67,7 @@ jobs:
       - name: Run test suite
         env:
           LANGSYS_REQUIRE_INTL: '1'
+          LANGSYS_REQUIRE_REDIS: '1'
         run: vendor/bin/phpunit
 
   # The graceful-degradation path (missing ext-intl warns once, falls back to

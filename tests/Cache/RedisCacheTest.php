@@ -23,24 +23,7 @@ class RedisCacheTest extends TestCase
 
     protected function setUp(): void
     {
-        if (!extension_loaded('redis')) {
-            $this->markTestSkipped('Redis extension is not available.');
-            return;
-        }
-
-        // Try to connect to Redis
-        try {
-            $redis = new \Redis();
-            $connected = @$redis->connect('127.0.0.1', 6379, 1);
-            if (!$connected) {
-                $this->markTestSkipped('Cannot connect to Redis server.');
-                return;
-            }
-            $redis->close();
-        } catch (\Exception $e) {
-            $this->markTestSkipped('Cannot connect to Redis server: ' . $e->getMessage());
-            return;
-        }
+        $this->requireRedis();
 
         $this->prefix = 'langsys_test_' . uniqid() . '::';
         $this->cache = new RedisCache([
@@ -48,6 +31,50 @@ class RedisCacheTest extends TestCase
             'port' => 6379,
             'prefix' => $this->prefix,
         ]);
+    }
+
+    /**
+     * Skip when Redis is unreachable - unless LANGSYS_REQUIRE_REDIS is set, in
+     * which case fail instead. Mirrors requireIntl() in InterpolatorTest.
+     *
+     * These tests skipped on EVERY CI leg for the whole life of the workflow.
+     * ext-redis is present on the runner, but nothing listened on 6379, so
+     * setUp bailed at the connection check - which sits above the
+     * `new RedisCache(...)` line, so src/Cache/RedisCache.php was never even
+     * compiled, let alone exercised. The suite was green throughout. CI now
+     * runs a redis service and sets this variable so that cannot recur.
+     */
+    protected function requireRedis()
+    {
+        $reason = null;
+
+        if (!extension_loaded('redis')) {
+            $reason = 'ext-redis is not loaded';
+        } else {
+            try {
+                $redis = new \Redis();
+                if (!@$redis->connect('127.0.0.1', 6379, 1)) {
+                    $reason = 'cannot connect to a Redis server on 127.0.0.1:6379';
+                } else {
+                    $redis->close();
+                }
+            } catch (\Exception $e) {
+                $reason = 'cannot connect to a Redis server: ' . $e->getMessage();
+            }
+        }
+
+        if ($reason === null) {
+            return;
+        }
+
+        if (getenv('LANGSYS_REQUIRE_REDIS')) {
+            $this->fail(
+                $reason . ', but LANGSYS_REQUIRE_REDIS is set. '
+                . 'The Redis cache driver would go unverified.'
+            );
+        }
+
+        $this->markTestSkipped(ucfirst($reason) . '.');
     }
 
     protected function tearDown(): void
