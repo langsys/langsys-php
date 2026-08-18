@@ -62,7 +62,10 @@ Measure it instead:
 cat > /tmp/probe.php <<'PHP'
 <?php
 register_shutdown_function(function () {
-    $root = dirname(__DIR__) . '/src/';   // adjust if run from elsewhere
+    // getcwd(), NOT dirname(__DIR__): the probe lives in /tmp, so __DIR__ is
+    // /tmp and the old form resolved to //src/ - matching nothing and reporting
+    // every file unparsed, which is the exact false zero this section warns of.
+    $root = getcwd() . '/src/';
     $hit = [];
     foreach (get_included_files() as $f) {
         if (strpos($f, $root) === 0) { $hit[substr($f, strlen($root))] = true; }
@@ -77,6 +80,10 @@ find src -name '*.php' | sed 's|^src/||' | sort > /tmp/all.txt
 sort -u /tmp/loaded.txt | grep -v '^$' > /tmp/hit.txt
 comm -23 /tmp/all.txt /tmp/hit.txt     # files the suite never parsed
 ```
+
+Sanity-check the probe itself before trusting a clean or alarming result —
+`comm -12 /tmp/all.txt /tmp/hit.txt | wc -l` should be close to the file count.
+A zero there means the probe never matched anything, not that nothing loaded.
 
 **Check the suite actually ran before believing a zero.** The probe measures the
 *process*, not the suite, and cannot distinguish "nothing loaded" from "nothing
