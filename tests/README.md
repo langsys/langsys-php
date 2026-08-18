@@ -14,7 +14,7 @@ passing through a refactor that stops calling the thing it watches.
 Assert first that the mechanism ran — items were discovered, the hook recorded
 something — and only then assert what did not happen to them.
 
-This exact shape has produced four defects in this repo:
+This exact shape has produced five defects in this repo:
 
 | what passed | why it proved nothing |
 |---|---|
@@ -22,6 +22,7 @@ This exact shape has produced four defects in this repo:
 | a CI job reporting the ICU suite green | ran with `ext-intl` absent, so every ICU test skipped |
 | `data-notrans` exclusion tests | asserted only that excluded content was absent, while the attribute excluded nothing |
 | `tokenizer-reference.json`'s `custom_id` column | computed from a category that was never recorded, so no other SDK could reproduce it — it read as verified while being uncheckable |
+| the Redis cache tests, on every CI leg | ext-redis was present but no server was, so all 8 skipped at the connection check and `RedisCache.php` was never even compiled — green across six legs for the whole life of the workflow |
 
 Same shape each time: **the check passed because nothing happened.**
 
@@ -93,20 +94,29 @@ Current results:
 |---|---|---|
 | local, with `redis-server` running | 25/25 | `RedisCacheTest` connects, so `RedisCache` is instantiated and compiled |
 | local `php -n` | 24/25 | `-n` resets `extension_dir`, so ext-redis is absent and the class skips at the extension guard |
-| **every CI leg, including `no-intl`** | **24/25** | ext-redis *is* installed, but there is **no Redis server**, so `setUp()` skips at the connection check — which sits *above* the `new RedisCache(...)` line, so the class still never autoloads |
+| CI matrix legs (7.4–8.4) | 25/25 | a `redis:7-alpine` service runs, so the 8 Redis tests execute and the driver compiles |
+| CI `no-intl` job | 24/25 | no service there by design; `setUp()` skips at the connection check, which sits *above* the `new RedisCache(...)` line, so the class never autoloads |
 
-**`Cache/RedisCache.php` is never compiled by any CI leg, and its 8 tests have
-never executed in CI.** Not on `no-intl` and not on the six-leg matrix: the
-matrix installs `redis` but the workflow has no `services:` block, so all eight
-tests skip with *"Cannot connect to Redis server"* on every leg. Only `php -l` in
-the `lint` job touches the file at all. The driver is exercised solely on
-developer machines that happen to be running `redis-server` — which is why the
-local run above reports 25/25 and CI does not.
+**Until `4c1f02b` the Redis driver had never executed in CI on any leg.** ext-redis
+is installed on the runner, but no server was listening, so all eight tests
+skipped at the connection check and `Cache/RedisCache.php` was never even
+compiled — on any of the six matrix legs, for the entire life of the workflow,
+while every run reported green. Only `php -l` in the `lint` job touched the file.
+The driver was exercised solely on developer machines that happened to be running
+`redis-server`.
 
-**The local `php -n` stand-in agrees with CI on every visible number — 491 tests,
-1076 assertions, 18 skipped, and the same missing file — while being wrong about
-the cause.** Locally the extension is missing; in CI the extension is present and
-the *server* is missing. Identical output, different mechanism, and the matching
+Fixed by adding the service **and** a `requireRedis()` guard mirroring
+`requireIntl()`: with `LANGSYS_REQUIRE_REDIS` set the tests *fail* rather than
+skip, so they cannot go quiet again if the service is removed or stops being
+reachable. Measured on the runner before and after — skips **27 → 19** and
+assertions **1078 → 1097** on every leg, the +19 being exactly what those 8 tests
+assert. A service alone would have fixed today's gap while leaving the silent-skip
+mechanism intact.
+
+**The local `php -n` stand-in agrees with the `no-intl` leg on every visible
+number — 491 tests, 1076 assertions, 18 skipped, and the same missing file — while
+being wrong about the cause.** Locally the extension is missing; in CI the
+extension is present and the *server* is missing. Identical output, different mechanism, and the matching
 totals are exactly what would certify a bad stand-in as validated. If you change
 anything about Redis coverage, measure it on CI rather than trusting `-n`.
 
