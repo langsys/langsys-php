@@ -7,7 +7,12 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * Tests for the RedisCache class.
- * These tests are skipped if the Redis extension is not available.
+ *
+ * setUp() calls requireRedis(), which skips when ext-redis or the server is
+ * unavailable - or FAILS instead when LANGSYS_REQUIRE_REDIS is set, which is
+ * how CI runs. Each test previously repeated an extension check of its own;
+ * those were unreachable, since a skip in setUp aborts before the method body,
+ * and they would have silently skipped again had the setUp guard ever gone.
  */
 class RedisCacheTest extends TestCase
 {
@@ -86,22 +91,12 @@ class RedisCacheTest extends TestCase
 
     public function testSetAndGet()
     {
-        if (!extension_loaded('redis')) {
-            $this->markTestSkipped('Redis extension is not available.');
-            return;
-        }
-
         $this->assertTrue($this->cache->set('test-key', 'test-value'));
         $this->assertEquals('test-value', $this->cache->get('test-key'));
     }
 
     public function testSetAndGetArray()
     {
-        if (!extension_loaded('redis')) {
-            $this->markTestSkipped('Redis extension is not available.');
-            return;
-        }
-
         $data = [
             'foo' => 'bar',
             'nested' => ['a' => 1, 'b' => 2],
@@ -113,21 +108,11 @@ class RedisCacheTest extends TestCase
 
     public function testGetNonExistent()
     {
-        if (!extension_loaded('redis')) {
-            $this->markTestSkipped('Redis extension is not available.');
-            return;
-        }
-
         $this->assertNull($this->cache->get('non-existent-key'));
     }
 
     public function testHas()
     {
-        if (!extension_loaded('redis')) {
-            $this->markTestSkipped('Redis extension is not available.');
-            return;
-        }
-
         $this->assertFalse($this->cache->has('my-key'));
 
         $this->cache->set('my-key', 'my-value');
@@ -136,11 +121,6 @@ class RedisCacheTest extends TestCase
 
     public function testDelete()
     {
-        if (!extension_loaded('redis')) {
-            $this->markTestSkipped('Redis extension is not available.');
-            return;
-        }
-
         $this->cache->set('delete-me', 'value');
         $this->assertTrue($this->cache->has('delete-me'));
 
@@ -150,11 +130,6 @@ class RedisCacheTest extends TestCase
 
     public function testClear()
     {
-        if (!extension_loaded('redis')) {
-            $this->markTestSkipped('Redis extension is not available.');
-            return;
-        }
-
         $this->cache->set('key1', 'value1');
         $this->cache->set('key2', 'value2');
 
@@ -169,11 +144,6 @@ class RedisCacheTest extends TestCase
 
     public function testPrefixIsolation()
     {
-        if (!extension_loaded('redis')) {
-            $this->markTestSkipped('Redis extension is not available.');
-            return;
-        }
-
         $otherPrefix = 'other_prefix_' . uniqid() . '::';
         $otherCache = new RedisCache([
             'host' => '127.0.0.1',
@@ -193,11 +163,6 @@ class RedisCacheTest extends TestCase
 
     public function testConstructWithRedisInstance()
     {
-        if (!extension_loaded('redis')) {
-            $this->markTestSkipped('Redis extension is not available.');
-            return;
-        }
-
         $redis = new \Redis();
         $connected = @$redis->connect('127.0.0.1', 6379, 1);
         if (!$connected) {
