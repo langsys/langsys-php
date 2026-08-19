@@ -265,6 +265,50 @@ class ClientTest extends TestCase
         $this->assertFalse($client->hasPendingRegistrations());
     }
 
+    public function testTranslateReturnsSourcePhraseWhenTranslationIsNull()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'translations', [
+            'data' => [
+                '__uncategorized__' => [
+                    // The catalog carries the phrase but has no translation for
+                    // it yet — the API sends null, not an empty string.
+                    'Hello' => null,
+                ],
+            ],
+        ]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+        $client->setLocale('es-es');
+
+        $result = $client->translate('Hello');
+
+        // A null must never reach the caller: t() is contractually a string,
+        // and a null lands in a Blade echo or a concat as a fatal.
+        $this->assertSame('Hello', $result);
+    }
+
+    public function testTranslateInterpolatesSourcePhraseWhenTranslationIsNull()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'translations', [
+            'data' => [
+                '__uncategorized__' => [
+                    'Hello, {name}!' => null,
+                ],
+            ],
+        ]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+        $client->setLocale('es-es');
+
+        $result = $client->translate('Hello, {name}!', null, '__uncategorized__', null, ['name' => 'Sarah']);
+
+        // Falling back to the source phrase still resolves placeholders, the
+        // same as it does for an untranslated phrase.
+        $this->assertSame('Hello, Sarah!', $result);
+    }
+
     public function testTranslateSamePhraseNotQueuedTwice()
     {
         $mockHttp = new MockHttpClient();
