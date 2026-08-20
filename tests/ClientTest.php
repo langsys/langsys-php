@@ -265,6 +265,83 @@ class ClientTest extends TestCase
         $this->assertFalse($client->hasPendingRegistrations());
     }
 
+    /**
+     * A phrase that is registered but not yet translated comes back present in
+     * the catalog with a NULL value. translate() is contractually a string
+     * method, and null flows straight out through interpolate()'s empty-params
+     * early return, so callers get null where they must get the source phrase.
+     */
+    public function testTranslateReturnsSourcePhraseWhenCatalogValueIsNull()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'translations', [
+            'data' => [
+                'ProductCard' => [
+                    'Based on {n} reviews' => null,
+                ],
+            ],
+        ]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+        $client->setLocale('es-es');
+
+        $this->assertSame(
+            'Based on {n} reviews',
+            $client->translate('Based on {n} reviews', 'es-es', 'ProductCard')
+        );
+    }
+
+    /**
+     * The same null value with params must interpolate the SOURCE phrase. This
+     * exercises the other side of the empty-params branch, where the null
+     * reaches the interpolator rather than short-circuiting past it.
+     */
+    public function testTranslateInterpolatesSourcePhraseWhenCatalogValueIsNull()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'translations', [
+            'data' => [
+                'ProductCard' => [
+                    'Based on {n} reviews' => null,
+                ],
+            ],
+        ]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+        $client->setLocale('es-es');
+
+        $this->assertSame(
+            'Based on 5 reviews',
+            $client->translate('Based on {n} reviews', 'es-es', 'ProductCard', null, ['n' => 5])
+        );
+    }
+
+    /**
+     * A null VALUE means the phrase is already registered and awaiting
+     * translation - present in the catalog, so it must not be re-queued. Absent
+     * and present-with-null are different states; collapsing them re-reports
+     * content that already exists, on every request, for the whole
+     * machine-translation window.
+     */
+    public function testTranslateDoesNotQueuePhraseWithNullCatalogValue()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'translations', [
+            'data' => [
+                'ProductCard' => [
+                    'Based on {n} reviews' => null,
+                ],
+            ],
+        ]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+        $client->setLocale('es-es');
+
+        $client->translate('Based on {n} reviews', 'es-es', 'ProductCard');
+
+        $this->assertFalse($client->hasPendingRegistrations());
+    }
+
     public function testTranslateSamePhraseNotQueuedTwice()
     {
         $mockHttp = new MockHttpClient();

@@ -504,8 +504,11 @@ class Client
             if (is_array($value)) {
                 return $this->interpolate($phrase, $params, $locale);
             }
-            // Return translation (or original if empty)
-            return $this->interpolate($value !== '' ? $value : $phrase, $params, $locale);
+            // A registered-but-untranslated phrase comes back present with a
+            // NULL value. Both null and '' mean "no translation yet", so fall
+            // back to the source phrase - returning the value would hand the
+            // caller null from a method that contracts to return a string.
+            return $this->interpolate(($value === null || $value === '') ? $phrase : $value, $params, $locale);
         }
 
         // Phrase not found - queue the RAW phrase (placeholders intact) for
