@@ -115,8 +115,52 @@ the implementation when the failures are few and structurally alike.**
 
 Covered: `<select>`/`<optgroup>`, inline-markup splitting, translatable
 attributes including ARIA, button and submit values, `translate="no"` and
-`data-notrans` exclusion, script/style opacity, comments, void elements,
+`data-notrans` exclusion, script/style handling, comments, void elements,
 duplicate ordering, and whitespace collapsing.
+
+### Case [12] records a defect, not a decision
+
+That entry used to be described here as "script/style **opacity**", which reads
+as "they are skipped". They are not. The fixture records what the code does:
+
+```
+html   : <div><p>Keep</p><script>var a=1;</script><style>.a{}</style></div>
+tokens : ["Keep", "var a=1;", ".a{}"]
+```
+
+`HtmlParser::walkNode()` has no skip list. `PageTranslator::SKIP_ELEMENTS`
+(`src/Html/PageTranslator.php:45`, checked at `:322`) does, but the content-block
+path never reaches that check: `extractAsContentBlock()` hands the element's
+inner HTML straight to `extractPhrases()` (`:488-489`). So a `<script>` inside a
+content block is harvested as a translatable phrase, and it reaches the
+**registration list** — measured, on the documented public API:
+
+```
+$client->translateContentBlock($html, 'pricing');  ->  getPendingContentBlocks()
+  [0] Our pricing
+  [1] Choose a plan
+  [2] window.dataLayer.push({event:"view",sku:"ABC-123"});
+  [3] .plan{color:#fff}
+```
+
+Control, and it is what makes the diagnosis specific: the **same page** without
+`data-langsys-contentblock` queues only `["T","Plans","Pick one"]`. The skip list
+works on the page-walk path and is absent from the content-block path — this is
+one boundary, not a general blind spot.
+
+**Why it has not been fixed here.** This file is a contract
+`langsys-js-typescript` asserts against, so changing case [12] changes their
+build, and changing the tokenizer re-keys every existing content block that
+contains a script or a style. Which direction is correct depends on what the JS
+tokenizer does with the same input, which cannot be determined from this
+repository. Raised with the base SDK and with Darryl; until it is answered, the
+fixture records the behaviour honestly rather than describing an intention the
+code does not have.
+
+**The prose was the wrong half to trust.** The word "opacity" and the token list
+sat four lines apart and contradicted each other, and the fixture passed
+throughout — because it asserts what the code does, which is exactly its job. A
+coverage summary is a claim about the data; read the data.
 
 Same rules as the id fixtures: verify another SDK by **executing it against this
 file**, adding cases is safe, and changing an existing expectation is a breaking
