@@ -1182,4 +1182,119 @@ class HtmlParserTest extends TestCase
         $result = $this->parser->resolveRelativeUrls('', 'https://example.com');
         $this->assertEquals('', $result);
     }
+
+    /**
+     * The 15 attributes langsys-js-typescript and langsys-js-server share with
+     * this SDK, frozen here as a literal rather than sliced out of the constant.
+     *
+     * Slicing would compare the constant to itself and pass for any value of it,
+     * which is the 1.0.2 custom_id parity mistake in a different costume. This
+     * list is a RECORD of what the other SDKs implement; it must be edited only
+     * when they change, and a diff here is the signal that they have.
+     */
+    const JS_SHARED_ATTRIBUTES = [
+        'placeholder',
+        'alt',
+        'title',
+        'label',
+        'aria-label',
+        'aria-placeholder',
+        'aria-description',
+        'aria-valuetext',
+        'aria-roledescription',
+        'data-error',
+        'data-error-message',
+        'data-validation-message',
+        'data-invalid-message',
+        'data-required-message',
+        'data-pattern-message',
+    ];
+
+    /**
+     * The 12 framework attributes that only this SDK carried until the 2026-08
+     * cross-SDK decision converged the JS SDKs onto them.
+     */
+    const FRAMEWORK_ATTRIBUTES = [
+        'data-confirm',
+        'data-tooltip',
+        'data-title',
+        'data-content',
+        'data-original-title',
+        'data-bs-title',
+        'data-bs-content',
+        'data-loading-text',
+        'data-success-message',
+        'data-warning-message',
+        'data-empty-message',
+        'data-placeholder',
+    ];
+
+    /**
+     * The default list is the normative cross-SDK contract, so it is pinned.
+     *
+     * A conformance suite that runs fixtures against an EXPLICITLY configured
+     * list proves the tokenizers agree given a list; it proves nothing about
+     * whether that list is the one real callers get, because nobody constructs
+     * an HtmlParser with 27 arguments in production. Editing the constant would
+     * leave such a suite green while every default-configured app in the world
+     * silently re-keyed. This test is the other half.
+     */
+    public function testDefaultTranslatableAttributesArePinned()
+    {
+        $expected = array_merge(self::JS_SHARED_ATTRIBUTES, self::FRAMEWORK_ATTRIBUTES);
+
+        // assertSame, not assertEquals: order is custom_id identity.
+        $this->assertSame(
+            $expected,
+            HtmlParser::DEFAULT_TRANSLATABLE_ATTRIBUTES,
+            'DEFAULT_TRANSLATABLE_ATTRIBUTES is the cross-SDK contract for content '
+            . 'block identity. Changing it re-keys existing content blocks in every '
+            . 'Langsys SDK. If this change is intended, update langsys-js-typescript '
+            . 'and langsys-js-server together and say so in the release notes.'
+        );
+
+        // The 15 shared attributes must stay FIRST and contiguous. Appending is
+        // cheap because it only re-keys blocks carrying an appended attribute;
+        // interleaving would re-key every block carrying any of them.
+        $this->assertSame(
+            self::JS_SHARED_ATTRIBUTES,
+            array_slice(HtmlParser::DEFAULT_TRANSLATABLE_ATTRIBUTES, 0, 15),
+            'The JS-shared attributes must remain the first 15, in order.'
+        );
+        $this->assertSame(
+            self::FRAMEWORK_ATTRIBUTES,
+            array_slice(HtmlParser::DEFAULT_TRANSLATABLE_ATTRIBUTES, 15),
+            'The framework attributes must remain one contiguous block after them.'
+        );
+    }
+
+    /**
+     * The pin above is a list comparison, which passes just as happily if the
+     * parser has stopped consulting the list at all. Prove the mechanism runs:
+     * every pinned attribute must actually produce a token.
+     */
+    public function testEveryPinnedAttributeIsActuallyHarvested()
+    {
+        $parser = new HtmlParser();
+
+        foreach (HtmlParser::DEFAULT_TRANSLATABLE_ATTRIBUTES as $attr) {
+            $phrases = $parser->extractPhrases(
+                '<div ' . $attr . '="Harvest me">body</div>'
+            );
+
+            $this->assertContains(
+                'Harvest me',
+                $phrases,
+                'Attribute "' . $attr . '" is in the pinned default list but produced '
+                . 'no token, so the list and the walker disagree.'
+            );
+        }
+
+        // Negative control: an attribute NOT on the list must be ignored, or the
+        // assertions above would pass for a parser that harvests everything.
+        $this->assertSame(
+            ['body'],
+            $parser->extractPhrases('<div data-not-translatable="Skip me">body</div>')
+        );
+    }
 }

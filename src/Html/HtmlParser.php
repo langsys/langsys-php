@@ -61,6 +61,30 @@ class HtmlParser
     ];
 
     /**
+     * The attribute list is part of content block IDENTITY, not just coverage.
+     *
+     * extractAttributePhrases() iterates THIS list and tests hasAttribute(), so
+     * the list decides both which attributes become tokens and what order they
+     * are emitted in - and generateCustomId() hashes the token array, order
+     * included. Two clients configured differently therefore compute different
+     * custom_ids for byte-identical HTML, and the same block is stored twice in
+     * the catalog every SDK reads.
+     *
+     * As of the 2026-08 cross-SDK decision this list is the normative contract:
+     * langsys-js-typescript and langsys-js-server adopt these 27, in this order.
+     * The 15 shared with the JS SDKs come first and the 12 framework attributes
+     * are one contiguous block AFTER them, which is load-bearing - appending
+     * only re-keys blocks that carry one of the appended attributes, whereas
+     * interleaving would re-key every block carrying any translatable attribute.
+     * Keep additions at the end.
+     *
+     * Measured, on <div title="T" alt="A"><p>Body</p></div>:
+     *   default                  ["A","T","Body"]  c29b88d2aebbeebabd4edee2c883c910
+     *   + 2 attributes not used  ["A","T","Body"]  c29b88d2aebbeebabd4edee2c883c910
+     *   alt/title swapped        ["T","A","Body"]  85bec9a41062151fa0bf135a99e09667
+     *
+     * So ADDING is cheap and REORDERING is not. See setTranslatableAttributes().
+     *
      * @var array Current translatable attributes
      */
     protected $translatableAttributes;
@@ -90,6 +114,16 @@ class HtmlParser
     /**
      * Set the translatable attributes (replaces all).
      *
+     * CHANGES CONTENT BLOCK IDENTITY. This replaces the list wholesale, so it can
+     * reorder or drop entries, and both re-key blocks that already exist in the
+     * catalog - they will not resolve afterwards and will re-register under the
+     * new id. There is no runtime signal when that happens: the page still
+     * renders, in the base language, for content that was already translated.
+     *
+     * Prefer addTranslatableAttributes(), which appends and therefore only
+     * affects blocks carrying the new attributes. Use this one when you need
+     * a narrower list than the default and can accept re-registering.
+     *
      * @param array $attributes
      * @return $this
      */
@@ -101,6 +135,11 @@ class HtmlParser
 
     /**
      * Add additional translatable attributes to the existing list.
+     *
+     * Appends, so existing entries keep their positions and only blocks that
+     * actually carry one of the added attributes change custom_id. That is the
+     * cheap direction - see the note on $translatableAttributes - but it is not
+     * free: those blocks do re-key and re-register.
      *
      * @param array $attributes
      * @return $this
