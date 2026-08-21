@@ -1297,4 +1297,39 @@ class HtmlParserTest extends TestCase
             $parser->extractPhrases('<div data-not-translatable="Skip me">body</div>')
         );
     }
+
+    /**
+     * json_encode() returns false on invalid UTF-8 and md5(false) === md5(''),
+     * so without a false-check every malformed block hashes to the same id and
+     * aliases unrelated content. Behaviour already present on this line; pinned
+     * so it cannot be simplified away.
+     */
+    public function testInvalidUtf8BlocksDoNotShareOneCustomId()
+    {
+        $a = $this->parser->generateCustomId('Cat', ["Caf\xE9 one"]);
+        $b = $this->parser->generateCustomId('Cat', ["Totally \xE9 different"]);
+
+        $this->assertNotEquals($a, $b, 'Distinct malformed content must not alias');
+        $this->assertNotEquals(md5(''), $a, 'A block id must never be the md5 of an empty string');
+    }
+
+    /**
+     * Legacy ids are lookup-only, but they must be computable for both category
+     * slots the old code could have written.
+     */
+    public function testLegacyCustomIdsCoverBothCategorySlotsWhenUncategorized()
+    {
+        $ids = $this->parser->legacyCustomIds(null, ['Hello there']);
+
+        $this->assertContains(md5(implode('|', ['', 'Hello there'])), $ids);
+        $this->assertContains(md5(implode('|', ['__uncategorized__', 'Hello there'])), $ids);
+    }
+
+    public function testLegacyCustomIdsForARealCategoryIsTheJoinedForm()
+    {
+        $this->assertSame(
+            [md5(implode('|', ['Marketing', 'Hello there']))],
+            $this->parser->legacyCustomIds('Marketing', ['Hello there'])
+        );
+    }
 }

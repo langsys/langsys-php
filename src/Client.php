@@ -88,9 +88,6 @@ class Client
     protected $pageTranslator;
 
     /**
-     * @var array Pending phrases to register (queued during translate calls)
-     */
-    /**
      * Whether THIS request may register content, as computed by the server.
      *
      * Deliberately not part of $projectData and never written to $this->cache:
@@ -103,6 +100,9 @@ class Client
      */
     protected $writeEnabled = null;
 
+    /**
+     * @var array Pending phrases to register (queued during translate calls)
+     */
     protected $pendingPhrases = [];
 
     /**
@@ -1152,23 +1152,14 @@ class Client
 
         $categoryTranslations = isset($translations[$category]) ? $translations[$category] : [];
 
-        // Check if content block exists
-        if (!array_key_exists($customId, $categoryTranslations) ||
-            !is_array($categoryTranslations[$customId])) {
+        // Current id first, then the shapes this SDK produced before the
+        // JSON-form change - a block registered by an older SDK is still in the
+        // catalog, filed under the old key.
+        $blockTranslations = $this->resolveContentBlockTranslations(
+            $categoryTranslations, $category, $phrases, $customId, $parser
+        );
 
-            // Before treating it as new, look for it under the id shapes this
-            // SDK produced before the JSON-form change. A block registered by an
-            // older SDK is still in the catalog, filed under the old key.
-            $legacy = $this->resolveLegacyContentBlock($categoryTranslations, $category, $phrases, $parser);
-
-            if ($legacy !== null) {
-                // Found. Serve it, and deliberately DO NOT queue: registering
-                // would create a second block under the new id, leaving the
-                // translations stranded on the old one - the exact outcome this
-                // fallback exists to prevent.
-                return $this->applyBlockTranslations($html, $legacy, $parser, $params, $locale);
-            }
-
+        if ($blockTranslations === null) {
             // Content block doesn't exist - queue for registration
             $this->queueContentBlockForRegistration($html, $category, $customId, $phrases);
 
@@ -1178,11 +1169,35 @@ class Client
                 : $this->applyBlockTranslations($html, [], $parser, $params, $locale);
         }
 
-        // Get content block translations
-        $blockTranslations = $categoryTranslations[$customId];
-
-        // Apply translations to HTML
+        // Apply translations to HTML. A legacy-resolved block reaches here
+        // WITHOUT having been queued: queuing is exactly what would create a
+        // second block under the new id and strand these translations.
         return $this->applyBlockTranslations($html, $blockTranslations, $parser, $params, $locale);
+    }
+
+    /**
+     * Resolve a content block's translations: current id first, then legacy.
+     *
+     * The single resolution path for content blocks. PageTranslator and
+     * translateContentBlock BOTH route through this - duplicating the rules in
+     * two places is what let the page path miss the legacy fallback, and the
+     * same duplication previously let it drift on bookkeeping and on
+     * presence-vs-structure checks.
+     *
+     * @param array $categoryTranslations Catalog slice for this category
+     * @param string $category
+     * @param array $phrases Phrases extracted from this block, in order
+     * @param string $customId Current-form id
+     * @param HtmlParser $parser
+     * @return array|null Translation map, or null when the block is genuinely new
+     */
+    public function resolveContentBlockTranslations(array $categoryTranslations, $category, array $phrases, $customId, HtmlParser $parser)
+    {
+        if (array_key_exists($customId, $categoryTranslations) && is_array($categoryTranslations[$customId])) {
+            return $categoryTranslations[$customId];
+        }
+
+        return $this->resolveLegacyContentBlock($categoryTranslations, $category, $phrases, $parser);
     }
 
     /**
@@ -1255,8 +1270,11 @@ class Client
      */
     protected function legacyBlockMatchesPhrases(array $candidate, array $phrases)
     {
-        $found = array_keys($candidate);
-        $expected = array_values(array_unique($phrases));
+        // array_keys() int-casts numeric-string keys, so an all-numeric phrase
+        // set would never compare equal to the string phrases extracted from the
+        // markup. Cast both sides back to strings before comparing.
+        $found = array_map('strval', array_keys($candidate));
+        $expected = array_map('strval', array_values(array_unique($phrases)));
 
         sort($found);
         sort($expected);

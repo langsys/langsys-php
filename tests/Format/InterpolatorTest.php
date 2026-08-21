@@ -799,4 +799,41 @@ class InterpolatorTest extends TestCase
             $this->interpolator->interpolate('{d}', ['d' => $date])
         );
     }
+
+    /**
+     * MessageFormatter signals a bad pattern with false by default and with an
+     * IntlException when intl.use_exceptions=1, which '@' does not suppress.
+     * Behaviour already present on this line; pinned under BOTH ini states,
+     * because testing only one would miss the bug entirely.
+     *
+     * @dataProvider useExceptionsProvider
+     */
+    public function testMalformedIcuNeverThrows($useExceptions)
+    {
+        if (!class_exists('MessageFormatter')) {
+            $this->markTestSkipped('ext-intl is not available.');
+        }
+
+        $previous = ini_get('intl.use_exceptions');
+        ini_set('intl.use_exceptions', $useExceptions);
+
+        try {
+            $out = (new Interpolator())->interpolate(
+                '{n, plural, one {# item} other {# items}',
+                ['n' => 2],
+                'en-us'
+            );
+            $this->assertIsString($out);
+        } finally {
+            ini_set('intl.use_exceptions', $previous === false ? '0' : $previous);
+        }
+    }
+
+    public function useExceptionsProvider()
+    {
+        return [
+            'intl.use_exceptions=0' => ['0'],
+            'intl.use_exceptions=1' => ['1'],
+        ];
+    }
 }

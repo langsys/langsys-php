@@ -1216,4 +1216,184 @@ class PageTranslatorTest extends TestCase
         $this->assertStringContainsString('<div class="field">', $result);
         $this->assertStringContainsString('<div class="actions">', $result);
     }
+
+    // =========================================================================
+    // R-1 — the legacy fallback must cover the PAGE path, not only
+    //        translateContentBlock. A website renders through translatePage.
+    // =========================================================================
+
+    private function legacyBlockFixture()
+    {
+        $inner = '<h2>Welcome to our shop</h2><p>Free delivery</p>';
+        $category = 'Marketing';
+        $phrases = ['Welcome to our shop', 'Free delivery'];
+
+        return [
+            'inner' => $inner,
+            'category' => $category,
+            'html' => '<!DOCTYPE html><html><head></head><body><div data-langsys-contentblock>'
+                . $inner . '</div></body></html>',
+            'legacyId' => md5(implode('|', array_merge([$category], $phrases))),
+            'translations' => [
+                'Welcome to our shop' => 'Bienvenido a nuestra tienda',
+                'Free delivery' => 'Envio gratis',
+            ],
+        ];
+    }
+
+    public function testTranslatePageServesAContentBlockFoundUnderItsLegacyId(): void
+    {
+        $f = $this->legacyBlockFixture();
+        $this->setTranslations([$f['category'] => [$f['legacyId'] => $f['translations']]]);
+
+        $result = (new PageTranslator($this->client))->translate($f['html'], 'es-es', $f['category']);
+
+        $this->assertStringContainsString('Bienvenido a nuestra tienda', $result);
+        $this->assertStringContainsString('Envio gratis', $result);
+    }
+
+    /**
+     * The anti-stranding half on the page path. Queuing a legacy-resolved block
+     * registers it under the CURRENT id and leaves its translations on the old
+     * one - which is the damage, not a side effect of it.
+     */
+    public function testTranslatePageDoesNotQueueALegacyResolvedContentBlock(): void
+    {
+        $f = $this->legacyBlockFixture();
+        $this->setTranslations([$f['category'] => [$f['legacyId'] => $f['translations']]]);
+
+        (new PageTranslator($this->client))->translate($f['html'], 'es-es', $f['category']);
+
+        $this->assertFalse(
+            $this->client->hasPendingRegistrations(),
+            'Queuing a legacy-resolved block is what strands its translations'
+        );
+    }
+
+    /**
+     * Both paths must agree - the divergence is the defect.
+     */
+    public function testPageAndContentBlockPathsAgreeOnALegacyBlock(): void
+    {
+        $f = $this->legacyBlockFixture();
+        $this->setTranslations([$f['category'] => [$f['legacyId'] => $f['translations']]]);
+
+        $viaBlock = $this->client->translateContentBlock(
+            '<div data-langsys-contentblock>' . $f['inner'] . '</div>',
+            $f['category']
+        );
+        $viaPage = (new PageTranslator($this->client))->translate($f['html'], 'es-es', $f['category']);
+
+        $this->assertStringContainsString('Bienvenido a nuestra tienda', $viaBlock);
+        $this->assertStringContainsString('Bienvenido a nuestra tienda', $viaPage);
+    }
+
+    // =========================================================================
+    // R-2 — a queued item is an attempt, not an acceptance
+    // =========================================================================
+
+    /**
+     * Items are only QUEUED here; the flush that would send them runs later and
+     * can skip, fail, or never run. Recording them as registered suppresses them
+     * on every later render until the cache expires, so one failed flush costs
+     * the content indefinitely.
+     */
+    public function testDiscoveredItemsAreNotRecordedAsRegisteredWhenOnlyQueued(): void
+    {
+        $cache = new \Langsys\SDK\Cache\FileCache(sys_get_temp_dir() . '/langsys-test-' . uniqid());
+        $this->setTranslations([]);
+        $html = '<!DOCTYPE html><html><head></head><body><p>Undiscovered phrase</p></body></html>';
+
+        // First render: the item is queued. The flush that would send it has not
+        // run, so nothing has been accepted.
+        $first = $this->createMockClientWithCache($cache);
+        (new PageTranslator($first))->translate($html, 'es-es', 'Marketing');
+        $this->assertTrue($first->hasPendingRegistrations(), 'sanity: the first render queues it');
+
+        // Second render, fresh client, same shared cache - as under PHP-FPM,
+        // with the first request having died before its flush completed. The
+        // item must still be discoverable. Asserted behaviourally rather than by
+        // reading the cache key, so this pin cannot be satisfied by the key
+        // simply changing shape.
+        $second = $this->createMockClientWithCache($cache);
+        (new PageTranslator($second))->translate($html, 'es-es', 'Marketing');
+
+        $this->assertTrue(
+            $second->hasPendingRegistrations(),
+            'A queued-but-unsent item was recorded as registered, so it can never be discovered again'
+        );
+
+        $cache->clear();
+    }
+
+    // =========================================================================
+    // R-3 — presence and structure checks must agree with Client::translate()
+    // =========================================================================
+
+    public function testTextCollidingWithAContentBlockIdIsNotRegisteredAsAPhrase(): void
+    {
+        $blockId = md5('some-content-block');
+
+        $this->setTranslations([
+            'Marketing' => [$blockId => ['Inner phrase' => 'Frase interna']],
+        ]);
+
+        $html = '<!DOCTYPE html><html><head></head><body><p>' . $blockId . '</p></body></html>';
+        (new PageTranslator($this->client))->translate($html, 'es-es', 'Marketing');
+
+        $queued = array_map(
+            function ($pending) { return $pending['phrase']; },
+            array_values($this->client->getPendingPhrases())
+        );
+
+        // Asserted unconditionally: a foreach over the queue would pass by
+        // performing no assertions at all when the queue is empty, which is the
+        // same test whether the behaviour is right or absent.
+        $this->assertNotContains(
+            $blockId,
+            $queued,
+            'A nested map is a content block, never a missing phrase'
+        );
+    }
+
+    // =========================================================================
+    // R-4 — the registered-items cache is shared across projects
+    // =========================================================================
+
+    public function testRegisteredItemsCacheKeyIsProjectScoped(): void
+    {
+        $translator = new PageTranslator($this->client);
+
+        $method = new \ReflectionMethod($translator, 'getRegisteredItemsCacheKey');
+        $method->setAccessible(true);
+        $key = $method->invoke($translator, 'Navigation');
+
+        $this->assertStringContainsString('test-project-id', $key);
+        $this->assertStringContainsString('Navigation', $key);
+    }
+
+    /**
+     * Same wiring as createMockClient(), with a real shared cache.
+     */
+    private function createMockClientWithCache($cache)
+    {
+        $client = new Client('test-api-key', 'test-project-id', ['cache' => $cache]);
+        $reflection = new \ReflectionClass($client);
+
+        $httpProperty = $reflection->getProperty('http');
+        $httpProperty->setAccessible(true);
+        $httpProperty->setValue($client, $this->mockHttp);
+
+        foreach (['translations', 'translatableItems'] as $resourceName) {
+            $property = $reflection->getProperty($resourceName);
+            $property->setAccessible(true);
+            $resource = $property->getValue($client);
+
+            $resourceHttp = (new \ReflectionClass($resource))->getProperty('http');
+            $resourceHttp->setAccessible(true);
+            $resourceHttp->setValue($resource, $this->mockHttp);
+        }
+
+        return $client;
+    }
 }

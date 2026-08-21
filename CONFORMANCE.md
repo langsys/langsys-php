@@ -24,8 +24,8 @@ stashing `src/` and re-running. A regression test never seen red is a guess.
 | GATE-2 | n/a (profile: server) | Synchronous SDK — no unknown window exists. The residual obligation is REG-10 |
 | GATE-3 | provisional | `::testWriteDecisionIsNeverWrittenToTheCache`, `::testWarmCacheStillResolvesPerRequestForAnIpWriteKey`, `::testResetRequestStateClearsTheWriteDecision`, and `::testWarmCacheCostsNoAuthorizationCallForAReadKey` (pins that correctness costs no per-render request) |
 | GATE-4 | provisional | `::testWriteDecisionIsNeverWrittenToTheCache` — the `authorize-project` row, where the flag sits *inside* `data` and must be stripped from the body before caching, not merely dropped with an envelope |
-| GATE-5 | provisional | `::testLegacyResolvedContentBlockIsNotQueuedForRegistration` — a block served from a legacy id is not recorded as needing registration |
-| GATE-6 | provisional | Register-half only. Report-half n/a — this SDK has no hint lane (HINT-2) |
+| GATE-5 | provisional | `tests/Html/PageTranslatorTest.php::testDiscoveredItemsAreNotRecordedAsRegisteredWhenOnlyQueued` — a queued item is an attempt, not an acceptance, and is not recorded until the server accepts it. Also `tests/ClientTest.php::testLegacyResolvedContentBlockIsNotQueuedForRegistration` |
+| GATE-6 | provisional | `tests/ClientTest.php::testFlushReportsDroppedWhenTheRequestMayNotWrite` — the register half returns before the network when the request may not write. Report-half n/a: this SDK has no hint lane (HINT-2) |
 
 ## Reading the catalog
 
@@ -33,27 +33,27 @@ stashing `src/` and re-running. A regression test never seen red is a guess.
 |---|---|---|
 | CAT-1 | provisional | `::testTranslateDoesNotQueuePhraseWithNullCatalogValue` — present-with-null is a known phrase, not a miss. `translate()` uses `array_key_exists`, not `isset` |
 | CAT-2 | provisional | `::testTranslateReturnsSourcePhraseWhenCatalogValueIsNull`, `::testTranslateInterpolatesSourcePhraseWhenCatalogValueIsNull` — the display half falls back to source text rather than rendering the null |
-| CAT-3 | provisional | `Client::translateContentBlock()` requires `array_key_exists($customId, …) && is_array(…)` before treating a block as known |
+| CAT-3 | provisional | `tests/ClientTest.php::testContentBlockResolvesUnderItsLegacyPipeFormId` and `::testLegacyIdResolvingToDifferentContentIsRejected` — resolution requires an array-valued entry before treating a block as known, so `custom_id: null` is never mistaken for a registered block |
 
 ## The write lane
 
 | Rule | Status | Evidence |
 |---|---|---|
-| REG-1 | provisional | `PageTranslator` and `flushPendingRegistrations()` return before the network when the request may not write |
+| REG-1 | provisional | `tests/ClientTest.php::testFlushReportsDroppedWhenTheRequestMayNotWrite` — the queue is dropped without a network call when the request may not write |
 | REG-2 | n/a (profile: server) | No debounce window. Misses accumulate per request and send once at end of request |
 | REG-3 | **not implemented** | Manual flush exists and `register_shutdown_function` is wired, but the automatic path is untested and a transient failure during it is unrecoverable and silent |
 | REG-4 … REG-7 | n/a (profile: server) | No page teardown, no `visibilitychange`, and synchronous execution leaves no await window |
 | REG-8 | **not implemented** | A failed send retains the queue but there is no retry and no backoff |
-| REG-9 | provisional | Closed on `main` before this branch — `PageTranslator` batches through `createContentBlocks()` |
+| REG-9 | provisional | Closed on `main` before this branch: `PageTranslator` queues rather than registering inline, and `flushPendingRegistrations()` batches through `createContentBlocks()`, which chunks to the server-provided limit. Covered indirectly by `tests/ClientTest.php::testFlushReportsSuccessWhenEverythingWasAccepted`; **no direct batch-size test on this line** |
 | REG-10 | provisional | `::testFlushReportsDroppedWhenTheRequestMayNotWrite`, `::testFlushReportsSuccessWhenEverythingWasAccepted`. **Partial**: the throw-vs-swallow split across entry points is unchanged |
 | REG-11 | **not implemented** | No ellipsis diagnostic |
-| REG-12 | provisional | A catalog value that is a nested map is a content block, never a missing phrase |
+| REG-12 | provisional | `tests/Html/PageTranslatorTest.php::testTextCollidingWithAContentBlockIdIsNotRegisteredAsAPhrase` — presence alone decides "known" on both the phrase-discovery path and in `Client::translate()`, so the two agree. They previously disagreed, and the page path re-registered colliding text on every render |
 
 ## Legacy id compatibility
 
 | Rule | Status | Evidence |
 |---|---|---|
-| (no rule id yet) | provisional | `::testContentBlockResolvesUnderItsLegacyPipeFormId`, `::testUncategorizedLegacyBlockResolvesUnderTheEmptyCategorySlot`, `::testUncategorizedLegacyBlockResolvesUnderTheSentinelCategorySlot`, `::testLegacyIdResolvingToDifferentContentIsRejected`, `::testLegacyIdIsNeverSentToTheApi`. Not yet a spec rule — the fallback is SDK-local remediation. If it becomes one, the load-bearing half is that a legacy-resolved block is **not** queued |
+| (no rule id yet) | provisional | Both rendering paths: `tests/Html/PageTranslatorTest.php::testTranslatePageServesAContentBlockFoundUnderItsLegacyId`, `::testTranslatePageDoesNotQueueALegacyResolvedContentBlock`, `::testPageAndContentBlockPathsAgreeOnALegacyBlock`; and `tests/ClientTest.php::testContentBlockResolvesUnderItsLegacyPipeFormId`, `::testUncategorizedLegacyBlockResolvesUnderTheEmptyCategorySlot`, `::testUncategorizedLegacyBlockResolvesUnderTheSentinelCategorySlot`, `::testLegacyIdResolvingToDifferentContentIsRejected`, `::testLegacyIdIsNeverSentToTheApi`. Not yet a spec rule — the fallback is SDK-local remediation. If it becomes one, the load-bearing half is that a legacy-resolved block is **not** queued |
 
 ## Hint lane / SSR
 
@@ -72,7 +72,7 @@ stashing `src/` and re-running. A regression test never seen red is a guess.
 
 | Rule | Status | Evidence |
 |---|---|---|
-| CACHE-1 | provisional | Keys are namespaced by project |
+| CACHE-1 | provisional | `tests/Html/PageTranslatorTest.php::testRegisteredItemsCacheKeyIsProjectScoped`. The registered-items key was the only un-namespaced key in the SDK |
 | OBS-1 | **not implemented** | A write-expected key resolving `write_enabled: false` that never queues anything produces no diagnostic |
 | WIRE-1 | provisional | `tests/Http/HttpClientTest.php::testAuthenticatesWithTheXAuthorizationHeader` |
 | WIRE-2 | provisional | `tests/Http/HttpClientTest.php::testEmptyBodyOnSuccessIsNotAParseError`, `::testEmptyBodyOnErrorStatusRaisesTheMatchingException`, `::testEmptyBodyOnValidationErrorRaisesValidationException`, `::testMalformedJsonStillRaisesAParseError` |
@@ -108,6 +108,14 @@ next:
    above.
 
 ## What surfaced while writing this file
+
+**Four rules regressed in `PageTranslator` and the port never touched that file.** The
+legacy fallback covered `translateContentBlock()` but not `translatePage()` — the path a
+website most likely renders with — so the hazard stayed fully live where it was most
+likely to fire. GATE-5, REG-12 and CACHE-1 had all been fixed once and were reintroduced
+by `main`'s v1.3.0 queue rearchitecture. My rule-by-rule check ran against `Client`;
+`PageTranslator` duplicated those rules and was invisible to it. Both paths now share one
+resolution entry point, so the next drift has nowhere to hide.
 
 WIRE-2, WIRE-3 and WIRE-4 were all still live on `main` and were **absent from the
 re-land port list**, despite having been fixed on the branch that list was drawn from.

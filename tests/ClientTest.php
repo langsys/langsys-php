@@ -1011,6 +1011,22 @@ class ClientTest extends TestCase
         }
     }
 
+    /**
+     * write_enabled is authoritative in BOTH directions, on a fresh response.
+     *
+     * No server condition produces this combination today - a WRITE key always
+     * allows, and a suspended subscription short-circuits before the flag is
+     * computed. This pins the direction of trust, not a live behaviour. Scope is
+     * the fresh-response path, since read/write keys are answered from the
+     * cached key_type and a cache entry never carries the flag.
+     */
+    public function testWriteEnabledFalseOverridesAWriteKeyType()
+    {
+        $client = $this->clientWithAuth(['key_type' => 'write', 'write_enabled' => false]);
+
+        $this->assertFalse($client->canWrite());
+    }
+
     // =========================================================================
     // Helper methods
     // =========================================================================

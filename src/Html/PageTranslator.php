@@ -204,8 +204,17 @@ class PageTranslator
         if (!empty($newPhrases) || !empty($newContentBlocks)) {
             $this->registerNewItemsWithCategory($newPhrases, $newContentBlocks, $locale);
 
-            // Mark items as registered in cache (to avoid re-registration on next load)
-            $this->markItemsAsRegisteredWithCategory($newPhrases, $newContentBlocks);
+            // NOT marked as registered here. These items have only been QUEUED;
+            // the flush that would send them runs later and can skip (read-only
+            // key), fail, or never run at all on a hard timeout. Writing the
+            // marker now records an attempt as an acceptance, and the marker
+            // suppresses the item on every later render until the cache expires -
+            // so a single failed flush silently costs the content indefinitely.
+            //
+            // Without the marker a queued-but-unsent block is re-queued next
+            // render, which is cheap: the flush batches, and the API is
+            // idempotent per project. Re-doing cheap work beats recording work
+            // that never happened.
 
             // No refetch: registration is queued now, so nothing has been
             // created yet and the catalog cannot have changed. The flush clears
@@ -652,7 +661,10 @@ class PageTranslator
             $cat = $blockCategory !== null ? $blockCategory : '__uncategorized__';
 
             $customId = $block['customId'];
-            $blockTranslations = isset($translations[$cat][$customId]) ? $translations[$cat][$customId] : null;
+            $categoryTranslations = isset($translations[$cat]) ? $translations[$cat] : [];
+            $blockTranslations = $this->client->resolveContentBlockTranslations(
+                $categoryTranslations, $cat, $block['phrases'], $customId, $this->htmlParser
+            );
 
             if (!is_array($blockTranslations) || empty($blockTranslations)) {
                 // No translations for this content block, but placeholders in the
@@ -971,7 +983,11 @@ class PageTranslator
     protected function getRegisteredItemsCacheKey($category = null)
     {
         $cat = $category !== null ? $category : '__uncategorized__';
-        return 'registered_items_' . $cat;
+
+        // Namespaced by project like every other key in the SDK: this cache is
+        // shared by every request on the host, and by the fleet on Redis, so an
+        // un-namespaced key lets one project's record suppress another's.
+        return 'registered_items_' . $this->client->getConfig()->getProjectId() . '_' . $cat;
     }
 
     /**
@@ -1134,7 +1150,12 @@ class PageTranslator
 
             // Check if exists in translations
             $categoryTranslations = isset($translations[$cat]) ? $translations[$cat] : [];
-            if (array_key_exists($text, $categoryTranslations) && !is_array($categoryTranslations[$text])) {
+            // Presence alone means known: a nested map is a content block, never
+            // a missing phrase, so text colliding with a block id must not be
+            // registered as a phrase. Client::translate() branches the same way -
+            // the two checks have to agree, or the colliding text re-registers on
+            // every single render.
+            if (array_key_exists($text, $categoryTranslations)) {
                 continue;
             }
 
@@ -1169,9 +1190,16 @@ class PageTranslator
                 continue;
             }
 
-            // Check if content block exists in translations
+            // Resolve through the client's single resolution path, so the page
+            // path sees the legacy (pre-JSON-form) ids too. Without this a block
+            // registered by an older SDK reads as new here, gets queued under the
+            // current id, and its translations are stranded on the old one - the
+            // exact damage the fallback exists to prevent, reached through the
+            // path a website most likely renders with.
             $categoryTranslations = isset($translations[$cat]) ? $translations[$cat] : [];
-            if (array_key_exists($customId, $categoryTranslations) && is_array($categoryTranslations[$customId])) {
+            if ($this->client->resolveContentBlockTranslations(
+                    $categoryTranslations, $cat, $block['phrases'], $customId, $this->htmlParser
+                ) !== null) {
                 continue;
             }
 

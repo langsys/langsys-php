@@ -23,8 +23,12 @@ has occurred**: nothing has registered there since February, and the mechanism
 needs a re-registration event to fire. The hazard fires only if that site
 upgrades the SDK before this fallback ships.
 
-That is why the fallback below is the complete fix rather than one half of a
-data repair: nothing needs repairing yet.
+Nothing needs repairing yet, so the fallback below is preventive rather than
+half of a data repair. It covers **both** rendering paths — `translatePage()`
+and `translateContentBlock()` — which matters because the site in question is a
+website and most plausibly renders through the page path. An earlier revision of
+this branch covered only the content-block path and would have left the hazard
+fully live where it is most likely to fire.
 
 ### Added
 
@@ -35,6 +39,11 @@ data repair: nothing needs repairing yet.
   legacy id shapes, covering both category-slot variants (`''` and
   `'__uncategorized__'`) because the old code disagreed with itself about which
   to send.
+
+  Both rendering paths resolve through one shared entry point on `Client`
+  (`resolveContentBlockTranslations()`). They previously duplicated the rules,
+  which is how the page path came to miss the fallback — and, separately, how it
+  drifted on registration bookkeeping and on presence-vs-structure checks.
 
   **Lookup only** — legacy ids are never emitted, never registered and never
   written back. A block served from a legacy id is deliberately **not** queued
@@ -86,8 +95,31 @@ data repair: nothing needs repairing yet.
   branch forked before the v1.0.0–v1.3.1 line, so a file-level re-land would have
   regressed non-blocking `translatePage` (v1.3.0) and the ICU argument fix
   (v1.3.1). Items already present on `main` were deliberately **not** ported —
-  the `json_encode`-failure fallback in `generateCustomId()`, and the ICU
-  `\Throwable` guard, which is broader than the version it would have replaced.
+  the `json_encode`-failure fallback in `generateCustomId()`, the ICU
+  `\Throwable` guard (broader than the version it would have replaced), and the
+  `translate()` signature, where `main`'s
+  `(phrase, locale, category, contentBlockId, params)` supersedes the older
+  branch's shape rather than the other way round.
+
+### Fixed — regressions found by verification
+
+Four rules that the source branch had fixed were live again on `main`, having
+been reintroduced by the v1.3.0 queue rearchitecture and missed by a port list
+scoped to `Client`:
+
+- **The legacy fallback did not cover `translatePage()`** — the page path
+  resolved the current id only, so a pre-change block read as new, was queued
+  under the new id, and its translations were stranded. See above.
+- **Discovered items were recorded as registered when only queued.** The flush
+  that sends them runs later and can skip, fail, or never run; the marker
+  suppresses the item on every later render until the cache expires, so one
+  failed flush cost the content indefinitely. Nothing is recorded now until the
+  server has accepted it.
+- **Phrase discovery disagreed with `translate()` about content-block ids.** Text
+  colliding with a block id re-registered on every render.
+- **The registered-items cache key carried no project id** — the only
+  un-namespaced key in the SDK, so two projects sharing a cache suppressed each
+  other's registrations.
 
 ## [1.3.1] - 2026-08-16
 
