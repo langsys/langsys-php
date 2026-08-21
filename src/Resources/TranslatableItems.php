@@ -147,7 +147,7 @@ class TranslatableItems
             $items[] = [
                 'type' => 'phrase',
                 'phrase' => is_string($phrase) ? $phrase : $phrase['phrase'],
-                'category' => is_string($phrase) ? null : (isset($phrase['category']) ? $phrase['category'] : null),
+                'category' => is_string($phrase) ? null : $this->normalizeCategory(isset($phrase['category']) ? $phrase['category'] : null),
                 'translatable' => is_string($phrase) ? true : (isset($phrase['translatable']) ? $phrase['translatable'] : true),
             ];
         }
@@ -165,6 +165,27 @@ class TranslatableItems
         }
 
         return $lastResponse;
+    }
+
+    /**
+     * Normalize a category for the wire.
+     *
+     * '__uncategorized__' is a local sentinel used to key the catalog; the API
+     * expects an absent category instead. Sending the sentinel creates a literal
+     * category with that name. createContentBlocks() stripped it and
+     * createContentBlock() did not, so the same block registered through the two
+     * paths landed with two different stored categories.
+     *
+     * @param string|null $category
+     * @return string|null Null when there is no category
+     */
+    protected function normalizeCategory($category)
+    {
+        if ($category === null || $category === '' || $category === '__uncategorized__') {
+            return null;
+        }
+
+        return $category;
     }
 
     /**
@@ -201,6 +222,8 @@ class TranslatableItems
     public function createContentBlock($content, $category = null, $label = null, $customId = null)
     {
         $parser = new HtmlParser($this->translatableAttributes);
+
+        $category = $this->normalizeCategory($category);
 
         // Normalize HTML content
         $content = $this->normalizeHtmlContent($content);
@@ -263,7 +286,7 @@ class TranslatableItems
 
         foreach ($contentBlocks as $block) {
             $html = isset($block['html']) ? $block['html'] : '';
-            $category = isset($block['category']) ? $block['category'] : null;
+            $category = $this->normalizeCategory(isset($block['category']) ? $block['category'] : null);
             $customId = isset($block['customId']) ? $block['customId'] : null;
             $label = isset($block['label']) ? $block['label'] : null;
 
@@ -291,7 +314,7 @@ class TranslatableItems
                 'phrases' => $formattedPhrases,
             ];
 
-            if ($category !== null && $category !== '__uncategorized__') {
+            if ($category !== null) {
                 $item['category'] = $category;
             }
 

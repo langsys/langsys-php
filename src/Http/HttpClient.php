@@ -258,7 +258,22 @@ class HttpClient
      */
     protected function handleResponse($response, $httpCode)
     {
-        $data = json_decode($response, true);
+        $body = is_string($response) ? trim($response) : '';
+
+        if ($body === '') {
+            // Some endpoints answer 204 with no content-type and a zero-length
+            // body. Decoding that unconditionally raises a parse error on a
+            // SUCCESSFUL response, so branch on the status before parsing.
+            $data = [];
+
+            if ($httpCode >= 200 && $httpCode < 300) {
+                return $data;
+            }
+
+            return $this->raiseForStatus($data, $httpCode);
+        }
+
+        $data = json_decode($body, true);
 
         if (json_last_error() !== JSON_ERROR_NONE) {
             throw new ApiException(
@@ -267,6 +282,25 @@ class HttpClient
             );
         }
 
+        return $this->raiseForStatus($data, $httpCode);
+    }
+
+    /**
+     * Raise the exception matching an error status, or return the payload.
+     *
+     * Shared by the parsed and empty-body paths so an error status produces the
+     * same exception type either way - an empty-bodied 401 is still an
+     * authentication failure, not a parse failure.
+     *
+     * @param mixed $data Decoded payload, or [] when the body was empty
+     * @param int $httpCode
+     * @return array
+     * @throws ApiException
+     * @throws AuthenticationException
+     * @throws ValidationException
+     */
+    protected function raiseForStatus($data, $httpCode)
+    {
         if ($httpCode === 401) {
             $message = isset($data['error']) ? $data['error'] : 'Unauthorized';
             throw new AuthenticationException($message, $data);

@@ -5,6 +5,90 @@ All notable changes to the Langsys PHP SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### ⚠️ Release gate
+
+**Blocked on this branch landing: hash parity plus a verified pipe-form lookup
+fallback.** This supersedes both earlier framings — the "langsys re-keying
+migration" (cancelled; no rows move, ever) and "do not release" (which described
+damage as already done). Neither is accurate.
+
+**What is actually true, from production analysis on 2026-08-21.** The
+content-block id change shipped in v1.0.2 and every release since, but it is a
+**pending hazard against a single project, not past damage**. Production holds
+335 pipe-form blocks, all in Enagic.com (EnagicWebSystem.com) — 32 active, 2
+human-touched es-es translations, 204 machine-translated rows. **Zero stranding
+has occurred**: nothing has registered there since February, and the mechanism
+needs a re-registration event to fire. The hazard fires only if that site
+upgrades the SDK before this fallback ships.
+
+That is why the fallback below is the complete fix rather than one half of a
+data repair: nothing needs repairing yet.
+
+### Added
+
+- **Pipe-form lookup fallback for content blocks.** Content registered before the
+  JSON-form id change is filed under `md5(implode('|', [category, ...phrases]))`
+  and resolves to nothing under the current id — so it would be re-registered,
+  stranding its translations on the old key. Resolution now falls back to the
+  legacy id shapes, covering both category-slot variants (`''` and
+  `'__uncategorized__'`) because the old code disagreed with itself about which
+  to send.
+
+  **Lookup only** — legacy ids are never emitted, never registered and never
+  written back. A block served from a legacy id is deliberately **not** queued
+  for registration: queuing it is precisely what would strand the translations,
+  so the suppression is the anti-stranding mechanism rather than an optimisation.
+
+  A resolved candidate must carry the same phrases as the block asking for it.
+  The old form's `|` is unescaped, so distinct tuples can flatten to the same
+  string; the phrases decide, not the id. The guard fails toward "no match",
+  because attaching the wrong translations is visible to a reader while silently
+  serving nothing is indistinguishable from a block that was never registered.
+
+- `Client::resetRequestState()` — clears the per-request write decision and the
+  request-scoped caches. Required under long-lived runtimes (Octane, Swoole,
+  RoadRunner, queue workers) where the `Client` outlives the request.
+
+### Fixed
+
+- **A null catalog value no longer reaches the caller.** A registered but
+  untranslated phrase comes back present with a `null` value; the lookup guarded
+  only against `''`, so `null` passed through `interpolate()`'s empty-params
+  early return and out of a method that contracts to return a string.
+- **Write capability is decided by the server, not inferred from the key type.**
+  `canWrite()` branches on `write_enabled` when the response carries it —
+  `key_type` describes the key, while capability is per-session and depends on
+  the caller's address and any write grant. When the flag is absent the SDK falls
+  back to `key_type === 'write'`, which on an API too old to emit the flag is not
+  a lossy proxy but the complete answer, since such an API has no address-gated
+  keys and no grants. **That fallback must stay**: failing closed on a missing
+  flag would silently disable all registration against today's API.
+- **The write decision is never persisted.** It is address-dependent, and was
+  being written to a cache shared by every request on the host — and by the whole
+  fleet on Redis. It is now stripped before caching and held per request.
+  Resolution costs no extra request for `read`/`write` keys, whose answer their
+  type fully determines; only address-gated keys resolve per request.
+- **An empty or null category no longer creates a second, unreachable
+  namespace.** The catalog keys uncategorised items under `__uncategorized__`, so
+  a lookup under `''` missed forever while registration wrote the phrase as
+  uncategorised — re-registering the same phrase on every request, never
+  converging.
+- **`flushPendingRegistrations()` no longer reports success for work it did not
+  do.** `success` now means every queued item was accepted, and the result
+  carries `skipped`, split into `dropped` (gone) and `retained` (a later flush
+  can send them) — the two need opposite responses from a caller.
+
+### Notes
+
+- Ported semantically from `fix/write-enabled-gate`, not file-by-file: that
+  branch forked before the v1.0.0–v1.3.1 line, so a file-level re-land would have
+  regressed non-blocking `translatePage` (v1.3.0) and the ICU argument fix
+  (v1.3.1). Items already present on `main` were deliberately **not** ported —
+  the `json_encode`-failure fallback in `generateCustomId()`, and the ICU
+  `\Throwable` guard, which is broader than the version it would have replaced.
+
 ## [1.3.1] - 2026-08-16
 
 ### Fixed

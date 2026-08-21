@@ -230,6 +230,49 @@ class HtmlParser
     }
 
     /**
+     * The id shapes this SDK produced BEFORE the JSON-form change, for lookup
+     * only.
+     *
+     * Content registered by an older SDK is stored under an id computed as
+     * md5(implode('|', [category, ...phrases])). The current form is not
+     * compatible with it, so a block registered before the change resolves to
+     * nothing under its new id - its translations are still in the catalog,
+     * just filed under the old key.
+     *
+     * Two variants, because the old code disagreed with itself about the
+     * category slot: one path sent the '__uncategorized__' sentinel literally
+     * and another omitted it, so the same uncategorised block exists under
+     * either spelling depending on which path registered it.
+     *
+     * NEVER emit these. They are a read path for content that predates the
+     * change; anything newly registered uses generateCustomId().
+     *
+     * @param string|null $category
+     * @param array $phrases
+     * @return array Legacy ids, most likely first, de-duplicated
+     */
+    public function legacyCustomIds($category, array $phrases)
+    {
+        $values = array_values($phrases);
+
+        $slots = [];
+        if ($category === null || $category === '__uncategorized__' || $category === '') {
+            // Uncategorised: both spellings the old paths could have written.
+            $slots[] = '';
+            $slots[] = '__uncategorized__';
+        } else {
+            $slots[] = $category;
+        }
+
+        $ids = [];
+        foreach ($slots as $slot) {
+            $ids[] = md5(implode('|', array_merge([$slot], $values)));
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
      * Whether an element is excluded from translation entirely.
      *
      * Two spellings, both author-facing: the standard HTML `translate="no"`, and

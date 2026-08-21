@@ -26,6 +26,18 @@ use Langsys\SDK\Resources\Utilities;
 class Client
 {
     /**
+     * Key types whose write capability is fully determined by the type itself.
+     * 'ip_write' is deliberately absent - its answer varies by caller.
+     */
+    const KEY_TYPE_READ = 'read';
+    const KEY_TYPE_WRITE = 'write';
+
+    /**
+     * Local sentinel for "no category".
+     */
+    const UNCATEGORIZED = '__uncategorized__';
+
+    /**
      * @var Config
      */
     protected $config;
@@ -78,6 +90,19 @@ class Client
     /**
      * @var array Pending phrases to register (queued during translate calls)
      */
+    /**
+     * Whether THIS request may register content, as computed by the server.
+     *
+     * Deliberately not part of $projectData and never written to $this->cache:
+     * the server derives it from the caller's address and any write grant, so
+     * the same key legitimately answers true for one request and false for the
+     * next. Persisting it would apply one caller's decision to every later
+     * request sharing the cache. Null means "not yet resolved this request".
+     *
+     * @var bool|null
+     */
+    protected $writeEnabled = null;
+
     protected $pendingPhrases = [];
 
     /**
@@ -331,6 +356,12 @@ class Client
         if (!$force) {
             $cached = $this->cache->get($cacheKey);
             if ($cached !== null) {
+                // Entries written by older SDK versions may still carry the
+                // write decision. Drop it rather than trust a value computed
+                // for whichever request happened to populate the cache.
+                if (is_array($cached)) {
+                    unset($cached['write_enabled']);
+                }
                 $this->projectData = $cached;
                 $this->syncBatchLimit();
                 $this->logger->debug('Authorization from cache', [
@@ -343,13 +374,34 @@ class Client
         $response = $this->http->get('authorize-project/' . $this->config->getProjectId());
 
         if (isset($response['data'])) {
-            $this->projectData = $response['data'];
+            $data = $response['data'];
+
+            if (array_key_exists('write_enabled', $data)) {
+                // Present: authoritative, and it wins over key_type in both
+                // directions. This is the only path that can answer for an
+                // 'ip_write' key. Captured, then stripped so it can never reach
+                // $this->cache - a file/Redis store shared by every request on
+                // the host, and by the fleet on Redis.
+                $this->writeEnabled = (bool) $data['write_enabled'];
+                unset($data['write_enabled']);
+            } else {
+                // Absent means an API too old to compute the flag. That API also
+                // has no 'ip_write' keys and no write grants, so key_type is not
+                // a lossy proxy there - it is the complete answer. Failing closed
+                // here would silently disable registration for every deployment
+                // until the server ships the flag.
+                $keyTypeForFallback = isset($data['key_type']) ? $data['key_type'] : null;
+                $this->writeEnabled = ($keyTypeForFallback === self::KEY_TYPE_WRITE);
+            }
+
+            $this->projectData = $data;
             $this->syncBatchLimit();
             $this->cache->set($cacheKey, $this->projectData);
             $keyType = isset($this->projectData['key_type']) ? $this->projectData['key_type'] : 'unknown';
             $this->logger->info('Project authorized', [
                 'project_id' => $this->config->getProjectId(),
                 'key_type' => $keyType,
+                'write_enabled' => $this->writeEnabled,
             ]);
             return $this->projectData;
         }
@@ -376,8 +428,95 @@ class Client
      */
     public function canWrite()
     {
+        if ($this->writeEnabled === null) {
+            $this->resolveWriteDecision();
+        }
+
+        return $this->writeEnabled === true;
+    }
+
+    /**
+     * Work out whether this request may write, with the fewest possible calls.
+     *
+     * A 'write' key always may and a 'read' key never may, so for those two the
+     * cached key_type is a complete answer and no network call is warranted -
+     * without this, a read-only deployment with unregistered content pays a
+     * blocking authorization round-trip on every single render, forever.
+     *
+     * The read-key shortcut holds only while this SDK sends no write grant: the
+     * server's gate is `type-allows-write OR valid-grant`, so a grant could make
+     * a read key write-enabled. If grant support is ever added, 'read' must stop
+     * short-circuiting and resolve per request like 'ip_write'. Pinned by
+     * tests/Http/HttpClientTest.php::testNoWriteGrantHeaderIsSent.
+     *
+     * @return void
+     */
+    protected function resolveWriteDecision()
+    {
+        // Memory or cache - deliberately not forced.
         $data = $this->authorize();
-        return isset($data['key_type']) && $data['key_type'] === 'write';
+
+        if ($this->writeEnabled !== null) {
+            // authorize() went to the network and already answered.
+            return;
+        }
+
+        $keyType = isset($data['key_type']) ? $data['key_type'] : null;
+
+        if ($keyType === self::KEY_TYPE_WRITE || $keyType === self::KEY_TYPE_READ) {
+            $this->writeEnabled = ($keyType === self::KEY_TYPE_WRITE);
+            return;
+        }
+
+        // 'ip_write', or a type this SDK predates: the answer belongs to this
+        // request and only the server can give it.
+        $this->authorize(true);
+
+        if ($this->writeEnabled === null) {
+            // Unexpected response shape. Settle so we don't re-request per call.
+            $this->writeEnabled = false;
+        }
+    }
+
+    /**
+     * Clear state that belongs to a single request.
+     *
+     * Under a long-lived runtime (Octane, Swoole, RoadRunner, a queue worker)
+     * this Client can outlive the request it was built for, which would carry
+     * one caller's write decision into the next caller's request. Call this
+     * between requests. Flush pending registrations first - this does not send
+     * them.
+     *
+     * @return $this
+     */
+    public function resetRequestState()
+    {
+        $this->writeEnabled = null;
+        $this->translationsMemoryCache = [];
+
+        return $this;
+    }
+
+    /**
+     * Resolve a caller-supplied category to the local catalog key.
+     *
+     * The catalog keys uncategorised items under '__uncategorized__', so an
+     * empty or null category has to become the sentinel on the way in. Left
+     * unnormalised, a lookup under '' misses forever while registration writes
+     * the phrase as uncategorised - so the same phrase is re-registered on every
+     * request and never converges. Mirrors the JS SDKs'
+     * `category || '__uncategorized__'`.
+     *
+     * @param string|null $category
+     * @return string
+     */
+    protected function normalizeCategory($category)
+    {
+        if ($category === null || $category === '') {
+            return self::UNCATEGORIZED;
+        }
+
+        return $category;
     }
 
     /**
@@ -486,7 +625,26 @@ class Client
             }
         }
 
-        $translations = $this->getTranslations($locale);
+        $category = $this->normalizeCategory($category);
+
+        try {
+            $translations = $this->getTranslations($locale);
+        } catch (\Exception $e) {
+            // This method sits on every render path, so the API being
+            // unreachable must degrade to source text rather than turn a working
+            // page into a 500. Nothing is queued: a failed catalog fetch cannot
+            // tell a miss from a hit, and registering on a guess would turn every
+            // outage into a write storm on the paths already failing.
+            $this->logger->error('Translation lookup failed - returning source phrase', [
+                'phrase' => $phrase,
+                'category' => $category,
+                'locale' => $locale,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $this->interpolate($phrase, $params, $locale);
+        }
+
         $categoryTranslations = isset($translations[$category]) ? $translations[$category] : [];
 
         // Handle content block phrase lookup (don't queue - content block handles its own registration)
@@ -504,8 +662,11 @@ class Client
             if (is_array($value)) {
                 return $this->interpolate($phrase, $params, $locale);
             }
-            // Return translation (or original if empty)
-            return $this->interpolate($value !== '' ? $value : $phrase, $params, $locale);
+            // A registered-but-untranslated phrase comes back present with a
+            // NULL value. Both null and '' mean "no translation yet", so fall
+            // back to the source phrase - returning the value would hand the
+            // caller null from a method that contracts to return a string.
+            return $this->interpolate(($value === null || $value === '') ? $phrase : $value, $params, $locale);
         }
 
         // Phrase not found - queue the RAW phrase (placeholders intact) for
@@ -956,6 +1117,8 @@ class Client
                 : $this->applyBlockTranslations($html, [], new HtmlParser($this->translatableItems->getTranslatableAttributes()), $params, null);
         }
 
+        $category = $this->normalizeCategory($category);
+
         // Parse HTML and extract phrases
         $parser = new HtmlParser($this->translatableItems->getTranslatableAttributes());
         $phrases = $parser->extractPhrases($html);
@@ -970,13 +1133,42 @@ class Client
         // Generate customId for this content block
         $customId = $parser->generateCustomId($category, $phrases);
 
-        // Get translations
-        $translations = $this->getTranslations($locale);
+        // Get translations. As in translate(), an unreachable API degrades to
+        // the source HTML rather than throwing into the caller's render.
+        try {
+            $translations = $this->getTranslations($locale);
+        } catch (\Exception $e) {
+            $this->logger->error('Content block lookup failed - returning source HTML', [
+                'custom_id' => $customId,
+                'category' => $category,
+                'locale' => $locale,
+                'error' => $e->getMessage(),
+            ]);
+
+            return empty($params)
+                ? $html
+                : $this->applyBlockTranslations($html, [], $parser, $params, $locale);
+        }
+
         $categoryTranslations = isset($translations[$category]) ? $translations[$category] : [];
 
         // Check if content block exists
         if (!array_key_exists($customId, $categoryTranslations) ||
             !is_array($categoryTranslations[$customId])) {
+
+            // Before treating it as new, look for it under the id shapes this
+            // SDK produced before the JSON-form change. A block registered by an
+            // older SDK is still in the catalog, filed under the old key.
+            $legacy = $this->resolveLegacyContentBlock($categoryTranslations, $category, $phrases, $parser);
+
+            if ($legacy !== null) {
+                // Found. Serve it, and deliberately DO NOT queue: registering
+                // would create a second block under the new id, leaving the
+                // translations stranded on the old one - the exact outcome this
+                // fallback exists to prevent.
+                return $this->applyBlockTranslations($html, $legacy, $parser, $params, $locale);
+            }
+
             // Content block doesn't exist - queue for registration
             $this->queueContentBlockForRegistration($html, $category, $customId, $phrases);
 
@@ -991,6 +1183,85 @@ class Client
 
         // Apply translations to HTML
         return $this->applyBlockTranslations($html, $blockTranslations, $parser, $params, $locale);
+    }
+
+    /**
+     * Find a content block under a pre-JSON-form (legacy) id.
+     *
+     * Lookup only: legacy ids are never registered, never emitted and never
+     * written back. A hit means the block predates the id change and its
+     * translations are filed under the old key.
+     *
+     * The phrase set is verified before the block is accepted. All three known
+     * ways two ids can coincide - the old form's unescaped '|' delimiter, the
+     * JS SDK's truncating hash, and a joined string that happens to spell a
+     * JSON document - are collisions over DIFFERENT content, so none survives
+     * comparing the content itself. That check is the guard, and it must fail
+     * toward "no match": attaching the wrong translations is visible to a
+     * reader, whereas silently serving nothing looks exactly like a block that
+     * was never registered.
+     *
+     * @param array $categoryTranslations Catalog slice for this category
+     * @param string $category
+     * @param array $phrases Phrases extracted from this block, in order
+     * @param HtmlParser $parser
+     * @return array|null Translation map, or null when there is no legacy block
+     */
+    protected function resolveLegacyContentBlock(array $categoryTranslations, $category, array $phrases, HtmlParser $parser)
+    {
+        foreach ($parser->legacyCustomIds($category, $phrases) as $legacyId) {
+            if (!array_key_exists($legacyId, $categoryTranslations)) {
+                continue;
+            }
+
+            $candidate = $categoryTranslations[$legacyId];
+
+            if (!is_array($candidate) || empty($candidate)) {
+                continue;
+            }
+
+            // Guard: the block we found must be THIS block. Compare the content
+            // the id was supposed to encode, not the id.
+            if (!$this->legacyBlockMatchesPhrases($candidate, $phrases)) {
+                $this->logger->warning('Legacy content block id resolved to different content - ignoring', [
+                    'legacy_custom_id' => $legacyId,
+                    'category' => $category,
+                ]);
+                continue;
+            }
+
+            $this->logger->info('Content block resolved under a legacy id', [
+                'legacy_custom_id' => $legacyId,
+                'category' => $category,
+            ]);
+
+            return $candidate;
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether a candidate legacy block carries exactly this block's phrases.
+     *
+     * Compares the phrase set rather than order: the catalog returns a block as
+     * a phrase-keyed map, so ordering is not recoverable from it. Every known
+     * collision differs in the phrases themselves, so set equality is enough to
+     * separate them.
+     *
+     * @param array $candidate Catalog block, keyed by source phrase
+     * @param array $phrases
+     * @return bool
+     */
+    protected function legacyBlockMatchesPhrases(array $candidate, array $phrases)
+    {
+        $found = array_keys($candidate);
+        $expected = array_values(array_unique($phrases));
+
+        sort($found);
+        sort($expected);
+
+        return $found === $expected;
     }
 
     /**
@@ -1293,13 +1564,24 @@ class Client
      * This is called automatically at the end of the request, but you can
      * call it manually if needed.
      *
-     * @return array ['phrases' => count, 'content_blocks' => count, 'success' => bool]
+     * 'success' means every queued item was accepted by the API. It is false
+     * whenever work was discarded or failed - a skipped write is not a
+     * successful one, and a caller checking this must not be told otherwise.
+     *
+     * 'skipped' counts items never sent, and splits into 'dropped' (discarded;
+     * nothing will retry them) and 'retained' (still queued; a later flush can
+     * send them). The two need opposite responses from a caller.
+     *
+     * @return array ['phrases' => count, 'content_blocks' => count, 'skipped' => count, 'dropped' => count, 'retained' => count, 'success' => bool]
      */
     public function flushPendingRegistrations()
     {
         $result = [
             'phrases' => 0,
             'content_blocks' => 0,
+            'skipped' => 0,
+            'dropped' => 0,
+            'retained' => 0,
             'success' => true,
         ];
 
@@ -1311,19 +1593,30 @@ class Client
         // Skip if we can't write
         try {
             if (!$this->canWrite()) {
-                $this->logger->warning('Flush skipped - read-only key', [
+                $pendingCount = count($this->pendingPhrases) + count($this->pendingContentBlocks);
+                $this->logger->warning('Flush skipped - this request may not write', [
                     'pending_phrases' => count($this->pendingPhrases),
                     'pending_content_blocks' => count($this->pendingContentBlocks),
                 ]);
-                // Clear queues silently
+                // Nothing can send these, so drop them - but report it, rather
+                // than returning a success-shaped result for discarded work.
                 $this->pendingPhrases = [];
                 $this->pendingContentBlocks = [];
+                $result['skipped'] = $pendingCount;
+                $result['dropped'] = $pendingCount;
+                $result['success'] = false;
                 return $result;
             }
         } catch (\Exception $e) {
+            $pendingCount = count($this->pendingPhrases) + count($this->pendingContentBlocks);
             $this->logger->error('Flush failed - authorization error', [
                 'error' => $e->getMessage(),
+                'pending' => $pendingCount,
             ]);
+            // Left queued deliberately: a manual flush can still retry these.
+            $result['skipped'] = $pendingCount;
+            $result['retained'] = $pendingCount;
+            $result['success'] = false;
             return $result;
         }
 
@@ -1339,6 +1632,8 @@ class Client
                     'count' => count($this->pendingPhrases),
                     'error' => $e->getMessage(),
                 ]);
+                $result['skipped'] += count($this->pendingPhrases);
+                $result['retained'] += count($this->pendingPhrases);
                 $result['success'] = false;
             }
         }
