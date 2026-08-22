@@ -71,6 +71,19 @@ extracted content is stable between renders, not for all of them. Whether a
 given project's blocks contain inline scripts is a question about their stored
 content, not about this SDK.
 
+**Measured population: zero.** A read-only production investigation (run by the
+backend verification pass, not by this repo — recorded here because it bounds
+the statement above) found **no script-bearing content among the 335 pipe-form
+blocks**, and no genuine instance anywhere in production (~3,012 blocks): no
+harvested script content, no re-registration clusters, no material machine-
+translation spend. So the scope limit is a **prospective** statement about what
+the fallback can and cannot reach, not a description of current exposure — and
+the gate closes clean for the population it was written for.
+
+Keep the limit documented anyway. It is true of the mechanism regardless of
+today's data, and the population can change the moment someone puts an analytics
+snippet inside a translated block.
+
 ### Added
 
 - **Pipe-form lookup fallback for content blocks.** Content registered before the
