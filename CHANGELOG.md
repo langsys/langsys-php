@@ -39,6 +39,9 @@ a nonce, a timestamp — the phrase set varies with it, and the block's id is
 different every time:
 
 ```
+category 'pricing' — the id is a hash of [category, phrases], so it is part of
+the input and the example does not reproduce without it:
+
 <div><h2>Our pricing</h2><script>track({sku:"SKU-1"});</script></div>
   -> c036bbafe124e916a45f8b39b9ef7d8c   (legacy form: 328feff25c5a…)
 <div><h2>Our pricing</h2><script>track({sku:"SKU-2"});</script></div>
@@ -47,11 +50,26 @@ different every time:
 
 Neither the current nor the legacy id is stable, so no id-based lookup can match
 such a block. They resolve to nothing, render untranslated, and re-register on
-every request. This is not a defect in the fallback — it is the harvesting
-boundary above it — but it means "the hazard is covered" holds for blocks whose
-content is stable, not for all of them. Whether any affected project's blocks
-contain inline scripts is a question about their stored content, not about this
-SDK.
+every request.
+
+**This is not a defect in the fallback, and not 838's to fix.** `walkNode()` has
+never had a skip list, so the harvesting predates the id change and both id
+forms are equally unstable under it — the pipe form is no more matchable here
+than the current one. It is tracked separately as a cross-SDK defect affecting
+both the PHP and JS lineages; fixing it re-keys every content block containing a
+script or style, so it needs a coordinated tokenizer decision rather than a
+unilateral change here.
+
+The consequence is worth stating plainly, because it is larger than catalog
+noise: per render such a block creates a new block row that is never cleaned up
+(deletion needs a matching id), new phrase rows for each script variant, and a
+**billed machine-translation batch covering the whole block × every target
+locale**. Confirmed against the backend by the verification pass.
+
+For this branch it means "the hazard is covered" holds for content blocks whose
+extracted content is stable between renders, not for all of them. Whether a
+given project's blocks contain inline scripts is a question about their stored
+content, not about this SDK.
 
 ### Added
 
