@@ -30,6 +30,29 @@ website and most plausibly renders through the page path. An earlier revision of
 this branch covered only the content-block path and would have left the hazard
 fully live where it is most likely to fire.
 
+**Scope limit — content blocks containing inline `<script>` or `<style>` are
+outside what this fallback can reach.** `HtmlParser::walkNode()` has no skip
+list and the content-block path never consults `PageTranslator::SKIP_ELEMENTS`
+(documented on `main` in 224dc8b), so script source is extracted as a phrase.
+When that source varies between renders — an analytics payload carrying a SKU,
+a nonce, a timestamp — the phrase set varies with it, and the block's id is
+different every time:
+
+```
+<div><h2>Our pricing</h2><script>track({sku:"SKU-1"});</script></div>
+  -> c036bbafe124e916a45f8b39b9ef7d8c   (legacy form: 328feff25c5a…)
+<div><h2>Our pricing</h2><script>track({sku:"SKU-2"});</script></div>
+  -> 55b0f8a69c72a22b3dd829d9e4d2e3ac   (legacy form: 97250baee9d7…)
+```
+
+Neither the current nor the legacy id is stable, so no id-based lookup can match
+such a block. They resolve to nothing, render untranslated, and re-register on
+every request. This is not a defect in the fallback — it is the harvesting
+boundary above it — but it means "the hazard is covered" holds for blocks whose
+content is stable, not for all of them. Whether any affected project's blocks
+contain inline scripts is a question about their stored content, not about this
+SDK.
+
 ### Added
 
 - **Pipe-form lookup fallback for content blocks.** Content registered before the
