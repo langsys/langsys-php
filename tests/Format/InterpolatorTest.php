@@ -890,6 +890,37 @@ class InterpolatorTest extends TestCase
         $this->assertSame('ru', $logger->records[1][2]['locale']);
     }
 
+    /**
+     * The notice must fire for NON-select argument types too.
+     *
+     * Coverage, not behaviour: the notice is emitted from the recovery decision,
+     * which is argument-type-agnostic — it reads the names `missingIcuArguments()`
+     * found and never inspects their type. So this passes today and is expected
+     * to. It exists because the other three notice tests all recover `select`
+     * arguments, and a suite that only ever recovers one argument type cannot
+     * distinguish "the notice fires on recovery" from "the notice fires on
+     * select" — a later change making the notice type-specific would leave every
+     * existing assertion green.
+     */
+    public function testRecoveryNoticeFiresForPluralAndNumberArgumentsToo()
+    {
+        $logger = new RecordingLogger();
+
+        (new Interpolator($logger))->interpolate(
+            '{n, plural, one {# item} other {# items}} and {m, number} more',
+            ['unrelated' => 1],
+            'pl'
+        );
+
+        $this->assertCount(1, $logger->records);
+
+        list($level, , $context) = $logger->records[0];
+
+        $this->assertSame('debug', $level);
+        $this->assertSame(['n', 'm'], $context['defaulted_arguments'], 'both non-select types are named');
+        $this->assertSame('pl', $context['locale']);
+    }
+
     public function testNoNoticeWhenNothingWasDefaulted()
     {
         $logger = new RecordingLogger();
