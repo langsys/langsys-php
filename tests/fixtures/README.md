@@ -42,8 +42,21 @@ the outcome while hiding *whether the two implementations agreed for the right
 reason* — two encoders could disagree on slash or unicode escaping and still
 collide onto the same id by luck. With it, another SDK can hash the exact same
 bytes rather than reimplementing our encoding choices
-(`JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE`, which is what
-`JSON.stringify` produces).
+(`JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS`,
+which is what `JSON.stringify` produces).
+
+**Three flags, not two.** The third is not implied by the second:
+`JSON_UNESCAPED_UNICODE` still escapes U+2028 and U+2029 as `\u2028` / `\u2029`,
+while `JSON.stringify` emits them raw and has no flag to do otherwise. Two flags
+therefore produce a *different id* for any block containing a line terminator.
+A 78-codepoint sweep found those two to be the only disagreement between the
+encoders, non-BMP included — narrow enough to miss, and permanent once content
+carrying one is registered. Row 13 exists to lock it: its `serialized_hex`
+carries the raw `e280a8` / `e280a9` bytes, so a two-flag implementation fails the
+byte comparison (`5c7532303238`) rather than quietly minting a second id.
+
+Rows 1–12 are unaffected — none contains a line terminator, so their bytes are
+identical under both forms.
 
 ### Who depends on this
 

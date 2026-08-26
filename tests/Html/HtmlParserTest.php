@@ -1382,7 +1382,7 @@ class HtmlParserTest extends TestCase
             // 2. The canonical serialization must reproduce, byte for byte.
             $serialized = json_encode(
                 [$category, $case['tokens']],
-                JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+                JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS
             );
 
             $this->assertSame($case['canonical_json'], $serialized, $label . ': canonical json');

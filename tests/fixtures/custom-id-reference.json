@@ -338,5 +338,57 @@
             ]
         },
         "serialized_hex": "5b22d0bad0bbd18ed187222c5b22d09fd180d0b8d0b2d0b5d182225d5d"
+    },
+    {
+        "category": "Legal",
+        "tokens": [
+            "line one line two",
+            "para break"
+        ],
+        "canonical_json": "[\"Legal\",[\"line one line two\",\"para break\"]]",
+        "custom_id": "7a91549c8e51919ed854f126d2e27588",
+        "codepoints": {
+            "category": [
+                "U+004C",
+                "U+0065",
+                "U+0067",
+                "U+0061",
+                "U+006C"
+            ],
+            "tokens": [
+                [
+                    "U+006C",
+                    "U+0069",
+                    "U+006E",
+                    "U+0065",
+                    "U+0020",
+                    "U+006F",
+                    "U+006E",
+                    "U+0065",
+                    "U+2028",
+                    "U+006C",
+                    "U+0069",
+                    "U+006E",
+                    "U+0065",
+                    "U+0020",
+                    "U+0074",
+                    "U+0077",
+                    "U+006F"
+                ],
+                [
+                    "U+0070",
+                    "U+0061",
+                    "U+0072",
+                    "U+0061",
+                    "U+2029",
+                    "U+0062",
+                    "U+0072",
+                    "U+0065",
+                    "U+0061",
+                    "U+006B"
+                ]
+            ]
+        },
+        "serialized_hex": "5b224c6567616c222c5b226c696e65206f6e65e280a86c696e652074776f222c2270617261e280a9627265616b225d5d"
     }
 ]

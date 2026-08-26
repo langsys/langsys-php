@@ -207,9 +207,17 @@ class HtmlParser
         // to the same custom_id across every Langsys SDK. JS computes:
         //   md5(JSON.stringify([category, tokens]))
         //
-        // - JSON-encode the [category, phrases] tuple. JSON_UNESCAPED_SLASHES +
-        //   JSON_UNESCAPED_UNICODE make json_encode match JS JSON.stringify
-        //   byte-for-byte (JS escapes neither slashes nor non-ASCII).
+        // - JSON-encode the [category, phrases] tuple. THREE flags are required
+        //   to match JS JSON.stringify byte-for-byte, not two:
+        //     JSON_UNESCAPED_SLASHES         JS does not escape '/'
+        //     JSON_UNESCAPED_UNICODE         JS does not escape non-ASCII
+        //     JSON_UNESCAPED_LINE_TERMINATORS  JS does not escape U+2028/U+2029
+        //   The third is not implied by the second. JSON_UNESCAPED_UNICODE
+        //   leaves the line terminators escaped as \u2028 / \u2029, while
+        //   JSON.stringify emits them raw and has no flag to do otherwise - so
+        //   the same block hashed to two different ids across the SDKs. Measured
+        //   across a 78-codepoint sweep: those two are the only disagreement,
+        //   non-BMP included. Row 13 of the reference fixture locks it.
         // - Treat the reserved '__uncategorized__' sentinel (and null) as "no
         //   category" - hashed as '' - matching the JS side, which passes the raw
         //   category ('' when none) and never the sentinel. This also makes the
@@ -217,7 +225,10 @@ class HtmlParser
         //   createContentBlock default null) agree with each other.
         $cat = ($category === null || $category === '__uncategorized__') ? '' : $category;
 
-        $encoded = json_encode([$cat, array_values($phrases)], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $encoded = json_encode(
+            [$cat, array_values($phrases)],
+            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS
+        );
 
         // json_encode returns false on invalid UTF-8, and md5(false) is md5('') -
         // which would collapse EVERY such content block onto one id. Fall back to
