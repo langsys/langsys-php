@@ -993,4 +993,48 @@ class InterpolatorTest extends TestCase
         $this->assertSame('{count} items', $out);
         $this->assertStringNotContainsString('plural', $out, 'raw ICU source must never reach the page');
     }
+
+    /**
+     * The recovered `{argName}` literal must survive the formatter call — for
+     * TYPED arguments as well as branch-typed ones, and whether the argument is
+     * absent or present-and-null.
+     *
+     * Two failure modes, both surfaced by mutating the recovery on the JS leg and
+     * both invisible to the branch-typed vectors above:
+     *
+     *   - a null NUMBER coerces to `'0 due'` rather than erasing to `' due'`.
+     *     That is worse than the empty string, because `0` reads as data: an
+     *     invoice showing "0 due" is a plausible sentence stating something false,
+     *     where " due" at least looks broken.
+     *   - the same mutation breaks ABSENT-argument recovery outright, emitting raw
+     *     ICU source. So the absent cases sit beside the null ones deliberately —
+     *     a suite with only null vectors passes while absent recovery is gone.
+     *
+     * @dataProvider recoveredLiteralProvider
+     */
+    public function testRecoveredLiteralSurvivesTheFormatterCall($template, $params, $expected)
+    {
+        $this->assertSame($expected, (new Interpolator())->interpolate($template, $params, 'en-us'));
+    }
+
+    public function recoveredLiteralProvider()
+    {
+        return [
+            // A null typed argument must not coerce. '0 due' would be the
+            // dangerous outcome; ' due' the merely broken one.
+            'null number'            => ['{amt, number} due', ['amt' => null], '{amt} due'],
+            'absent number'          => ['{amt, number} due', [], '{amt} due'],
+            'absent number, params'  => ['{amt, number} due', ['other' => 1], '{amt} due'],
+            'null date'              => ['{d, date} shipped', ['d' => null], '{d} shipped'],
+            'absent date'            => ['{d, date} shipped', ['other' => 1], '{d} shipped'],
+            'null plural'            => ['{n, plural, one {# item} other {# items}}', ['n' => null], '{n} items'],
+            'absent plural'          => ['{n, plural, one {# item} other {# items}}', [], '{n} items'],
+
+            // Controls: a supplied argument still formats through CLDR, so the
+            // assertions above are about recovery rather than about the type
+            // never formatting at all.
+            'supplied number'        => ['{amt, number} due', ['amt' => 1234.5], '1,234.5 due'],
+            'supplied plural'        => ['{n, plural, one {# item} other {# items}}', ['n' => 1], '1 item'],
+        ];
+    }
 }
