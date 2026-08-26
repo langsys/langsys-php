@@ -14,14 +14,35 @@ fallback.** This supersedes both earlier framings — the "langsys re-keying
 migration" (cancelled; no rows move, ever) and "do not release" (which described
 damage as already done). Neither is accurate.
 
-**What is actually true, from production analysis on 2026-08-21.** The
-content-block id change shipped in v1.0.2 and every release since, but it is a
-**pending hazard against a single project, not past damage**. Production holds
-335 pipe-form blocks, all in Enagic.com (EnagicWebSystem.com) — 32 active, 2
-human-touched es-es translations, 204 machine-translated rows. **Zero stranding
-has occurred**: nothing has registered there since February, and the mechanism
-needs a re-registration event to fire. The hazard fires only if that site
-upgrades the SDK before this fallback ships.
+**What is actually true, from read-only production analysis on 2026-08-21, run
+by the backend rather than from this repo.** The content-block id change shipped
+in v1.0.2 and every release since, but it is a **pending hazard against a single
+project, not past damage**.
+
+The population, with denominators — two independent sweeps initially reported
+figures an order of magnitude apart, and the difference was live-versus-deleted
+rather than a disagreement:
+
+```
+content_blocks, all rows          3,012        of which soft-deleted   2,494
+content_blocks, live                518
+
+pipe-form ids, all rows             330  (of 3,012)   all in Enagic.com
+pipe-form ids, LIVE                  32  (of 518)
+```
+
+**32 is the impact figure**; 330 is the size of the historical corpus. The 298
+that differ are soft-deleted and serve no lookup, so they cannot be affected by
+an id change. Both numbers are correct and neither alone is honest — an earlier
+draft of this entry cited only the larger one, which overstates customer impact
+roughly tenfold. (One sweep counted 335 rather than 330; a method difference at
+the margin, not chased, and immaterial at this precision.)
+
+Of the 32 live blocks: 2 human-touched es-es translations, 204
+machine-translated rows. **Zero stranding has occurred** — nothing has
+registered there since February, and the mechanism needs a re-registration event
+to fire. The hazard fires only if that site upgrades the SDK before this
+fallback ships.
 
 Nothing needs repairing yet, so the fallback below is preventive rather than
 half of a data repair. It covers **both** rendering paths — `translatePage()`
