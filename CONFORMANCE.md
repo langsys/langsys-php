@@ -55,11 +55,32 @@ stashing `src/` and re-running. A regression test never seen red is a guess.
 |---|---|---|
 | (no rule id yet) | provisional | Both rendering paths: `tests/Html/PageTranslatorTest.php::testTranslatePageServesAContentBlockFoundUnderItsLegacyId`, `::testTranslatePageDoesNotQueueALegacyResolvedContentBlock`, `::testPageAndContentBlockPathsAgreeOnALegacyBlock`; and `tests/ClientTest.php::testContentBlockResolvesUnderItsLegacyPipeFormId`, `::testUncategorizedLegacyBlockResolvesUnderTheEmptyCategorySlot`, `::testUncategorizedLegacyBlockResolvesUnderTheSentinelCategorySlot`, `::testLegacyIdResolvingToDifferentContentIsRejected`, `::testLegacyIdIsNeverSentToTheApi`. Not yet a spec rule — the fallback is SDK-local remediation. If it becomes one, the load-bearing half is that a legacy-resolved block is **not** queued |
 
+## Content-block id (CID)
+
+| Rule | Status | Evidence |
+|---|---|---|
+| CID-1 | provisional | `tests/Html/HtmlParserTest.php::testCustomIdFixtureIsSelfConsistentAtEveryLayer` asserts the fixture **programmatically at each layer** — recorded codepoints describe the input, the canonical serialization reproduces byte-for-byte against `serialized_hex` (hex of the exact string passed to `md5()`, recomputed rather than trusted), the hash of those bytes is the recorded `custom_id`, and `generateCustomId()` produces the same. `::testCustomIdFixtureRetainsItsUnicodeCoverage` pins ≥15 codepoints above U+00FF and ≥1 non-BMP, since an ASCII-only suite cannot tell a byte hash from a UTF-16 one |
+| CID-2 | provisional | Enforced **inside** the id function, not at call sites: `$cat = ($category === null \|\| $category === '__uncategorized__') ? '' : $category;`. `tests/Html/HtmlParserTest.php::testGenerateCustomId` covers the null case |
+| CID-3 | provisional | Emits only the CID-1 form — `tests/ClientTest.php::testLegacyIdIsNeverSentToTheApi` scans every outgoing POST body for a legacy id. Accepts historical shapes on lookup via `Client::resolveContentBlockTranslations()`, covered on **both** rendering paths. Atomicity holds by construction: both halves are in this branch and ship in the same release. No stored row is ever re-keyed — the fallback performs no writes |
+| CID-4 | **partial** | `Client::legacyBlockMatchesPhrases()` compares phrases before attaching, and the guard fails toward no-match: `::testLegacyIdResolvingToDifferentContentIsRejected`. **Two deviations, both structural rather than chosen** — (a) *category* is not compared explicitly because the lookup is already sliced to one category, so any hit is in the right one; (b) phrases are compared as a **set, not an ordered sequence**, because the catalog returns a block as a phrase-keyed map and order is not recoverable from it at attach time. See *Findings raised against this revision* |
+
+## Interpolation recovery (ICU)
+
+| Rule | Status | Evidence |
+|---|---|---|
+| ICU-1 | provisional | A missing `select`/`plural` argument selects the `other` branch. `tests/Format/InterpolatorTest.php::testIcuRecoversWhenTheCallerSuppliesNoParamsAtAll` covers the case that previously escaped — the empty-params short-circuit in `Client::interpolate()` is gone, so a phrase whose ICU the caller knows nothing about still recovers |
+| ICU-2 | provisional | A present-but-null argument is treated as absent. Covered by the shared fixture row *"NULL is missing, not zero"* in `tests/fixtures/interpolation-reference.json`, asserted by `::testInterpolationMatchesTheReferenceFixtures`. Recovery withholds missing arguments from intl so a null cannot substitute the recovered `{argName}` with empty |
+| ICU-3 | provisional | `#` renders the literal `{argName}` and recovery descends into nested nodes: `::testRecoveryDescendsIntoASuppliedNode`. That test is **characterisation, not a regression pin** — a missing argument has no CLDR category to lose, so it produces the same string under the previous implementation; the discriminating vectors are in `cldrFewProvider` |
+| ICU-4 | provisional | `::testRecoveryEmitsADebugNoticeNamingEveryDefaultedArgument` asserts the notice fires **and** names every defaulted argument and the locale — the rule's own test requirement, since a test that only checks the rendered string passes whether or not anyone can diagnose it. `::testRecoveryNoticeIsDedupedPerLocaleAndTemplate` pins the dedup, `::testNoNoticeWhenNothingWasDefaulted` the negative |
+| *(no rule id)* | provisional | **Supplied arguments retain CLDR selection while others recover.** `::testSuppliedPluralKeepsCldrSelectionWhileAnotherArgumentRecovers` — pl/ru/ar at n=3 render `few`, with en-us as the control that proves the assertion tracks CLDR rather than a string. Previously one missing argument routed the whole string to the simplified renderer, degrading every other argument's plural selection |
+
 ## Hint lane / SSR
 
 | Rule | Status | Evidence |
 |---|---|---|
 | HINT-1 … HINT-8 | n/a (profile: server) | Per HINT-2 a server SDK is the origin: it registers or it logs, never reports |
+| HINT-10, HINT-11 | n/a (profile: browser) | Credential-parameter rules. Originally marked *browser, server*, which made them vacuous here — a server SDK never reports, so it can never transmit a credential-bearing URL. Rescoped to `browser` in spec `a37b0288` after this file raised it |
+| HINT-12 | n/a (profile: browser) | Same rescoping. Its server mirror is backend behaviour rather than an SDK rule, and is documented alongside only because the union property is unreadable with the halves separated |
 | SSR-1 … SSR-3 | n/a (profile: server) | JS-only strategies |
 
 ## Write grants
@@ -86,6 +107,51 @@ stashing `src/` and re-running. A regression test never seen red is a guess.
 | CONF-1 | **not implemented** | Every test here asserts against a mock that cannot reject |
 | CONF-2 | acknowledged | All implemented rules recorded as `provisional` |
 | CONF-3 | provisional | Behaviour changes verified red against `origin/main` before landing |
+
+## Findings raised against this revision
+
+Three places where an honest row could not simply be written, raised with the spec author
+rather than resolved locally.
+
+**1. ICU-1/2/3 were met by the interpolator and defeated by the public path — FIXED.** `Client::interpolate()`
+short-circuits on `empty($params)`, which bypasses ICU recovery entirely. Measured through
+`translate()` against a catalog value of `{count, plural, one {# item} other {# items}}`:
+
+```
+no params        -> '{count, plural, one {# item} other {# items}}'   raw ICU, shipped to the page
+unrelated param  -> '{count} items'                                    recovery works
+count supplied   -> '3 items'
+```
+
+The no-params call is the most common shape and got the worst output — a translator writing a
+plural into the catalog shipped ICU source to end users whenever the caller passed nothing. Same
+class as the 1.3.1 defect.
+
+*Resolved:* the short-circuit in `Client::interpolate()` is removed, and the interpolator's own
+fast path now skips only text with no ICU construct in it. Pinned by
+`::testIcuRecoversWhenTheCallerSuppliesNoParamsAtAll`, which was red against the previous tip.
+
+**2. CID-4 was unimplementable as written against a phrase-keyed catalog — ADOPTED, spec `a37b0288`.** The rule requires
+comparing `(category, ordered phrases)`. This SDK's catalog returns a content block as a map keyed
+by source phrase, so **order is not recoverable at attach time** — only the set is. The guard is
+therefore set-based, which still defeats every known collision mode (all are collisions over
+differing *content*), but it is strictly weaker than the rule: two blocks with identical phrases in
+different orders are distinct under CID-1 and indistinguishable here. Either the rule should say
+"ordered where the representation preserves order", or the catalog must carry order.
+
+*Resolved:* the rule now reads "ordered where the representation preserves order; a set
+comparison is conforming where it does not", and names the case where a set guard is
+strictly weaker. **This row is now `provisional (met)` in substance**; it stays labelled
+partial until the spec revision this file is written against is bumped, so the status and
+the cited revision cannot disagree.
+
+**3. HINT-10/11 were marked `browser, server` while HINT-2 forbids server SDKs from reporting — ADOPTED, spec `a37b0288`.** If a
+server SDK never reports, it can never transmit a credential-bearing URL, so the rules are
+vacuously satisfied and cannot be tested here. Either the profile line is over-broad or HINT-2's
+scope has changed; recorded as `n/a` on the HINT-2 reading rather than claimed as met.
+
+*Resolved:* all three rescoped to `browser`. The `n/a` rows above now match the spec
+rather than anticipating it.
 
 ## Known staleness
 

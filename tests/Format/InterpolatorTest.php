@@ -836,4 +836,161 @@ class InterpolatorTest extends TestCase
             'intl.use_exceptions=1' => ['1'],
         ];
     }
+
+    // =========================================================================
+    // ICU-4 — recovery must be observable
+    // =========================================================================
+
+    /**
+     * A recovered argument never appears in the source phrase, so there is
+     * nothing to grep for and no failing behaviour to notice: the page renders,
+     * reads plausibly, and is subtly wrong. Asserting the notice fires AND names
+     * the argument — a test that only checks the rendered string passes whether
+     * or not anyone can ever diagnose it.
+     */
+    public function testRecoveryEmitsADebugNoticeNamingEveryDefaultedArgument()
+    {
+        $logger = new RecordingLogger();
+        $interpolator = new Interpolator($logger);
+
+        $interpolator->interpolate(
+            '{gender, select, male {M} other {O}} and {mood, select, glad {G} other {N}}',
+            ['unrelated' => 1],
+            'pl'
+        );
+
+        $this->assertCount(1, $logger->records, 'exactly one notice per recovering render');
+
+        list($level, $message, $context) = $logger->records[0];
+
+        $this->assertSame('debug', $level);
+        $this->assertSame(['gender', 'mood'], $context['defaulted_arguments'], 'every defaulted argument is named');
+        $this->assertSame('pl', $context['locale']);
+        $this->assertStringContainsString('params', $message, 'the notice states the fix');
+        $this->assertStringContainsString('NORMAL', $message, 'and that a source phrase lacking the argument is expected');
+    }
+
+    /**
+     * Deduped per locale + template, so a recovering phrase rendered on every
+     * request produces one line rather than a flood — and a second locale is a
+     * genuinely different rendering, so it notes again.
+     */
+    public function testRecoveryNoticeIsDedupedPerLocaleAndTemplate()
+    {
+        $logger = new RecordingLogger();
+        $interpolator = new Interpolator($logger);
+        $template = '{gender, select, male {M} other {O}}';
+
+        $interpolator->interpolate($template, ['x' => 1], 'pl');
+        $interpolator->interpolate($template, ['x' => 1], 'pl');
+        $interpolator->interpolate($template, ['x' => 1], 'ru');
+
+        $this->assertCount(2, $logger->records);
+        $this->assertSame('pl', $logger->records[0][2]['locale']);
+        $this->assertSame('ru', $logger->records[1][2]['locale']);
+    }
+
+    public function testNoNoticeWhenNothingWasDefaulted()
+    {
+        $logger = new RecordingLogger();
+
+        (new Interpolator($logger))->interpolate(
+            '{gender, select, male {M} other {O}}',
+            ['gender' => 'male'],
+            'pl'
+        );
+
+        $this->assertSame([], $logger->records);
+    }
+
+    // =========================================================================
+    // Supplied arguments keep CLDR selection while others recover
+    // =========================================================================
+
+    /**
+     * The divergence this closes: one missing argument used to route the WHOLE
+     * string to the simplified renderer, whose branch selection knows only `=N`,
+     * one-iff-1 and `other`. So a SUPPLIED plural at n=3 rendered `other` in
+     * Polish, Russian and Arabic where CLDR requires `few` — grammatically wrong
+     * output in every language that marks the distinction, caused by an
+     * unrelated argument being absent.
+     *
+     * @dataProvider cldrFewProvider
+     */
+    public function testSuppliedPluralKeepsCldrSelectionWhileAnotherArgumentRecovers($locale, $expected)
+    {
+        $out = (new Interpolator())->interpolate(
+            '{gender, select, male {M} female {F} other {O}} — {n, plural, one {# item} few {# items-few} many {# items-many} other {# items-other}}',
+            ['n' => 3],
+            $locale
+        );
+
+        $this->assertSame($expected, $out);
+    }
+
+    public function cldrFewProvider()
+    {
+        return [
+            'pl n=3 is few'      => ['pl', 'O — 3 items-few'],
+            'ru n=3 is few'      => ['ru', 'O — 3 items-few'],
+            'ar n=3 is few'      => ['ar', 'O — 3 items-few'],
+            // English has no `few` category, so `other` is correct here - the
+            // control that proves the assertion tracks CLDR rather than a string.
+            'en-us n=3 is other' => ['en-us', 'O — 3 items-other'],
+        ];
+    }
+
+    /**
+     * Recovery descends: a missing argument nested inside a SUPPLIED select
+     * recovers, while the select itself stays on the CLDR path.
+     *
+     * The first version of this test supplied BOTH arguments, so nothing was
+     * missing, nothing recovered, and it asserted the ordinary intl path while
+     * claiming to prove descent — it would have passed against an SDK with no
+     * descent at all. `n` is withheld here so the nested node must actually be
+     * rewritten.
+     *
+     * CHARACTERISATION, not a regression pin: this case produces the same string
+     * under the previous whole-string renderer, because a MISSING argument has no
+     * CLDR category to lose — both implementations land on `other`. The vectors
+     * that discriminate are the ones with a SUPPLIED plural alongside
+     * (`cldrFewProvider`). Recorded so nobody reads a green here as evidence the
+     * node-by-node rewrite is working.
+     */
+    public function testRecoveryDescendsIntoASuppliedNode()
+    {
+        $template = '{g, select, female {F: {n, plural, one {# item} few {# few} other {# other}}} other {O}}';
+
+        // g supplied and selected by CLDR; n missing and recovered in place.
+        $this->assertSame(
+            'F: {n} other',
+            (new Interpolator())->interpolate($template, ['g' => 'female'], 'pl')
+        );
+
+        // Control: with n supplied, the same nested node takes the CLDR branch,
+        // so the assertion above is about recovery rather than about the string.
+        $this->assertSame(
+            'F: 3 few',
+            (new Interpolator())->interpolate($template, ['g' => 'female', 'n' => 3], 'pl')
+        );
+    }
+
+    /**
+     * The commonest call shape. A catalog value can contain an ICU construct the
+     * caller knows nothing about — the backend promotes a plain {name} into a
+     * gendered select for locales that need one — so "no params" is precisely
+     * the case that needs recovery. This used to return the raw MessageFormat
+     * source to the page.
+     */
+    public function testIcuRecoversWhenTheCallerSuppliesNoParamsAtAll()
+    {
+        $out = (new Interpolator())->interpolate(
+            '{count, plural, one {# item} other {# items}}',
+            [],
+            'en-us'
+        );
+
+        $this->assertSame('{count} items', $out);
+        $this->assertStringNotContainsString('plural', $out, 'raw ICU source must never reach the page');
+    }
 }

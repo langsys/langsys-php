@@ -1332,4 +1332,116 @@ class HtmlParserTest extends TestCase
             $this->parser->legacyCustomIds('Marketing', ['Hello there'])
         );
     }
+
+    /**
+     * Assert the fixture's own columns, programmatically, at every layer of the
+     * chain — not just the final hash.
+     *
+     * A hash-only assertion passes whenever two implementations agree on the
+     * answer, including when they agree by coincidence and disagree on how they
+     * got there. The enriched columns make each step checkable on its own:
+     * codepoints fix the INPUT, `serialized_hex` fixes the exact BYTES fed to
+     * md5, and `custom_id` fixes the OUTPUT. The JS SDK vendors this same file
+     * and asserts the same three, so a divergence lands on the step that caused
+     * it rather than on the hash.
+     *
+     * `serialized_hex` is hex of the very string passed to md5 here, recomputed
+     * rather than trusted — a column derived from a re-serialization could agree
+     * while the hashed bytes differed, which would make the cross-check vacuous.
+     */
+    public function testCustomIdFixtureIsSelfConsistentAtEveryLayer()
+    {
+        $path = dirname(__DIR__) . '/fixtures/custom-id-reference.json';
+        $this->assertFileExists($path);
+
+        $cases = json_decode(file_get_contents($path), true);
+        $this->assertNotEmpty($cases);
+
+        foreach ($cases as $index => $case) {
+            $label = 'fixture row ' . $index;
+
+            $this->assertArrayHasKey('codepoints', $case, $label);
+            $this->assertArrayHasKey('serialized_hex', $case, $label);
+
+            $category = $case['category'] === null ? '' : $case['category'];
+
+            // 1. The recorded codepoints must describe the recorded input.
+            $this->assertSame(
+                $this->codepointsOf($category),
+                $case['codepoints']['category'],
+                $label . ': category codepoints'
+            );
+            foreach ($case['tokens'] as $t => $token) {
+                $this->assertSame(
+                    $this->codepointsOf($token),
+                    $case['codepoints']['tokens'][$t],
+                    $label . ': token ' . $t . ' codepoints'
+                );
+            }
+
+            // 2. The canonical serialization must reproduce, byte for byte.
+            $serialized = json_encode(
+                [$category, $case['tokens']],
+                JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+            );
+
+            $this->assertSame($case['canonical_json'], $serialized, $label . ': canonical json');
+            $this->assertSame($case['serialized_hex'], bin2hex($serialized), $label . ': serialized bytes');
+
+            // 3. And the hash of those exact bytes must be the recorded id...
+            $this->assertSame($case['custom_id'], md5($serialized), $label . ': md5 of the serialized bytes');
+
+            // 4. ...which is what the SDK actually produces.
+            $this->assertSame(
+                $case['custom_id'],
+                $this->parser->generateCustomId($case['category'], $case['tokens']),
+                $label . ': generateCustomId'
+            );
+        }
+    }
+
+    /**
+     * The fixture carries unicode coverage on purpose: a suite that only reaches
+     * ASCII cannot distinguish a byte-based hash from a UTF-16 code-unit one,
+     * which is exactly how a false parity claim shipped in 1.0.2.
+     */
+    public function testCustomIdFixtureRetainsItsUnicodeCoverage()
+    {
+        $cases = json_decode(
+            file_get_contents(dirname(__DIR__) . '/fixtures/custom-id-reference.json'),
+            true
+        );
+
+        $aboveLatin1 = 0;
+        $nonBmp = 0;
+
+        foreach ($cases as $case) {
+            $text = ($case['category'] === null ? '' : $case['category']) . implode('', $case['tokens']);
+
+            foreach (preg_split('//u', $text, -1, PREG_SPLIT_NO_EMPTY) as $char) {
+                $cp = mb_ord($char, 'UTF-8');
+                if ($cp > 0xFF) { $aboveLatin1++; }
+                if ($cp > 0xFFFF) { $nonBmp++; }
+            }
+        }
+
+        $this->assertGreaterThanOrEqual(15, $aboveLatin1, 'coverage above U+00FF must not regress');
+        $this->assertGreaterThanOrEqual(1, $nonBmp, 'at least one non-BMP codepoint must remain');
+    }
+
+    /**
+     * @param string $text
+     * @return array U+XXXX for each codepoint, so a reader can verify coverage
+     *               without tooling
+     */
+    private function codepointsOf($text)
+    {
+        $out = [];
+
+        foreach (preg_split('//u', $text, -1, PREG_SPLIT_NO_EMPTY) as $char) {
+            $out[] = sprintf('U+%04X', mb_ord($char, 'UTF-8'));
+        }
+
+        return $out;
+    }
 }

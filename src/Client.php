@@ -700,10 +700,13 @@ class Client
      */
     protected function interpolate($text, array $params, $locale)
     {
-        if (empty($params)) {
-            return $text;
-        }
-
+        // Deliberately NOT short-circuiting on empty params. A catalog value can
+        // contain an ICU construct the caller knows nothing about - the backend
+        // promotes a plain {name} into a gendered select for locales that need
+        // one - so "no params" is precisely the case that needs recovery, not
+        // the case that can skip it. Returning early here shipped raw
+        // MessageFormat source to the page. The interpolator has its own fast
+        // path for text with no construct in it.
         return $this->getInterpolator()->interpolate($text, $params, $locale);
     }
 

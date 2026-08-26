@@ -77,6 +77,12 @@ class Interpolator
     }
 
     /**
+     * @var array Locale+template pairs already noted, so one recovering phrase
+     *            rendered a thousand times produces one notice, not a thousand.
+     */
+    protected $notedRecoveries = [];
+
+    /**
      * Interpolate parameters into a string.
      *
      * @param string $text The (already translated) string
@@ -86,11 +92,21 @@ class Interpolator
      */
     public function interpolate($text, array $params = [], $locale = null)
     {
-        if (!is_string($text) || $text === '' || empty($params)) {
+        if (!is_string($text) || $text === '') {
             return $text;
         }
 
         if (strpos($text, '{') === false) {
+            return $text;
+        }
+
+        // No params is the COMMONEST call, and it is exactly the case that used
+        // to return here - shipping raw ICU source to the page whenever a
+        // translator wrote a plural into a phrase the caller renders without
+        // arguments. Recovery exists for the missing-argument case, and "all
+        // arguments missing" is the most missing a phrase can be, so the fast
+        // path is only safe for text with no ICU construct in it.
+        if (empty($params) && !$this->hasIcuSyntax($text)) {
             return $text;
         }
 
@@ -117,7 +133,39 @@ class Interpolator
             // {name} into {name_gender, select, ...} for gendered target locales,
             // so the argument does not exist in the source phrase the developer
             // wrote and nothing tells them the target grew one.
-            if ($this->missingIcuArguments($text, $params)) {
+            $missing = $this->missingIcuArguments($text, $params);
+
+            if ($missing) {
+                $this->noteDefaultedArguments($missing, $text, $locale);
+
+                // Rewrite ONLY the missing nodes and hand the rest back to intl.
+                //
+                // This used to route the WHOLE string to the simplified
+                // renderer, whose branch selection knows only `=N`, one-iff-1
+                // and `other`. So one missing argument silently degraded every
+                // OTHER argument's plural selection: in pl/ru/ar a supplied
+                // n=3 rendered `other` where CLDR requires `few`, producing
+                // grammatically wrong output in languages that mark it.
+                //
+                // Recovering node-by-node keeps supplied arguments on the intl
+                // path, where their CLDR categories are correct.
+                $rewritten = $this->recoverMissingNodes($text, $missing, $params, $locale);
+
+                // Hand intl only the SUPPLIED arguments. A missing argument can
+                // be missing by being present-and-null (ICU-2), and passing that
+                // through would let intl substitute the recovered `{argName}`
+                // literal with an empty string - erasing the visible gap the
+                // recovery just created. Withholding them makes intl echo the
+                // literal, which is the required output.
+                $suppliedParams = array_diff_key($params, array_flip($missing));
+
+                $formatted = $this->formatIcu($rewritten, $suppliedParams, $locale);
+
+                if ($formatted !== null) {
+                    return $formatted;
+                }
+
+                // intl absent, or the rewritten pattern would not parse.
                 return $this->renderIcuWithoutIntl($text, $params, $locale);
             }
 
@@ -216,6 +264,116 @@ class Interpolator
             ]);
             return null;
         }
+    }
+
+    /**
+     * Replace only the ICU nodes whose argument is missing, leaving the rest
+     * byte-identical so intl can apply full CLDR selection to them.
+     *
+     * Descends into supplied nodes as well, so a missing argument nested inside
+     * a supplied `select` recovers while the `select` itself stays on the intl
+     * path.
+     *
+     * @param string $text
+     * @param array $missing Argument names, keyed by name
+     * @param array $params
+     * @param string|null $locale
+     * @param int $depth
+     * @return string
+     */
+    protected function recoverMissingNodes($text, array $missing, array $params, $locale, $depth = 0)
+    {
+        if ($depth > self::MAX_ICU_DEPTH) {
+            return $text;
+        }
+
+        // missingIcuArguments() returns a LIST of names; flip it so membership
+        // is a key test rather than a scan.
+        $missingByName = array_flip($missing);
+
+        $out = '';
+        $length = strlen($text);
+        $i = 0;
+
+        while ($i < $length) {
+            if ($text[$i] !== '{') {
+                $out .= $text[$i];
+                $i++;
+                continue;
+            }
+
+            $end = $this->matchingBrace($text, $i);
+
+            if ($end === null) {
+                // Unbalanced - emit verbatim rather than looping forever.
+                $out .= substr($text, $i);
+                break;
+            }
+
+            $body = substr($text, $i + 1, $end - $i - 1);
+            $name = null;
+
+            if (preg_match('/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*,\s*(?:plural|select|selectordinal|number|date|time)\s*[,}]?/', $body, $m)) {
+                $name = $m[1];
+            }
+
+            if ($name !== null && isset($missingByName[$name])) {
+                // Missing: substitute this node's recovered rendering. Any `#`
+                // inside becomes a literal {argName}, which intl then echoes
+                // unchanged because the argument is still absent - which is the
+                // visible gap the rule asks for.
+                $out .= $this->renderIcuArgument($body, $params, $locale, $depth);
+            } else {
+                // Supplied, or not branch-typed: keep it verbatim for intl, but
+                // recover anything missing nested inside it.
+                $out .= '{' . $this->recoverMissingNodes($body, $missing, $params, $locale, $depth + 1) . '}';
+            }
+
+            $i = $end + 1;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Emit one debug notice per recovering render, naming every defaulted
+     * argument and the locale.
+     *
+     * A recovered argument never appears in the source phrase, so there is
+     * nothing for the developer to grep for and no failing behaviour to notice -
+     * the page renders, reads plausibly, and is subtly wrong. A behaviour with
+     * no observable trace is undiscoverable by construction.
+     *
+     * Deduped on locale + template so a recovering phrase rendered on every
+     * request produces one line rather than a flood.
+     *
+     * @param array $missing Argument names, keyed by name
+     * @param string $text
+     * @param string|null $locale
+     * @return void
+     */
+    protected function noteDefaultedArguments(array $missing, $text, $locale)
+    {
+        $key = $this->resolveLocale($locale) . "\0" . $text;
+
+        if (isset($this->notedRecoveries[$key])) {
+            return;
+        }
+
+        $this->notedRecoveries[$key] = true;
+
+        $this->log(
+            'debug',
+            'ICU arguments were not supplied and their default branches were used. '
+            . 'The source phrase not asking for these arguments is NORMAL - a target '
+            . 'locale can require a distinction the source does not make. To choose '
+            . 'the branch yourself, pass the value in params.',
+            [
+                'defaulted_arguments' => array_values($missing),
+                'locale' => $this->resolveLocale($locale),
+                'phrase' => $text,
+            ]
+        );
     }
 
     /**
