@@ -241,6 +241,113 @@ class HtmlParser
     }
 
     /**
+     * The pre-fix JS hash: md5 fed UTF-16 code units instead of UTF-8 bytes.
+     *
+     * Not a hashing choice — a defect. The JS SDKs packed code units into byte
+     * slots with an UNMASKED shift, so it coincides with a byte hash across all
+     * of ASCII and diverges above it. A block registered by a JS SDK before its
+     * fix is keyed by this value, and nothing else can reproduce it.
+     *
+     * This is a READ path. CID-3 binds anything that reads catalogs, not only
+     * the implementation that produced the ids: a PHP page rendering content a
+     * JS SDK registered must resolve it, or it re-registers under the current id
+     * and strands the translations. That is why a byte-hash SDK still ports the
+     * broken hash — the asymmetry is the argument. Failing to tolerate it costs
+     * real translations; tolerating it costs a lookup that misses, and every
+     * attach is gated by the CID-4 content guard regardless.
+     *
+     * @param string $input The canonical JSON string
+     * @return string
+     */
+    protected function codeUnitMd5($input)
+    {
+        // UTF-16 code units of the input, as the JS engine would see them.
+        $units = [];
+        foreach (preg_split('//u', $input, -1, PREG_SPLIT_NO_EMPTY) as $char) {
+            $cp = mb_ord($char, 'UTF-8');
+            if ($cp > 0xFFFF) {
+                // Non-BMP becomes a surrogate pair, exactly as in JS.
+                $cp -= 0x10000;
+                $units[] = 0xD800 + ($cp >> 10);
+                $units[] = 0xDC00 + ($cp & 0x3FF);
+            } else {
+                $units[] = $cp;
+            }
+        }
+
+        // Pack into 32-bit words with the SAME unmasked shift the JS used:
+        // a unit above 0xFF at lane 3 loses its high byte off the top.
+        $n = count($units);
+        $nblk = (($n + 8) >> 6) + 1;
+        $blks = array_fill(0, $nblk * 16, 0);
+        for ($i = 0; $i < $n; $i++) {
+            $blks[$i >> 2] |= ($units[$i] << (($i % 4) * 8)) & 0xFFFFFFFF;
+        }
+        $blks[$n >> 2] |= 0x80 << (($n % 4) * 8);
+        $blks[$nblk * 16 - 2] = $n * 8;
+
+        return self::md5Rounds($blks);
+    }
+
+    /**
+     * The MD5 compression rounds over a pre-built message schedule.
+     *
+     * Separated from codeUnitMd5() so the schedule-building defect stays visible
+     * as its own step: the rounds here are ordinary MD5, and the divergence is
+     * entirely in how the schedule was filled.
+     *
+     * @param array $x
+     * @return string
+     */
+    private static function md5Rounds(array $x)
+    {
+        $ad = function ($a, $b) {
+            $l = ($a & 0xFFFF) + ($b & 0xFFFF);
+            $m = (($a >> 16) & 0xFFFF) + (($b >> 16) & 0xFFFF) + ($l >> 16);
+            return (($m << 16) | ($l & 0xFFFF)) & 0xFFFFFFFF;
+        };
+        $rl = function ($n, $c) {
+            $n &= 0xFFFFFFFF;
+            return (($n << $c) | ($n >> (32 - $c))) & 0xFFFFFFFF;
+        };
+        $cm = function ($q, $a, $b, $xk, $sh, $t) use ($ad, $rl) {
+            return $ad($rl($ad($ad($a, $q), $ad($xk, $t)), $sh), $b);
+        };
+
+        $S = [7,12,17,22, 5,9,14,20, 4,11,16,23, 6,10,15,21];
+        $K = [];
+        for ($i = 0; $i < 64; $i++) {
+            $K[$i] = (int) floor(abs(sin($i + 1)) * 4294967296) & 0xFFFFFFFF;
+        }
+
+        $a0 = 0x67452301; $b0 = 0xefcdab89; $c0 = 0x98badcfe; $d0 = 0x10325476;
+
+        for ($chunk = 0; $chunk < count($x); $chunk += 16) {
+            $A = $a0; $B = $b0; $C = $c0; $D = $d0;
+            for ($i = 0; $i < 64; $i++) {
+                if ($i < 16)      { $f = ($B & $C) | (~$B & $D);          $g = $i; }
+                elseif ($i < 32)  { $f = ($D & $B) | (~$D & $C);          $g = (5 * $i + 1) % 16; }
+                elseif ($i < 48)  { $f = $B ^ $C ^ $D;                    $g = (3 * $i + 5) % 16; }
+                else              { $f = $C ^ ($B | (~$D & 0xFFFFFFFF));  $g = (7 * $i) % 16; }
+
+                $tmp = $D; $D = $C; $C = $B;
+                $B = $cm($f & 0xFFFFFFFF, $A, $B, $x[$chunk + $g], $S[intdiv($i, 16) * 4 + ($i % 4)], $K[$i]);
+                $A = $tmp;
+            }
+            $a0 = $ad($a0, $A); $b0 = $ad($b0, $B); $c0 = $ad($c0, $C); $d0 = $ad($d0, $D);
+        }
+
+        $out = '';
+        foreach ([$a0, $b0, $c0, $d0] as $word) {
+            for ($j = 0; $j < 4; $j++) {
+                $out .= sprintf('%02x', ($word >> ($j * 8)) & 0xFF);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * The id shapes this SDK produced BEFORE the JSON-form change, for lookup
      * only.
      *
@@ -276,8 +383,25 @@ class HtmlParser
         }
 
         $ids = [];
+
         foreach ($slots as $slot) {
+            // This SDK's own pre-change form: md5 over a pipe-joined string.
             $ids[] = md5(implode('|', array_merge([$slot], $values)));
+
+            // And the JS SDKs' pre-fix form: the code-unit hash over the SAME
+            // canonical JSON the current id uses. CID-3 binds anything that
+            // READS catalogs, so a PHP page rendering content a JS SDK
+            // registered has to resolve it too - otherwise it re-registers
+            // under the current id and strands those translations.
+            $hashCat = ($slot === '__uncategorized__') ? '' : $slot;
+            $encoded = json_encode(
+                [$hashCat, $values],
+                JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS
+            );
+
+            if ($encoded !== false) {
+                $ids[] = $this->codeUnitMd5($encoded);
+            }
         }
 
         return array_values(array_unique($ids));

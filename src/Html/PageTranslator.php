@@ -150,8 +150,9 @@ class PageTranslator
         // Get translations (uses cache)
         try {
             $translations = $this->client->getTranslations($locale);
-        } catch (\Exception $e) {
-            // API unavailable - return original HTML
+        } catch (\Throwable $e) {
+            // \Throwable, not \Exception: an \Error from a wrong-shaped cache
+            // hit escaped this catch and took the whole page render down.
             return $html;
         }
 

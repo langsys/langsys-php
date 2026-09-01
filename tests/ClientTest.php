@@ -534,11 +534,21 @@ class ClientTest extends TestCase
     public function testAuthorizeSyncsBatchLimitFromLangsysSettings()
     {
         $mockHttp = new MockHttpClient();
+        // The SERVER's shape, nested under translatable_items. Verified against
+        // a live authorize-project response and LangsysSettingsResource:
+        //   {"langsys_settings":{"translatable_items":{"batch_limit":200}}}
+        //
+        // This fixture previously used a FLAT langsys_settings.batch_limit,
+        // which is the shape the implementation read - so the test asserted the
+        // SDK agreed with itself rather than with the server, and stayed green
+        // while the server-provided limit was silently ignored.
         $mockHttp->setResponse('GET', 'authorize-project/project-id', [
             'data' => [
                 'key_type' => 'write',
                 'langsys_settings' => [
-                    'batch_limit' => 50,
+                    'translatable_items' => [
+                        'batch_limit' => 50,
+                    ],
                 ],
             ],
         ]);
@@ -644,7 +654,7 @@ class ClientTest extends TestCase
         ]);
         $this->createClientWithMockHttp($mockHttp, $cache)->authorize();
 
-        $cached = $cache->get('auth_project-id');
+        $cached = $cache->get('auth_project-id_' . substr(hash('sha256', 'test-api-key'), 0, 12));
 
         $this->assertIsArray($cached);
         $this->assertArrayNotHasKey('write_enabled', $cached, 'The write decision must not be persisted');
@@ -921,14 +931,28 @@ class ClientTest extends TestCase
         $client->flushPendingRegistrations();
 
         $parser = new HtmlParser();
-        $legacyIds = $parser->legacyCustomIds('Marketing', ['Brand new content']);
+        $currentId = $parser->generateCustomId('Marketing', ['Brand new content']);
+
+        // Only legacy ids that DIFFER from the current one can evidence
+        // emission. For pure-ASCII content the JS code-unit hash and a UTF-8
+        // byte hash agree exactly, so one "legacy" shape is byte-identical to
+        // the current id - finding it in the body proves nothing, because it IS
+        // the current id. Asserting on the raw list would fail on a correct
+        // implementation, which is a test that reports the wrong thing rather
+        // than a defect.
+        $distinctLegacyIds = array_values(array_filter(
+            $parser->legacyCustomIds('Marketing', ['Brand new content']),
+            function ($id) use ($currentId) { return $id !== $currentId; }
+        ));
+
+        $this->assertNotEmpty($distinctLegacyIds, 'sanity: at least one legacy shape must differ');
 
         foreach ($mockHttp->getRequests() as $request) {
             if ($request['method'] !== 'POST') {
                 continue;
             }
             $body = json_encode($request['data']);
-            foreach ($legacyIds as $legacyId) {
+            foreach ($distinctLegacyIds as $legacyId) {
                 $this->assertStringNotContainsString($legacyId, $body, 'Legacy ids are lookup-only');
             }
         }
@@ -1028,8 +1052,212 @@ class ClientTest extends TestCase
     }
 
     // =========================================================================
+    // REG-9 — the server's batch limit must actually apply
+    // =========================================================================
+
+    /**
+     * The limit is nested at langsys_settings.translatable_items.batch_limit.
+     * Read one level short it never applied, so the SDK kept its own default and
+     * would send oversized batches the server REJECTS if the limit is lowered.
+     */
+    public function testChunksToTheServerAdvertisedBatchLimit()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => [
+                'key_type' => 'write',
+                'write_enabled' => true,
+                'langsys_settings' => ['translatable_items' => ['batch_limit' => 3]],
+            ],
+        ]);
+        $mockHttp->setResponse('GET', 'translations', ['data' => ['__uncategorized__' => []]]);
+        $mockHttp->setResponse('POST', 'translatable-items', ['status' => true]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+        $client->setLocale('es-es');
+        foreach (range(1, 7) as $i) {
+            $client->translate('Phrase ' . $i);
+        }
+
+        $mockHttp->clearRequests();
+        $client->flushPendingRegistrations();
+
+        $sizes = [];
+        foreach ($mockHttp->getRequests() as $request) {
+            if ($request['method'] === 'POST') {
+                $sizes[] = count($request['data']['translatable_items']);
+            }
+        }
+
+        $this->assertSame([3, 3, 1], $sizes, '7 phrases at a limit of 3 must chunk 3/3/1');
+        $this->assertSame(3, $client->translatableItems()->getBatchLimit());
+    }
+
+    // =========================================================================
+    // CACHE-1 — the auth answer depends on WHICH key asked
+    // =========================================================================
+
+    /**
+     * Shadow pair, direction 1: a read key must not inherit a write key's cached
+     * capability. The default cache is a shared temp directory, so a host running
+     * a read key for rendering and a write key for a sync job shares this entry.
+     */
+    public function testReadKeyDoesNotInheritAWriteKeysCachedCapability()
+    {
+        $cache = new FileCache(sys_get_temp_dir() . '/langsys-test-' . uniqid());
+
+        $this->clientForKey('write-key', 'write', true, $cache)->canWrite();
+
+        $this->assertFalse(
+            $this->clientForKey('read-key', 'read', false, $cache)->canWrite(),
+            'a read key inheriting write capability would attempt registrations it may not make'
+        );
+
+        $cache->clear();
+    }
+
+    /**
+     * Direction 2, the quiet one: a write key must not inherit a read key's
+     * cached capability, which would silently disable discovery.
+     */
+    public function testWriteKeyDoesNotInheritAReadKeysCachedCapability()
+    {
+        $cache = new FileCache(sys_get_temp_dir() . '/langsys-test-' . uniqid());
+
+        $this->clientForKey('read-key', 'read', false, $cache)->canWrite();
+
+        $this->assertTrue(
+            $this->clientForKey('write-key', 'write', true, $cache)->canWrite(),
+            'a write key inheriting read capability would stop discovering, silently'
+        );
+
+        $cache->clear();
+    }
+
+    public function testAuthCacheKeyCarriesNoRawKeyMaterial()
+    {
+        $cache = new FileCache(sys_get_temp_dir() . '/langsys-test-' . uniqid());
+        $this->clientForKey('super-secret-key', 'write', true, $cache)->canWrite();
+
+        $method = new \ReflectionMethod(Client::class, 'authCacheKey');
+        $method->setAccessible(true);
+        $key = $method->invoke($this->clientForKey('super-secret-key', 'write', true, $cache));
+
+        $this->assertStringNotContainsString('super-secret-key', $key, 'cache keys land on shared filesystems');
+        $this->assertStringContainsString('project-id', $key);
+
+        $cache->clear();
+    }
+
+    // =========================================================================
+    // WIRE-4 — a malformed cache entry must not reach the render
+    // =========================================================================
+
+    /**
+     * A shared cache sees truncated writes, key collisions and other versions'
+     * formats. A wrong-SHAPED hit reached the catalog lookup and raised a
+     * TypeError out of translate() - a 500 on a customer page, from the cache the
+     * SDK itself relies on.
+     *
+     * @dataProvider malformedCacheEntryProvider
+     */
+    public function testMalformedCacheEntryDoesNotReachTheRender($poison)
+    {
+        $client = $this->clientWithPoisonedCache($poison, $cache);
+
+        $this->assertSame('Hello', $client->translate('Hello'));
+        $this->assertStringContainsString('Hi', $client->translateContentBlock('<p>Hi</p>'));
+        $this->assertStringContainsString('Hi', $client->translatePage('<html><body><p>Hi</p></body></html>'));
+
+        $cache->clear();
+    }
+
+    public function malformedCacheEntryProvider()
+    {
+        return [
+            'string'  => ['a string, not the category map'],
+            'integer' => [42],
+            'boolean' => [true],
+        ];
+    }
+
+    /**
+     * And the entry is DISCARDED, not merely survived. Degrading on every call
+     * while the poisoned entry sits there for the rest of its TTL is the lesser
+     * fix; the next request must be able to repopulate from the API.
+     */
+    public function testMalformedCacheEntryIsInvalidatedRatherThanEndured()
+    {
+        $client = $this->clientWithPoisonedCache('not an array', $cache);
+        $key = 'translations_project-id_es-es';
+
+        $this->assertSame('not an array', $cache->get($key), 'sanity: the poison is present');
+
+        $client->translate('Hello');
+
+        // The poison is gone. What sits there now is the repopulated catalog -
+        // deleting the bad entry lets the very next fetch write a good one, which
+        // is the point: the alternative is degrading on every call for the rest
+        // of the entry's TTL.
+        $this->assertIsArray($cache->get($key), 'the entry must be replaced, not merely tolerated');
+        $this->assertNotSame('not an array', $cache->get($key));
+
+        $cache->clear();
+    }
+
+    // =========================================================================
     // Helper methods
     // =========================================================================
+
+    /**
+     * A client for one API key against a shared cache.
+     */
+    private function clientForKey($apiKey, $keyType, $writeEnabled, $cache)
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => $keyType, 'write_enabled' => $writeEnabled, 'base_locale' => 'en-us'],
+        ]);
+
+        $client = new Client($apiKey, 'project-id', ['cache' => $cache]);
+        $reflection = new \ReflectionClass($client);
+
+        $httpProperty = $reflection->getProperty('http');
+        $httpProperty->setAccessible(true);
+        $httpProperty->setValue($client, $mockHttp);
+
+        foreach (['translations', 'translatableItems'] as $resourceName) {
+            $property = $reflection->getProperty($resourceName);
+            $property->setAccessible(true);
+            $resource = $property->getValue($client);
+
+            $resourceHttp = (new \ReflectionClass($resource))->getProperty('http');
+            $resourceHttp->setAccessible(true);
+            $resourceHttp->setValue($resource, $mockHttp);
+        }
+
+        return $client;
+    }
+
+    /**
+     * A client whose translations cache holds a value of the wrong shape.
+     */
+    private function clientWithPoisonedCache($poison, &$cache)
+    {
+        $cache = new FileCache(sys_get_temp_dir() . '/langsys-test-' . uniqid());
+        $cache->set('translations_project-id_es-es', $poison);
+
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'write', 'write_enabled' => true],
+        ]);
+        $mockHttp->setResponse('GET', 'translations', ['status' => true, 'data' => []]);
+
+        $client = $this->createClientWithMockHttp($mockHttp, $cache);
+        $client->setLocale('es-es');
+
+        return $client;
+    }
 
     /**
      * A client whose every API call fails.

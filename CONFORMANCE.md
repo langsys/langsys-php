@@ -1,6 +1,11 @@
 # Conformance — langsys/php-sdk
 
-Spec version implemented: **v6** (see *Known staleness* below)
+Spec version implemented: **spec blob `06ae105a`** (`langsys2` @ `2b9daad5`, fetched
+2026-09-01T01:03:28Z via `git show origin/main:docs/sdk-spec.mdx`)
+
+**Coverage: 45 of 67 rules bind this SDK** (profiles `all` or `server`); 22 do not
+(`browser`, `binding` — this repo is a core, not a binding). All 45 are rowed. Computed by
+the script at the foot of this file, not by eye.
 Profile: **server**
 
 Every rule maps to the test that proves it. A rule with no test is NOT IMPLEMENTED —
@@ -25,6 +30,8 @@ stashing `src/` and re-running. A regression test never seen red is a guess.
 | GATE-3 | provisional | `::testWriteDecisionIsNeverWrittenToTheCache`, `::testWarmCacheStillResolvesPerRequestForAnIpWriteKey`, `::testResetRequestStateClearsTheWriteDecision`, and `::testWarmCacheCostsNoAuthorizationCallForAReadKey` (pins that correctness costs no per-render request) |
 | GATE-4 | provisional | `::testWriteDecisionIsNeverWrittenToTheCache` — the `authorize-project` row, where the flag sits *inside* `data` and must be stripped from the body before caching, not merely dropped with an envelope |
 | GATE-5 | provisional | `tests/Html/PageTranslatorTest.php::testDiscoveredItemsAreNotRecordedAsRegisteredWhenOnlyQueued` — a queued item is an attempt, not an acceptance, and is not recorded until the server accepts it. Also `tests/ClientTest.php::testLegacyResolvedContentBlockIsNotQueuedForRegistration` |
+| GATE-7 | provisional | Every path that can detect unregistered content feeds the register lane: `Client::translate()` (`queuePhraseForRegistration`), `Client::translateContentBlock()` (`queueContentBlockForRegistration`), and `PageTranslator` (both, via the client). Verified fresh against this tip — a path that fed neither existed on an earlier branch (`lookupContent()`) and does not exist on this line. Report lane is n/a (HINT-2), so "exactly one" is satisfied by there being one to feed |
+| GATE-8 | provisional | Four constraints, measured. **c1** — the fallback fires ONLY for the plain arm: `tests/ClientTest.php::testFallsBackToKeyTypeWhenTheApiOmitsWriteEnabled` plus `::testFallsBackToKeyTypeForAReadKeyWhenTheApiOmitsWriteEnabled`; measured across `write`/`read`/`ip_write`/`attested_session` with the flag absent, only `write` yields true. **c2** — nothing is latched at init, and `resetRequestState()` clears per request; **noted deviation**: `read`/`write` are answered from a cached `key_type`, so a server that starts emitting the flag is picked up at cache expiry rather than on the next response. No behavioural difference today because the two answers coincide for the plain arms, but it is not literally per-response and is rowed as such rather than claimed clean. **c3** — vacuous here: no hint lane exists, so the two absences cannot diverge. **c4** — not an SDK obligation |
 | GATE-6 | provisional | `tests/ClientTest.php::testFlushReportsDroppedWhenTheRequestMayNotWrite` — the register half returns before the network when the request may not write. Report-half n/a: this SDK has no hint lane (HINT-2) |
 
 ## Reading the catalog
@@ -44,7 +51,7 @@ stashing `src/` and re-running. A regression test never seen red is a guess.
 | REG-3 | **not implemented** | Manual flush exists and `register_shutdown_function` is wired, but the automatic path is untested and a transient failure during it is unrecoverable and silent |
 | REG-4 … REG-7 | n/a (profile: server) | No page teardown, no `visibilitychange`, and synchronous execution leaves no await window |
 | REG-8 | **not implemented** | A failed send retains the queue but there is no retry and no backoff |
-| REG-9 | provisional | Closed on `main` before this branch: `PageTranslator` queues rather than registering inline, and `flushPendingRegistrations()` batches through `createContentBlocks()`, which chunks to the server-provided limit. Covered indirectly by `tests/ClientTest.php::testFlushReportsSuccessWhenEverythingWasAccepted`; **no direct batch-size test on this line** |
+| REG-9 | provisional | `tests/ClientTest.php::testChunksToTheServerAdvertisedBatchLimit` — 7 phrases at an advertised limit of 3 chunk 3/3/1. **CORRECTION:** the previous row claimed the limit was read from `langsys_settings`, and that was measurably false. `syncBatchLimit()` read `langsys_settings.batch_limit`, one level short of the server's `langsys_settings.translatable_items.batch_limit`, so the server-provided limit **never applied** and the SDK always used its own default of 200 — meaning a server that lowered the limit would have had its oversized batches rejected and registration would have failed wholesale. Confirmed three ways before fixing: the spec's REG-9 text, `LangsysSettingsResource`, and a live `authorize-project` response returning `{"translatable_items":{"batch_limit":200}}` |
 | REG-10 | provisional | `::testFlushReportsDroppedWhenTheRequestMayNotWrite`, `::testFlushReportsSuccessWhenEverythingWasAccepted`. **Partial**: the throw-vs-swallow split across entry points is unchanged |
 | REG-11 | **not implemented** | No ellipsis diagnostic |
 | REG-12 | provisional | `tests/Html/PageTranslatorTest.php::testTextCollidingWithAContentBlockIdIsNotRegisteredAsAPhrase` — presence alone decides "known" on both the phrase-discovery path and in `Client::translate()`, so the two agree. They previously disagreed, and the page path re-registered colliding text on every render |
@@ -61,7 +68,7 @@ stashing `src/` and re-running. A regression test never seen red is a guess.
 |---|---|---|
 | CID-1 | provisional | `tests/Html/HtmlParserTest.php::testCustomIdFixtureIsSelfConsistentAtEveryLayer` asserts the fixture **programmatically at each layer** — recorded codepoints describe the input, the canonical serialization reproduces byte-for-byte against `serialized_hex` (hex of the exact string passed to `md5()`, recomputed rather than trusted), the hash of those bytes is the recorded `custom_id`, and `generateCustomId()` produces the same. `::testCustomIdFixtureRetainsItsUnicodeCoverage` pins ≥15 codepoints above U+00FF and ≥1 non-BMP, since an ASCII-only suite cannot tell a byte hash from a UTF-16 one. Serialization is **three** flags — `JSON_UNESCAPED_LINE_TERMINATORS` is not implied by `JSON_UNESCAPED_UNICODE`, and without it U+2028/U+2029 hash differently from `JSON.stringify`; row 13 locks that with raw `e280a8`/`e280a9` bytes |
 | CID-2 | provisional | Enforced **inside** the id function, not at call sites: `$cat = ($category === null \|\| $category === '__uncategorized__') ? '' : $category;`. `tests/Html/HtmlParserTest.php::testGenerateCustomId` covers the null case |
-| CID-3 | provisional | Emits only the CID-1 form — `tests/ClientTest.php::testLegacyIdIsNeverSentToTheApi` scans every outgoing POST body for a legacy id. Accepts historical shapes on lookup via `Client::resolveContentBlockTranslations()`, covered on **both** rendering paths. Atomicity holds by construction: both halves are in this branch and ship in the same release. No stored row is ever re-keyed — the fallback performs no writes |
+| CID-3 | provisional | Emits only the CID-1 form — `::testLegacyIdIsNeverSentToTheApi`, narrowed to legacy shapes that DIFFER from the current id, since for ASCII content the code-unit hash and a byte hash agree exactly and finding that value in a payload proves nothing. **Tolerance breadth per the reversed ruling:** the rule binds anything that READS catalogs, not only the implementation that produced the ids, so this SDK now also tolerates the JS SDKs' pre-fix **code-unit** hash — a PHP page rendering content a JS SDK registered must resolve it, or it re-registers under the current id and strands those translations. Asymmetric risk is the argument: failing to tolerate costs real translations, while tolerating costs a lookup that misses, and every attach is gated by the CID-4 content guard regardless. Ported against `tests/fixtures/legacy-custom-id-reference.json`, adopted byte-identically from `langsys-python` (blob `dc5556466dc54fe82e81ac9fdbf4549b2b76e7ce`), whose 20 vectors were generated by **executing** the TS core: all 20 match. `tests/Html/HtmlParserTest.php::testLegacyCustomIdsCoverBothToleratedShapes` |
 | CID-4 | **partial** | `Client::legacyBlockMatchesPhrases()` compares phrases before attaching, and the guard fails toward no-match: `::testLegacyIdResolvingToDifferentContentIsRejected`. **Two deviations, both structural rather than chosen** — (a) *category* is not compared explicitly because the lookup is already sliced to one category, so any hit is in the right one; (b) phrases are compared as a **set, not an ordered sequence**, because the catalog returns a block as a phrase-keyed map and order is not recoverable from it at attach time. See *Findings raised against this revision* |
 
 ## Interpolation recovery (ICU)
@@ -93,12 +100,13 @@ stashing `src/` and re-running. A regression test never seen red is a guess.
 
 | Rule | Status | Evidence |
 |---|---|---|
-| CACHE-1 | provisional | `tests/Html/PageTranslatorTest.php::testRegisteredItemsCacheKeyIsProjectScoped`. The registered-items key was the only un-namespaced key in the SDK |
+| CACHE-1 | provisional | Every key is scoped by project **and by everything else that changes the answer**: `translations_<project>_<locale>`, `registered_items_<project>_<category>`, and `auth_<project>_<sha256(apiKey)[0:12]>`. The auth key previously omitted the key identity, and the authorize response depends on which key asked — so two keys on one host shared an entry and a read key inherited a write key's `canWrite()` with **zero HTTP calls**. Both contamination directions pinned as a shadow pair: `::testReadKeyDoesNotInheritAWriteKeysCachedCapability` (attempts writes it may not make) and `::testWriteKeyDoesNotInheritAReadKeysCachedCapability` (silently stops discovering). The key material is hashed, never raw — cache keys land on shared filesystems and in Redis keyspaces: `::testAuthCacheKeyCarriesNoRawKeyMaterial` |
 | OBS-1 | **not implemented** | A write-expected key resolving `write_enabled: false` that never queues anything produces no diagnostic |
 | WIRE-1 | provisional | `tests/Http/HttpClientTest.php::testAuthenticatesWithTheXAuthorizationHeader` |
 | WIRE-2 | provisional | `tests/Http/HttpClientTest.php::testEmptyBodyOnSuccessIsNotAParseError`, `::testEmptyBodyOnErrorStatusRaisesTheMatchingException`, `::testEmptyBodyOnValidationErrorRaisesValidationException`, `::testMalformedJsonStillRaisesAParseError` |
 | WIRE-3 | provisional | `tests/ClientTest.php::testUncategorizedPhrasesDoNotSendTheSentinelOnTheWire`. All three registration paths now normalize through one `TranslatableItems::normalizeCategory()`; previously `createContentBlocks()` stripped the sentinel while `createContentBlock()` and `createPhrases()` sent it, so identical blocks landed with different stored categories. Locale form is lowercase `xx-yy`, which is correct — the backend stores and compares lowercase |
-| WIRE-4 | provisional | `tests/ClientTest.php::testTranslateReturnsSourceWhenTheApiIsUnreachable`, `::testTranslateStillInterpolatesWhenTheApiIsUnreachable`, `::testTranslateQueuesNothingWhenTheApiIsUnreachable`, `::testTranslateContentBlockReturnsSourceHtmlWhenTheApiIsUnreachable`. Evidence is `tests/Mock/ThrowingHttpClient.php` |
+| WIRE-5 | provisional | Redirectable without patching the artifact **and** documented on both surfaces an integrator reads: `api_url` constructor option and `LANGSYS_API_URL` env var (`src/Config.php:80`), listed in the README's environment table and its constructor-options example. The env var is the load-bearing half — it points an existing, untouched integration at a double, which a constructor option cannot |
+| WIRE-4 | provisional | Two fixes, because one was not enough. **Breadth:** every entry-point seam catches `\Throwable`, not `\Exception` — an `\Exception`-only catch is an enumeration of the failures we thought of, and an `\Error` (a `TypeError` from a wrong-shaped cache hit) escaped it and became a 500 on a customer page. **Source:** a malformed cache entry is now treated as a MISS and deleted, so the next request repopulates — degrading on every call while a poisoned entry sits out its TTL is the lesser fix. `::testMalformedCacheEntryDoesNotReachTheRender` (string/int/bool across all three entry points) and `::testMalformedCacheEntryIsInvalidatedRatherThanEndured`. Plus the unreachable-API vectors via `tests/Mock/ThrowingHttpClient.php` |
 
 ## Conformance meta
 
@@ -106,7 +114,41 @@ stashing `src/` and re-running. A regression test never seen red is a guess.
 |---|---|---|
 | CONF-1 | **not implemented** | Every test here asserts against a mock that cannot reject |
 | CONF-2 | acknowledged | All implemented rules recorded as `provisional` |
+| *(precondition)* | provisional | **The suite must be exercising this tree, and now asserts it.** `tests/ProvenanceTest.php` resolves `ReflectionClass::getFileName()` for five SDK classes against `realpath(src/)`, asserts no vendored copy of this package shadows `src/`, and carries a **negative control** proving the guard can fail (a `vendor/` class must NOT resolve under `src/`). Written because a sibling's verification pass reported a clean red-first run that was loading FIXED source through a vendor symlink — the "before" state never existed and the check could not have failed |
 | CONF-3 | provisional | Behaviour changes verified red against `origin/main` before landing |
+
+## Computed summary
+
+Produced by the script below, run against the spec blob cited in the header — not
+counted by hand.
+
+```
+binding rules (all | server)  45 of 67
+rowed                         45
+missing rows                   0
+```
+
+```python
+# python3 - <<'EOF'   (spec at /tmp/spec.mdx = git show origin/main:docs/sdk-spec.mdx)
+import re
+spec = open('/tmp/spec.mdx').read()
+binding = []
+for m in re.finditer(r'^### ([A-Z]+-\d+)\s*—', spec, re.M):
+    tail = spec[m.end():m.end()+600]
+    pm = re.search(r'\*\*Profiles:\*\*\s*(.+)', tail)
+    prof = pm.group(1).strip() if pm else ''
+    if 'all' in prof or 'server' in prof:
+        binding.append(m.group(1))
+conf = open('CONFORMANCE.md').read()
+rowed = set(re.findall(r'^\|\s*\*{0,2}([A-Z]+-\d+)', conf, re.M))
+for m in re.finditer(r'^\|\s*([A-Z]+)-(\d+)\s*…\s*(?:[A-Z]+-)?(\d+)', conf, re.M):
+    rowed |= {f"{m.group(1)}-{n}" for n in range(int(m.group(2)), int(m.group(3))+1)}
+for m in re.finditer(r'^\|\s*((?:[A-Z]+-\d+,\s*)+[A-Z]+-\d+)', conf, re.M):
+    rowed |= set(re.findall(r'[A-Z]+-\d+', m.group(1)))
+missing = [r for r in binding if r not in rowed]
+print(len(binding), len(binding) - len(missing), missing)
+# EOF
+```
 
 ## Findings raised against this revision
 

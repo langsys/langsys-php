@@ -351,7 +351,7 @@ class Client
             return $this->projectData;
         }
 
-        $cacheKey = 'auth_' . $this->config->getProjectId();
+        $cacheKey = $this->authCacheKey();
 
         if (!$force) {
             $cached = $this->cache->get($cacheKey);
@@ -410,14 +410,45 @@ class Client
     }
 
     /**
+     * Cache key for the authorization payload.
+     *
+     * Scoped by project AND by which key asked. The response depends on the API
+     * key - key_type, and the capability derived from it - so a project-only key
+     * lets two keys on one host share an entry: a read key inherits a write
+     * key's cached key_type and believes it may register, and in the other
+     * direction a write key inherits a read key's and silently stops
+     * discovering. The default cache is a shared temp directory, so "two keys on
+     * one host" is an ordinary deployment (a read key rendering, a write key in
+     * a sync job), not a corner case.
+     *
+     * The key is HASHED and truncated: cache keys land on shared filesystems and
+     * in Redis keyspaces, and raw key material must not.
+     *
+     * @return string
+     */
+    protected function authCacheKey()
+    {
+        return 'auth_' . $this->config->getProjectId()
+            . '_' . substr(hash('sha256', (string) $this->config->getApiKey()), 0, 12);
+    }
+
+    /**
      * Sync the batch limit from project data to the TranslatableItems resource.
      *
      * @return void
      */
     protected function syncBatchLimit()
     {
-        if (isset($this->projectData['langsys_settings']['batch_limit'])) {
-            $this->translatableItems->setBatchLimit($this->projectData['langsys_settings']['batch_limit']);
+        // The server nests this: langsys_settings.translatable_items.batch_limit.
+        // Reading one level short silently kept the SDK on its own default, so
+        // the server-provided limit never applied - and if the server lowers it,
+        // oversized batches are REJECTED and registration fails wholesale.
+        // Confirmed against the spec (REG-9), LangsysSettingsResource, and a live
+        // authorize-project response.
+        if (isset($this->projectData['langsys_settings']['translatable_items']['batch_limit'])) {
+            $this->translatableItems->setBatchLimit(
+                $this->projectData['langsys_settings']['translatable_items']['batch_limit']
+            );
         }
     }
 
@@ -568,6 +599,28 @@ class Client
         // Check file/redis cache
         if ($useCache) {
             $cached = $this->cache->get($cacheKey);
+
+            // A hit of the WRONG SHAPE is a miss, not a hit.
+            //
+            // This cache is shared by every request on the host and, on Redis,
+            // by the fleet - so it sees truncated writes, key collisions and
+            // formats written by other SDK versions. A non-array here reached
+            // the catalog lookup and raised a TypeError out of translate(),
+            // which is a 500 on a customer page.
+            //
+            // Treated as a miss AND invalidated: degrading on every call while a
+            // poisoned entry sits there for the rest of its TTL is the lesser
+            // fix. Deleting it lets the next request repopulate from the API.
+            if ($cached !== null && !is_array($cached)) {
+                $this->logger->warning('Discarding malformed translations cache entry', [
+                    'locale' => $locale,
+                    'cache_key' => $cacheKey,
+                    'type' => gettype($cached),
+                ]);
+                $this->cache->delete($cacheKey);
+                $cached = null;
+            }
+
             if ($cached !== null) {
                 // Store in memory cache for this request
                 $this->translationsMemoryCache[$memoryKey] = $cached;
@@ -629,7 +682,14 @@ class Client
 
         try {
             $translations = $this->getTranslations($locale);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            // \Throwable, not \Exception: an \Error (TypeError from a
+            // wrong-shaped cache hit, ValueError, ArithmeticError) is not an
+            // Exception, so an \Exception-only catch is an ENUMERATION of the
+            // failures we happened to think of - and the ones we didn't take the
+            // render down. WIRE-4 says this call must never throw; the catch has
+            // to be as wide as the promise.
+            //
             // This method sits on every render path, so the API being
             // unreachable must degrade to source text rather than turn a working
             // page into a 500. Nothing is queued: a failed catalog fetch cannot
@@ -1140,7 +1200,8 @@ class Client
         // the source HTML rather than throwing into the caller's render.
         try {
             $translations = $this->getTranslations($locale);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            // \Throwable for the same reason as translate() - see the note there.
             $this->logger->error('Content block lookup failed - returning source HTML', [
                 'custom_id' => $customId,
                 'category' => $category,
