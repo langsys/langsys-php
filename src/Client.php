@@ -410,6 +410,38 @@ class Client
     }
 
     /**
+     * Whether a value has the shape of a catalog: a map of category => map.
+     *
+     * Checked to depth 2, not depth 1. A top-level array whose SLICES are
+     * scalars passes an is_array() test and then raises a TypeError the moment
+     * anything indexes into a slice - which is outside the entry-point catch,
+     * so it reaches the caller as a 500. The earlier guard tested only the top
+     * level and was therefore satisfied by a value that still broke every
+     * render.
+     *
+     * Deliberately not recursive past depth 2: a slice's VALUES are legitimately
+     * mixed (string translation, null for untranslated, array for a content
+     * block), so there is nothing further to constrain.
+     *
+     * @param mixed $value
+     * @return bool
+     */
+    protected function isCatalogShape($value)
+    {
+        if (!is_array($value)) {
+            return false;
+        }
+
+        foreach ($value as $slice) {
+            if (!is_array($slice)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * Cache key for the authorization payload.
      *
      * Scoped by project AND by which key asked. The response depends on the API
@@ -604,14 +636,16 @@ class Client
             //
             // This cache is shared by every request on the host and, on Redis,
             // by the fleet - so it sees truncated writes, key collisions and
-            // formats written by other SDK versions. A non-array here reached
+            // formats written by other SDK versions. A bad entry here reached
             // the catalog lookup and raised a TypeError out of translate(),
-            // which is a 500 on a customer page.
+            // which is a 500 on a customer page. Checked to depth 2: an array
+            // of SCALAR slices satisfies is_array() and then breaks at the
+            // first index into a slice, past the entry-point catch.
             //
             // Treated as a miss AND invalidated: degrading on every call while a
             // poisoned entry sits there for the rest of its TTL is the lesser
             // fix. Deleting it lets the next request repopulate from the API.
-            if ($cached !== null && !is_array($cached)) {
+            if ($cached !== null && !$this->isCatalogShape($cached)) {
                 $this->logger->warning('Discarding malformed translations cache entry', [
                     'locale' => $locale,
                     'cache_key' => $cacheKey,
@@ -1105,7 +1139,7 @@ class Client
             if (isset($project['base_locale'])) {
                 return $project['base_locale'];
             }
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             // Ignore - return null
         }
 
@@ -1689,7 +1723,7 @@ class Client
                 $result['success'] = false;
                 return $result;
             }
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $pendingCount = count($this->pendingPhrases) + count($this->pendingContentBlocks);
             $this->logger->error('Flush failed - authorization error', [
                 'error' => $e->getMessage(),
@@ -1709,7 +1743,12 @@ class Client
                 $this->translatableItems->createPhrases($phrases);
                 $result['phrases'] = count($phrases);
                 $this->pendingPhrases = [];
-            } catch (\Exception $e) {
+            // \Throwable, not \Exception: this usually runs from the shutdown
+            // handler, after the response is sent, where an \Error escaping is
+            // a fatal - appended to the page on some SAPIs, and invisible on
+            // the rest. Registration is best-effort by design, so EVERY way
+            // this can fail has to end up in $result rather than unwinding.
+            } catch (\Throwable $e) {
                 $this->logger->error('Failed to register phrases', [
                     'count' => count($this->pendingPhrases),
                     'error' => $e->getMessage(),
@@ -1727,7 +1766,7 @@ class Client
                 $this->translatableItems->createContentBlocks($blocks);
                 $result['content_blocks'] = count($blocks);
                 $this->pendingContentBlocks = [];
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 $this->logger->error('Failed to register content blocks', [
                     'count' => count($this->pendingContentBlocks),
                     'error' => $e->getMessage(),
@@ -1748,7 +1787,7 @@ class Client
                 if ($locale !== null) {
                     $this->clearCache($locale);
                 }
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 // Ignore cache clear errors
             }
         }

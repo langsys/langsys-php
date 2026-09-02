@@ -1093,6 +1093,98 @@ class ClientTest extends TestCase
         $this->assertSame(3, $client->translatableItems()->getBatchLimit());
     }
 
+    /**
+     * The regression the fix above introduced.
+     *
+     * Reading the limit for the first time also meant HONOURING a bad one. A
+     * project whose settings carry 0 (an unset column, a misconfigured project)
+     * reached array_chunk(), which raises a ValueError on a non-positive
+     * length - and this normally runs from the shutdown handler, where an
+     * uncaught Error is a fatal AFTER the response has been sent. Before the
+     * REG-9 fix the value was never read, so it was harmless; afterwards it
+     * took the request down.
+     *
+     * @dataProvider nonPositiveBatchLimitProvider
+     */
+    public function testNonPositiveServerBatchLimitIsIgnored($limit)
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => [
+                'key_type' => 'write',
+                'write_enabled' => true,
+                'langsys_settings' => ['translatable_items' => ['batch_limit' => $limit]],
+            ],
+        ]);
+        $mockHttp->setResponse('GET', 'translations', ['data' => ['__uncategorized__' => []]]);
+        $mockHttp->setResponse('POST', 'translatable-items', ['status' => true]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+        $client->setLocale('es-es');
+        $client->translate('Hello');
+
+        $mockHttp->clearRequests();
+        $result = $client->flushPendingRegistrations();
+
+        $this->assertTrue($result['success'], 'a bad setting must not fail the flush');
+        $this->assertSame(1, $result['phrases']);
+        $this->assertSame(
+            200,
+            $client->translatableItems()->getBatchLimit(),
+            'a non-positive limit is ignored in favour of the default'
+        );
+    }
+
+    public function nonPositiveBatchLimitProvider()
+    {
+        return [
+            'zero'     => [0],
+            'negative' => [-1],
+        ];
+    }
+
+    /**
+     * And the flush survives an \Error, not merely an \Exception.
+     *
+     * The catches were \Exception-only, so the ValueError above unwound
+     * straight through them. Registration is best-effort by design and mostly
+     * runs after the response is sent; every failure has to land in $result
+     * instead of escaping. Asserted with a TypeError, which is an \Error and
+     * so invisible to the old catches.
+     */
+    public function testFlushSurvivesAnErrorNotJustAnException()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'write', 'write_enabled' => true],
+        ]);
+        $mockHttp->setResponse('GET', 'translations', ['data' => ['__uncategorized__' => []]]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+        $client->setLocale('es-es');
+        $client->translate('Hello');
+
+        // Swap in a transport that raises an \Error rather than an \Exception.
+        $items = (new \ReflectionClass($client))->getProperty('translatableItems');
+        $items->setAccessible(true);
+        $resource = $items->getValue($client);
+
+        $http = (new \ReflectionClass($resource))->getProperty('http');
+        $http->setAccessible(true);
+        $http->setValue($resource, new class {
+            public function post($path, array $data = [])
+            {
+                throw new \TypeError('an \Error, not an \Exception');
+            }
+        });
+
+        $result = $client->flushPendingRegistrations();
+
+        $this->assertFalse($result['success']);
+        $this->assertSame(0, $result['phrases']);
+        $this->assertSame(1, $result['retained'], 'the phrase stays queued for a later retry');
+    }
+
     // =========================================================================
     // CACHE-1 — the auth answer depends on WHICH key asked
     // =========================================================================
@@ -1175,9 +1267,18 @@ class ClientTest extends TestCase
     public function malformedCacheEntryProvider()
     {
         return [
+            // Depth 0 - the whole entry is the wrong type.
             'string'  => ['a string, not the category map'],
             'integer' => [42],
             'boolean' => [true],
+
+            // Depth 1 - a map of SCALAR slices. This is the shape a depth-0
+            // is_array() check waves through: it looks like a catalog until
+            // something indexes into a category, which every render does. It
+            // reached all three entry points as a TypeError.
+            'slice is string'  => [['greetings' => 'a string, not the phrase map']],
+            'slice is integer' => [['greetings' => 42]],
+            'slice is boolean' => [['greetings' => true]],
         ];
     }
 
@@ -1185,13 +1286,15 @@ class ClientTest extends TestCase
      * And the entry is DISCARDED, not merely survived. Degrading on every call
      * while the poisoned entry sits there for the rest of its TTL is the lesser
      * fix; the next request must be able to repopulate from the API.
+     *
+     * @dataProvider malformedCacheEntryProvider
      */
-    public function testMalformedCacheEntryIsInvalidatedRatherThanEndured()
+    public function testMalformedCacheEntryIsInvalidatedRatherThanEndured($poison)
     {
-        $client = $this->clientWithPoisonedCache('not an array', $cache);
+        $client = $this->clientWithPoisonedCache($poison, $cache);
         $key = 'translations_project-id_es-es';
 
-        $this->assertSame('not an array', $cache->get($key), 'sanity: the poison is present');
+        $this->assertSame($poison, $cache->get($key), 'sanity: the poison is present');
 
         $client->translate('Hello');
 
@@ -1200,7 +1303,88 @@ class ClientTest extends TestCase
         // is the point: the alternative is degrading on every call for the rest
         // of the entry's TTL.
         $this->assertIsArray($cache->get($key), 'the entry must be replaced, not merely tolerated');
-        $this->assertNotSame('not an array', $cache->get($key));
+        $this->assertNotSame($poison, $cache->get($key));
+
+        $cache->clear();
+    }
+
+    /**
+     * The other half of WIRE-4, and the more embarrassing one: the SDK was
+     * MANUFACTURING the poison it guards against.
+     *
+     * getTranslations() wrote whatever the API returned straight into the shared
+     * cache. A malformed response - a proxy error page parsed as JSON, a partial
+     * body, a server bug - was cached verbatim and then re-read by every request
+     * for the rest of the TTL. Guarding the read alone leaves the SDK poisoning
+     * its own cache and merely surviving it afterwards.
+     *
+     * @dataProvider malformedServerMapProvider
+     */
+    public function testMalformedServerMapIsNeverWrittenToTheCache($data)
+    {
+        $cache = new FileCache(sys_get_temp_dir() . '/langsys-test-' . uniqid());
+        $key = 'translations_project-id_es-es';
+
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'write', 'write_enabled' => true],
+        ]);
+        $mockHttp->setResponse('GET', 'translations', ['status' => true, 'data' => $data]);
+
+        $client = $this->createClientWithMockHttp($mockHttp, $cache);
+        $client->setLocale('es-es');
+
+        $this->assertSame('Hello', $client->translate('Hello'), 'the render degrades rather than throwing');
+
+        $cached = $cache->get($key);
+        $this->assertIsArray($cached, 'the malformed payload must never be written');
+        $this->assertSame([], $cached);
+
+        $cache->clear();
+    }
+
+    public function malformedServerMapProvider()
+    {
+        return [
+            'data is a string'  => ['not a map'],
+            'data is an int'    => [42],
+            'slice is a string' => [['greetings' => 'not the phrase map']],
+            'slice is an int'   => [['greetings' => 7]],
+        ];
+    }
+
+    /**
+     * Positive control for the test above.
+     *
+     * The assertion there - "the cache holds []" - is only meaningful if the
+     * write path is actually REACHED and would otherwise have stored the
+     * payload. Same client, same cache, same call; the only difference is a
+     * well-formed response. If this fails, the test above proves nothing,
+     * because nothing was ever going to be written.
+     */
+    public function testWellFormedServerMapIsWrittenToTheCache()
+    {
+        $cache = new FileCache(sys_get_temp_dir() . '/langsys-test-' . uniqid());
+        $key = 'translations_project-id_es-es';
+
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'write', 'write_enabled' => true],
+        ]);
+        $mockHttp->setResponse('GET', 'translations', [
+            'status' => true,
+            'data' => ['greetings' => ['Hello' => 'Hola']],
+        ]);
+
+        $client = $this->createClientWithMockHttp($mockHttp, $cache);
+        $client->setLocale('es-es');
+
+        $this->assertSame('Hola', $client->translate('Hello', null, 'greetings'));
+        $this->assertSame(
+            ['greetings' => ['Hello' => 'Hola']],
+            $cache->get($key),
+            'the write path must be live, or the malformed-map test is vacuous'
+        );
 
         $cache->clear();
     }

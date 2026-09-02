@@ -384,6 +384,23 @@ class HtmlParser
 
         $ids = [];
 
+        // An untyped JS caller could pass null straight through: the legacy JS
+        // generator did not coalesce it, so the block was registered under
+        // md5codeunit('[null,[...]]'). Nothing in the slot list can produce
+        // that - every slot is a string - so without this the block is
+        // stranded. Only for a genuine null; '' and the sentinel are the PHP
+        // spellings and are covered below.
+        if ($category === null) {
+            $encodedNull = json_encode(
+                [null, $values],
+                JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS
+            );
+
+            if ($encodedNull !== false) {
+                $ids[] = $this->codeUnitMd5($encodedNull);
+            }
+        }
+
         foreach ($slots as $slot) {
             // This SDK's own pre-change form: md5 over a pipe-joined string.
             $ids[] = md5(implode('|', array_merge([$slot], $values)));
@@ -393,6 +410,14 @@ class HtmlParser
             // READS catalogs, so a PHP page rendering content a JS SDK
             // registered has to resolve it too - otherwise it re-registers
             // under the current id and strands those translations.
+            //
+            // The sentinel collapses to '' here, so the two uncategorised slots
+            // yield ONE code-unit id, not two. That is deliberate:
+            // '__uncategorized__' is this SDK's own spelling and only ever went
+            // out on the pipe-join form. A JS caller reached the code-unit form
+            // with '' (its default) or with null (handled above), never with
+            // the sentinel - so md5codeunit('["__uncategorized__",[...]]') is an
+            // id nothing ever wrote, and emitting it would only add a lookup.
             $hashCat = ($slot === '__uncategorized__') ? '' : $slot;
             $encoded = json_encode(
                 [$hashCat, $values],

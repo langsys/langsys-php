@@ -1361,6 +1361,61 @@ class HtmlParserTest extends TestCase
     }
 
     /**
+     * And now the part the hash-primitive test cannot reach.
+     *
+     * Every legacy assertion above invokes codeUnitMd5() with the fixture's own
+     * canonical_json. That proves the HASH is ported correctly and nothing
+     * more - it says nothing about whether legacyCustomIds(), the method the
+     * lookup path actually calls, ever ARRIVES at that string. A perfect hash
+     * behind a wrong category slot or a wrong serialization strands the content
+     * just as completely, and every one of those tests still passes.
+     *
+     * So: drive the public method with the row's own inputs and require the
+     * row's id to come out. This is what caught the null-category gap - the
+     * legacy JS generator did not coalesce null, so an untyped caller's block
+     * was filed under '[null,[...]]', a string no slot in this method could
+     * produce.
+     */
+    public function testEveryLegacyVectorIsReachableThroughTheLookupPath()
+    {
+        $rows = json_decode(
+            file_get_contents(dirname(__DIR__) . '/fixtures/legacy-custom-id-reference.json'),
+            true
+        );
+
+        foreach ($rows as $index => $row) {
+            $ids = $this->parser->legacyCustomIds($row['category'], $row['tokens']);
+
+            // The one deliberate exclusion, asserted as an exclusion rather than
+            // quietly skipped. '__uncategorized__' is this SDK's own spelling and
+            // only ever went out on the pipe-join form; a JS caller reached the
+            // code-unit form with '' or with null, never with the sentinel. So
+            // this id is one nothing ever wrote, and we decline to look it up.
+            if ($row['category'] === '__uncategorized__') {
+                $this->assertNotContains(
+                    $row['legacy_custom_id'],
+                    $ids,
+                    'row ' . ($index + 1) . ': the sentinel has no code-unit spelling'
+                );
+            } else {
+                $this->assertContains(
+                    $row['legacy_custom_id'],
+                    $ids,
+                    'row ' . ($index + 1) . ' unreachable through legacyCustomIds(): ' . $row['note']
+                );
+            }
+
+            if ($row['pipe_join_custom_id'] !== null) {
+                $this->assertContains(
+                    $row['pipe_join_custom_id'],
+                    $ids,
+                    'row ' . ($index + 1) . ': pipe-join form unreachable'
+                );
+            }
+        }
+    }
+
+    /**
      * The vector file is a shared artifact, adopted byte-identically from
      * langsys-python (blob dc5556466dc54fe82e81ac9fdbf4549b2b76e7ce). Its
      * coverage is the point: ASCII rows are positive controls where the two

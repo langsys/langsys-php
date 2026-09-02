@@ -97,11 +97,40 @@ class Translations
 
         $response = $this->getFlat($locale);
 
-        if (isset($response['data'])) {
-            return $response['data'];
+        if (!isset($response['data'])) {
+            return [];
         }
 
-        return [];
+        $data = $response['data'];
+
+        // Validate BEFORE this can reach a cache. Returning the payload
+        // unchecked meant a malformed server response was written into the
+        // shared cache and then re-read for the rest of its TTL - the SDK
+        // manufacturing the poison it guards against on the next request.
+        // Depth 2, because a top-level array of scalar slices breaks every
+        // lookup just as thoroughly as a scalar does.
+        if (!is_array($data)) {
+            $this->logger->warning('Translations response is not a catalog map; ignoring', [
+                'locale' => $locale,
+                'type' => gettype($data),
+            ]);
+
+            return [];
+        }
+
+        foreach ($data as $category => $slice) {
+            if (!is_array($slice)) {
+                $this->logger->warning('Translations response has a malformed category slice; ignoring', [
+                    'locale' => $locale,
+                    'category' => $category,
+                    'type' => gettype($slice),
+                ]);
+
+                return [];
+            }
+        }
+
+        return $data;
     }
 
     /**

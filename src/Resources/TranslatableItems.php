@@ -114,12 +114,29 @@ class TranslatableItems
     /**
      * Set the batch limit for chunking API requests.
      *
+     * Ignores a non-positive limit and keeps the default. The value arrives
+     * from the project's server-side settings, so a 0 (an unset column, a
+     * misconfigured project) is a value this SDK will actually be handed - and
+     * array_chunk() raises a ValueError on it, from inside the shutdown
+     * handler, where it is a fatal error after the response has been sent.
+     * Registration is best-effort; a bad setting must not take the page down.
+     *
      * @param int $limit
      * @return $this
      */
     public function setBatchLimit($limit)
     {
-        $this->batchLimit = (int) $limit;
+        $limit = (int) $limit;
+
+        if ($limit < 1) {
+            $this->logger->warning('Ignoring non-positive batch limit; keeping default', [
+                'requested' => $limit,
+                'batch_limit' => $this->batchLimit,
+            ]);
+            return $this;
+        }
+
+        $this->batchLimit = $limit;
         return $this;
     }
 

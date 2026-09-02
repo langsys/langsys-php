@@ -196,6 +196,34 @@ scoped to `Client`:
   un-namespaced key in the SDK, so two projects sharing a cache suppressed each
   other's registrations.
 
+### Fixed — found by review of the fixes above
+
+The previous round closed WIRE-4 and REG-9. Both were closed too narrowly, and
+one of them broke something that had been working:
+
+- **A malformed cache entry was only rejected at the top level.** The guard
+  tested `is_array()` on the whole entry, which a map of *scalar slices*
+  satisfies — and that shape then raised a `TypeError` at the first index into a
+  category, out of all three entry points, leaving the entry poisoned for the
+  rest of its TTL. The check is now depth 2.
+- **The SDK was writing the poison it guarded against.** Whatever the API
+  returned went straight into the shared cache, so one malformed response was
+  re-read by every request until the TTL expired. Responses are now validated
+  before they can reach a cache.
+- **A batch limit of `0` took the request down — a regression introduced by the
+  REG-9 fix.** Reading the server's limit for the first time also meant
+  honouring a bad one: `array_chunk()` raises a `ValueError` on a non-positive
+  length, and this runs from the shutdown handler, where it is a fatal *after*
+  the response has been sent. Before that fix the value was never read, so it
+  was harmless. Non-positive limits are ignored, and the flush now catches
+  `\Throwable` so no `\Error` can escape a best-effort lane.
+- **Blocks registered by an untyped JS caller were still stranded.** The legacy
+  JS generator did not coalesce `null`, so those blocks are filed under
+  `[null,[...]]` — an id the PHP lookup could not produce, because every
+  category slot it tries is a string. Found by driving the public lookup with
+  the reference vectors' own inputs; the existing tests exercised the hash
+  directly and could not have caught it.
+
 ## [1.3.1] - 2026-08-16
 
 ### Fixed
