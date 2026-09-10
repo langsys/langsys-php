@@ -8,6 +8,7 @@ use Langsys\SDK\Cache\NullCache;
 use Langsys\SDK\Exception\LangsysException;
 use Langsys\SDK\Html\HtmlParser;
 use Langsys\SDK\Tests\Mock\MockHttpClient;
+use Langsys\SDK\Tests\Mock\ErrorThrowingHttpClient;
 use Langsys\SDK\Tests\Mock\ThrowingHttpClient;
 use PHPUnit\Framework\TestCase;
 
@@ -888,6 +889,66 @@ class ClientTest extends TestCase
     }
 
     /**
+     * The legacy fallback, end to end, on content the two hashes DISAGREE about.
+     *
+     * Every Client-level legacy test above uses ASCII, where the JS code-unit
+     * hash and a UTF-8 byte hash produce the same digest - so all of them pass
+     * against a byte-hash stub, and none of them can tell a correct port from a
+     * wrong one. The parser-level fixture covers the divergence, but only by
+     * calling the hash directly; nothing proved a client actually RESOLVES a
+     * block that a JS SDK registered under a non-ASCII id.
+     *
+     * Ids come from the shared vector file rather than being recomputed here.
+     * Recomputing them with the SDK's own helper would make this test agree with
+     * whatever the implementation does, including agreeing with it while wrong.
+     *
+     * @dataProvider nonAsciiLegacyBlockProvider
+     */
+    public function testNonAsciiLegacyBlockResolvesThroughTheClient($fixtureRow)
+    {
+        $rows = json_decode(
+            file_get_contents(__DIR__ . '/fixtures/legacy-custom-id-reference.json'),
+            true
+        );
+
+        $row = $rows[$fixtureRow - 1];
+        $phrase = $row['tokens'][0];
+        $category = $row['category'];
+
+        // The catalog as a JS SDK left it: filed under the pre-fix code-unit id.
+        $client = $this->clientWithCatalog([
+            $category => [
+                $row['legacy_custom_id'] => [$phrase => 'TRANSLATED'],
+            ],
+        ]);
+
+        $html = '<div><p>' . $phrase . '</p></div>';
+
+        $this->assertStringContainsString(
+            'TRANSLATED',
+            $client->translateContentBlock($html, $category),
+            'row ' . $fixtureRow . ' (' . $row['note'] . ') did not resolve through the client'
+        );
+
+        $this->assertFalse(
+            $client->hasPendingRegistrations(),
+            'a resolved legacy block must not be re-registered - that is what strands it'
+        );
+    }
+
+    public function nonAsciiLegacyBlockProvider()
+    {
+        return [
+            'Cyrillic category and phrase' => [8],
+            'Japanese' => [9],
+            'Greek' => [10],
+            'Hebrew' => [11],
+            'Arabic' => [12],
+            'astral plane (emoji)' => [13],
+        ];
+    }
+
+    /**
      * The guard. A legacy id can coincide with an unrelated block - the old
      * form's '|' delimiter is unescaped, so distinct tuples flatten to one
      * string. The phrases decide, not the id, and a mismatch must fail toward
@@ -993,6 +1054,111 @@ class ClientTest extends TestCase
         $client->translate('Hello');
 
         $this->assertFalse($client->hasPendingRegistrations());
+    }
+
+    /**
+     * The same four seams, failing with an \Error instead of an \Exception.
+     *
+     * Each of these seams is written `catch (\Throwable)` deliberately, but
+     * until now every test drove them with an ApiException - so narrowing any of
+     * them back to \Exception left the whole suite green. A seam no test can
+     * redden is not a seam that will survive the next edit, and the failures
+     * that actually reached production here were \Errors: a TypeError from a
+     * wrong-shaped cache hit, a ValueError from a batch limit of zero.
+     *
+     * @dataProvider errorSeamProvider
+     */
+    public function testRenderPathsSurviveAnErrorFromTheTransport($call, $expected)
+    {
+        $client = $this->clientWithUnreachableApi('error');
+
+        $this->assertStringContainsString($expected, $call($client));
+    }
+
+    public function errorSeamProvider()
+    {
+        return [
+            // Client.php:719 - translate()'s catalog lookup.
+            'translate' => [
+                function ($client) { return $client->translate('Hello'); },
+                'Hello',
+            ],
+            // Client.php:1237 - translateContentBlock()'s catalog lookup.
+            'translateContentBlock' => [
+                function ($client) { return $client->translateContentBlock('<p>Hi</p>'); },
+                'Hi',
+            ],
+            // PageTranslator, via the client.
+            'translatePage' => [
+                function ($client) { return $client->translatePage('<html><body><p>Hi</p></body></html>'); },
+                'Hi',
+            ],
+        ];
+    }
+
+    /**
+     * And the two flush seams: Client.php:1726 (the authorize call that gates
+     * the flush) and :1769 (the content-block registration call). Registration
+     * is best-effort and usually runs from the shutdown handler, where an
+     * escaping \Error is a fatal after the response has been sent.
+     */
+    public function testFlushSurvivesAnErrorFromTheAuthorizeGate()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'write', 'write_enabled' => true],
+        ]);
+        $mockHttp->setResponse('GET', 'translations', ['data' => ['__uncategorized__' => []]]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+        $client->setLocale('es-es');
+
+        // Queue against a HEALTHY API first. Driving this with an unreachable
+        // API instead queues nothing - by design, since a failed lookup cannot
+        // tell a miss from a hit - and the flush then returns success trivially
+        // with an empty queue, asserting nothing. That was this test's first
+        // form and it passed for that reason.
+        $client->translate('Hello');
+        $this->assertTrue($client->hasPendingRegistrations(), 'sanity: there is something to flush');
+
+        // Now break the authorize call that gates the flush, with an \Error.
+        $http = (new \ReflectionClass($client))->getProperty('http');
+        $http->setAccessible(true);
+        $http->setValue($client, new ErrorThrowingHttpClient());
+        $client->resetRequestState();
+
+        $result = $client->flushPendingRegistrations();
+
+        $this->assertFalse($result['success']);
+        $this->assertSame(1, $result['skipped'], 'the queued phrase is accounted for, not lost silently');
+        $this->assertTrue($client->hasPendingRegistrations(), 'and left queued for a later retry');
+    }
+
+    public function testFlushSurvivesAnErrorWhileRegisteringContentBlocks()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'write', 'write_enabled' => true],
+        ]);
+        $mockHttp->setResponse('GET', 'translations', ['data' => ['__uncategorized__' => []]]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+        $client->setLocale('es-es');
+        $client->translateContentBlock('<p>Hi</p>');
+
+        // Only the content-block POST fails, and it fails with an \Error.
+        $items = (new \ReflectionClass($client))->getProperty('translatableItems');
+        $items->setAccessible(true);
+        $resource = $items->getValue($client);
+
+        $http = (new \ReflectionClass($resource))->getProperty('http');
+        $http->setAccessible(true);
+        $http->setValue($resource, new ErrorThrowingHttpClient());
+
+        $result = $client->flushPendingRegistrations();
+
+        $this->assertFalse($result['success']);
+        $this->assertSame(0, $result['content_blocks']);
     }
 
     public function testTranslateContentBlockReturnsSourceHtmlWhenTheApiIsUnreachable()
@@ -1276,9 +1442,16 @@ class ClientTest extends TestCase
             // is_array() check waves through: it looks like a catalog until
             // something indexes into a category, which every render does. It
             // reached all three entry points as a TypeError.
-            'slice is string'  => [['greetings' => 'a string, not the phrase map']],
-            'slice is integer' => [['greetings' => 42]],
-            'slice is boolean' => [['greetings' => true]],
+            //
+            // The slice MUST be keyed on the category the renders actually read.
+            // These vectors were first written under 'greetings', which no call
+            // below passes - so the bad slice was never indexed, the test was
+            // 6/6 green against the unfixed code, and a depth-0-only guard left
+            // it green too. It asserted nothing at all. Keyed on the sentinel
+            // they throw 9/9 without the fix.
+            'slice is string'  => [[Client::UNCATEGORIZED => 'a string, not the phrase map']],
+            'slice is integer' => [[Client::UNCATEGORIZED => 42]],
+            'slice is boolean' => [[Client::UNCATEGORIZED => true]],
         ];
     }
 
@@ -1336,11 +1509,77 @@ class ClientTest extends TestCase
 
         $this->assertSame('Hello', $client->translate('Hello'), 'the render degrades rather than throwing');
 
-        $cached = $cache->get($key);
-        $this->assertIsArray($cached, 'the malformed payload must never be written');
-        $this->assertSame([], $cached);
+        // NOT "the cache holds []". That was this assertion's first form and it
+        // was asserting the bug: an empty catalog is a valid shape, so caching
+        // one blanked translations for the whole TTL. The cache must be left
+        // ALONE, exactly as it is on an unreachable API.
+        $this->assertNull($cache->get($key), 'a rejected payload must leave the cache untouched');
 
         $cache->clear();
+    }
+
+    /**
+     * The regression the fix above introduced, and it was worse than the defect.
+     *
+     * Rejecting the payload is only half the job: returning `[]` for it made an
+     * EMPTY CATALOG the cached value, and an empty catalog is a perfectly valid
+     * shape that every later request happily reads. One malformed response
+     * therefore blanked translations for the whole TTL - by default an hour, and
+     * fleet-wide on a shared Redis. Under a read key nothing ever refetches, so
+     * it cannot self-heal at all.
+     *
+     * Measured before the fix: request 1 gets the bad body, requests 2 and 3 hit
+     * a HEALTHY server and still render the source string, issuing zero GETs.
+     * That is a regression from the original defect, which was one TypeError on
+     * one request and healed on the next.
+     *
+     * The exception path was already right and is the shape to match: an
+     * unreachable API caches nothing, so the next request tries again.
+     *
+     * @dataProvider malformedServerMapProvider
+     */
+    public function testARejectedServerMapDoesNotBlankTheCatalogForTheTtl($data)
+    {
+        $cache = new FileCache(sys_get_temp_dir() . '/langsys-test-' . uniqid());
+        $key = 'translations_project-id_es-es';
+        $good = ['greetings' => ['Hello' => 'Hola']];
+
+        // Request 1: one malformed body.
+        $this->assertSame(
+            'Hello',
+            $this->clientAgainstServerMap($data, $cache)->translate('Hello', null, 'greetings'),
+            'the render degrades rather than throwing'
+        );
+
+        $this->assertNull($cache->get($key), 'a rejected payload must leave the cache untouched');
+
+        // Requests 2 and 3: a healthy server, a fresh client, a read key - so
+        // nothing but a real fetch can repair the catalog.
+        foreach ([2, 3] as $requestNumber) {
+            $client = $this->clientAgainstServerMap($good, $cache, $mock);
+
+            $this->assertSame(
+                'Hola',
+                $client->translate('Hello', null, 'greetings'),
+                'request ' . $requestNumber . ' still reads a catalog blanked by one bad response'
+            );
+        }
+    }
+
+    /**
+     * Positive control for the assertion above.
+     *
+     * "The cache is untouched" would also hold if the SDK never cached anything
+     * at all, in which case the test would be measuring nothing. Same client,
+     * same cache, same call, well-formed body: the entry must appear.
+     */
+    public function testAWellFormedServerMapStillPopulatesTheCatalog()
+    {
+        $cache = new FileCache(sys_get_temp_dir() . '/langsys-test-' . uniqid());
+        $good = ['greetings' => ['Hello' => 'Hola']];
+
+        $this->assertSame('Hola', $this->clientAgainstServerMap($good, $cache)->translate('Hello', null, 'greetings'));
+        $this->assertSame($good, $cache->get('translations_project-id_es-es'), 'the write path must be live');
     }
 
     public function malformedServerMapProvider()
@@ -1424,6 +1663,24 @@ class ClientTest extends TestCase
     }
 
     /**
+     * A client talking to a server that returns $data as the translations map,
+     * against a caller-supplied cache so several clients can share one.
+     */
+    private function clientAgainstServerMap($data, $cache, &$mockHttp = null)
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'read', 'write_enabled' => false],
+        ]);
+        $mockHttp->setResponse('GET', 'translations', ['status' => true, 'data' => $data]);
+
+        $client = $this->createClientWithMockHttp($mockHttp, $cache);
+        $client->setLocale('es-es');
+
+        return $client;
+    }
+
+    /**
      * A client whose translations cache holds a value of the wrong shape.
      */
     private function clientWithPoisonedCache($poison, &$cache)
@@ -1446,12 +1703,14 @@ class ClientTest extends TestCase
     /**
      * A client whose every API call fails.
      */
-    private function clientWithUnreachableApi()
+    private function clientWithUnreachableApi($failureKind = 'exception')
     {
         $client = $this->createClientWithMockHttp(new MockHttpClient());
         $client->setLocale('es-es');
 
-        $throwing = new ThrowingHttpClient();
+        $throwing = $failureKind === 'error'
+            ? new ErrorThrowingHttpClient()
+            : new ThrowingHttpClient();
         $reflection = new \ReflectionClass($client);
 
         $httpProperty = $reflection->getProperty('http');

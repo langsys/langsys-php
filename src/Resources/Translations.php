@@ -2,6 +2,7 @@
 
 namespace Langsys\SDK\Resources;
 
+use Langsys\SDK\Exception\LangsysException;
 use Langsys\SDK\Http\HttpClient;
 use Langsys\SDK\Log\LoggerInterface;
 use Langsys\SDK\Log\NullLogger;
@@ -109,24 +110,35 @@ class Translations
         // manufacturing the poison it guards against on the next request.
         // Depth 2, because a top-level array of scalar slices breaks every
         // lookup just as thoroughly as a scalar does.
+        //
+        // THROWS rather than returning []. Returning an empty catalog was the
+        // first attempt and it was worse than the defect: [] is a perfectly
+        // valid shape, so the caller cached it and every later request read a
+        // blank catalog for the rest of the TTL - an hour by default, fleet-wide
+        // on a shared Redis, and unable to self-heal at all under a read key,
+        // which never refetches. One bad response silently un-translated every
+        // page. Failing loudly puts this on the same footing as an unreachable
+        // API: the entry points degrade to source text, nothing is cached, and
+        // the next request tries again.
+        //
+        // A MISSING data key is not this case - a project with no translations
+        // legitimately has an empty catalog, and caching that is correct.
         if (!is_array($data)) {
-            $this->logger->warning('Translations response is not a catalog map; ignoring', [
-                'locale' => $locale,
-                'type' => gettype($data),
-            ]);
-
-            return [];
+            throw new LangsysException(sprintf(
+                'Translations response for %s is not a catalog map (got %s)',
+                $locale,
+                gettype($data)
+            ));
         }
 
         foreach ($data as $category => $slice) {
             if (!is_array($slice)) {
-                $this->logger->warning('Translations response has a malformed category slice; ignoring', [
-                    'locale' => $locale,
-                    'category' => $category,
-                    'type' => gettype($slice),
-                ]);
-
-                return [];
+                throw new LangsysException(sprintf(
+                    'Translations response for %s has a malformed category slice %s (got %s)',
+                    $locale,
+                    var_export($category, true),
+                    gettype($slice)
+                ));
             }
         }
 

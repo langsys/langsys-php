@@ -224,6 +224,39 @@ one of them broke something that had been working:
   the reference vectors' own inputs; the existing tests exercised the hash
   directly and could not have caught it.
 
+### Fixed — a regression in the previous round's fix
+
+The WIRE-4 fix rejected malformed responses by returning an empty catalog. That
+was worse than the defect it replaced:
+
+- **One malformed response blanked translations for the whole cache TTL** — an
+  hour by default, and fleet-wide on a shared Redis. An empty catalog is a
+  valid shape, so it was cached like any other answer and every later request
+  read it. Under a read key nothing refetches, so it could not self-heal at
+  all; measured as request 1 malformed, then requests 2 and 3 against a
+  *healthy* server still rendering source text with no calls made. A rejected
+  payload now leaves the cache untouched, exactly as an unreachable API does.
+
+Three things that were claimed as tested and were not:
+
+- The depth-1 cache vectors were keyed on a category no render reads, so the
+  malformed slice was never indexed and the test passed against the unfixed
+  code. Re-keyed, it fails 9 out of 9 without the fix.
+- Four of the five `\Throwable` degradation seams could be narrowed back to
+  `\Exception` with the suite still green. Each is now driven by a transport
+  that fails with an `\Error`.
+- Every client-level test of the legacy content-block fallback used ASCII,
+  where the two hash forms agree — so all of them passed against a wrong
+  implementation. Added Cyrillic, Japanese, Greek, Hebrew, Arabic and
+  astral-plane cases driven from the shared reference vectors.
+
+### Changed
+
+- **`CONFORMANCE.md` rebased onto the current spec** (blob `45cdddf8`). GRANT-1…4
+  were re-profiled to `browser`, so they no longer bind a server SDK: 41 of 67
+  rules bind, all rowed. The existing "no `X-Write-Grant` header" test is now the
+  affirmative non-participation test the spec asks for rather than a placeholder.
+
 ## [1.3.1] - 2026-08-16
 
 ### Fixed
