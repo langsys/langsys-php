@@ -1016,41 +1016,6 @@ class PageTranslator
         ];
     }
 
-    /**
-     * Mark items as registered in cache.
-     *
-     * @param array $phrases Phrases that were registered
-     * @param array $contentBlocks Content blocks that were registered
-     * @param string|null $category Category
-     * @return void
-     */
-    protected function markItemsAsRegistered(array $phrases, array $contentBlocks, $category = null)
-    {
-        $cacheKey = $this->getRegisteredItemsCacheKey($category);
-        $cache = $this->client->getCache();
-
-        // Get existing registered items
-        $existing = $this->getRegisteredItems($category);
-
-        // Merge new items
-        $existing['phrases'] = array_unique(array_merge(
-            $existing['phrases'],
-            $phrases
-        ));
-
-        $contentBlockIds = [];
-        foreach ($contentBlocks as $block) {
-            $contentBlockIds[] = $block['customId'];
-        }
-        $existing['contentBlocks'] = array_unique(array_merge(
-            $existing['contentBlocks'],
-            $contentBlockIds
-        ));
-
-        // Store in cache (use a long TTL since these are permanent registrations)
-        // The cache will be invalidated when translations are updated
-        $cache->set($cacheKey, $existing);
-    }
 
     /**
      * Collect all unique categories used by phrases and content blocks.
@@ -1250,50 +1215,6 @@ class PageTranslator
                 $block['customId'],
                 isset($block['phrases']) ? $block['phrases'] : []
             );
-        }
-    }
-
-    /**
-     * Mark items as registered with per-item categories.
-     *
-     * @param array $phrases Phrases with their categories
-     * @param array $contentBlocks Content blocks with their categories
-     * @return void
-     */
-    protected function markItemsAsRegisteredWithCategory(array $phrases, array $contentBlocks)
-    {
-        // Group items by category
-        $phrasesByCategory = [];
-        foreach ($phrases as $phrase) {
-            $cat = isset($phrase['category']) ? $phrase['category'] : '__uncategorized__';
-            if (!isset($phrasesByCategory[$cat])) {
-                $phrasesByCategory[$cat] = [];
-            }
-            $phrasesByCategory[$cat][] = $phrase['text'];
-        }
-
-        $blocksByCategory = [];
-        foreach ($contentBlocks as $block) {
-            $cat = isset($block['category']) ? $block['category'] : '__uncategorized__';
-            if (!isset($blocksByCategory[$cat])) {
-                $blocksByCategory[$cat] = [];
-            }
-            $blocksByCategory[$cat][] = $block;
-        }
-
-        // Mark items per category
-        $allCategories = array_unique(array_merge(
-            array_keys($phrasesByCategory),
-            array_keys($blocksByCategory)
-        ));
-
-        foreach ($allCategories as $cat) {
-            $catPhrases = isset($phrasesByCategory[$cat]) ? $phrasesByCategory[$cat] : [];
-            $catBlocks = isset($blocksByCategory[$cat]) ? $blocksByCategory[$cat] : [];
-
-            if (!empty($catPhrases) || !empty($catBlocks)) {
-                $this->markItemsAsRegistered($catPhrases, $catBlocks, $cat);
-            }
         }
     }
 }

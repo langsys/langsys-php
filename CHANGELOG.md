@@ -270,6 +270,21 @@ Three things that were claimed as tested and were not:
   all three. Both are now covered by tests that fail if the protection is
   weakened.
 
+### Removed
+
+- **Two unreachable methods in `PageTranslator`** (78 lines). They wrote the
+  "already registered" cache, and their only entry point lost its last caller
+  when items stopped being marked as registered at queue time — a fix made
+  because marking them early cost the content whenever a later flush failed.
+  Nothing has called them since; they are `protected`, so anyone subclassing
+  `PageTranslator` and calling them directly is affected.
+
+  Note for whoever touches this next: nothing writes that cache any more, so
+  the read side of the mechanism can no longer return anything. It is left in
+  place deliberately — a sibling process on an older version of this SDK may
+  still have written entries that are valid until they expire — but once that
+  is no longer a concern the reads are dead weight.
+
 ### Changed
 
 - **`CONFORMANCE.md` rebased onto the current spec** (blob `45cdddf8`). GRANT-1…4
