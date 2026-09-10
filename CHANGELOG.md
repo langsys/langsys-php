@@ -250,6 +250,26 @@ Three things that were claimed as tested and were not:
   implementation. Added Cyrillic, Japanese, Greek, Hebrew, Arabic and
   astral-plane cases driven from the shared reference vectors.
 
+### Fixed — the carve-out in the round above
+
+- **An empty 200 from a proxy could still blank a project's translations for
+  the cache TTL.** The fix above rejected malformed responses but waved through
+  a 2xx with no `data` key, treating it as an empty catalog — and an
+  empty-bodied 2xx becomes exactly that shape on the way in. The reasoning was
+  checkable and wrong: the API always sends the `data` key, an empty catalog
+  included, so a response without it is never ours. Now rejected like any other
+  malformed body.
+- **A failed catalog fetch was retried once per phrase.** Nothing about a
+  failure can be cached — that is what caused the blanking — but retrying per
+  call meant a 200-phrase page during an incident sent 200 requests to a
+  service already struggling. A failure is now remembered for the rest of the
+  request, and forgotten when the next one begins.
+- **Two more degradation seams could silently lose their protection**, one of
+  them on every render path: the fallback that looks up a project's base locale
+  runs before the guard the entry points rely on, so a failure there escaped
+  all three. Both are now covered by tests that fail if the protection is
+  weakened.
+
 ### Changed
 
 - **`CONFORMANCE.md` rebased onto the current spec** (blob `45cdddf8`). GRANT-1…4

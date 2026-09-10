@@ -8,6 +8,7 @@ use Langsys\SDK\Cache\NullCache;
 use Langsys\SDK\Exception\LangsysException;
 use Langsys\SDK\Html\HtmlParser;
 use Langsys\SDK\Tests\Mock\MockHttpClient;
+use Langsys\SDK\Tests\Mock\ErrorThrowingCache;
 use Langsys\SDK\Tests\Mock\ErrorThrowingHttpClient;
 use Langsys\SDK\Tests\Mock\ThrowingHttpClient;
 use PHPUnit\Framework\TestCase;
@@ -1097,6 +1098,59 @@ class ClientTest extends TestCase
     }
 
     /**
+     * The seam the enumeration above MISSED, and the one that mattered most.
+     *
+     * `getLocale()` runs at Client.php:708, BEFORE the try block at :717 - so
+     * its own fallback to the project's base locale is outside every entry
+     * point's catch. When no locale is set and no browser header is present,
+     * that fallback calls the API, and an \Error from it escapes translate(),
+     * translateContentBlock() and translatePage() alike. The seam at :1142 is
+     * the only thing holding it, and nothing exercised it: narrowing it to
+     * \Exception left the whole suite green while all three entry points threw.
+     *
+     * The lesson is not about this line. "All five seams are pinned" was a claim
+     * about the five I had enumerated, and I had enumerated them by grepping for
+     * the catches I already knew about.
+     *
+     * @dataProvider errorSeamProvider
+     */
+    public function testRenderPathsSurviveAnErrorWhileResolvingTheLocale($call, $expected)
+    {
+        $client = $this->clientWithUnreachableApi('error');
+
+        // No locale set, so getLocale() falls through to the project lookup -
+        // which is outside the entry-point try.
+        $client->setLocale(null);
+
+        $this->assertStringContainsString($expected, $call($client));
+    }
+
+    /**
+     * And the post-flush cache clear at Client.php:1790. A flush that succeeded
+     * must not be reported as failed because invalidating the catalog afterwards
+     * raised an \Error.
+     */
+    public function testFlushSurvivesAnErrorWhileClearingTheCache()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'write', 'write_enabled' => true],
+        ]);
+        $mockHttp->setResponse('GET', 'translations', ['data' => ['__uncategorized__' => []]]);
+        $mockHttp->setResponse('POST', 'translatable-items', ['status' => true]);
+
+        $cache = new ErrorThrowingCache();
+        $client = $this->createClientWithMockHttp($mockHttp, $cache);
+        $client->setLocale('es-es');
+        $client->translate('Hello');
+
+        $result = $client->flushPendingRegistrations();
+
+        $this->assertTrue($result['success'], 'the registration succeeded; only the cache clear failed');
+        $this->assertSame(1, $result['phrases']);
+    }
+
+    /**
      * And the two flush seams: Client.php:1726 (the authorize call that gates
      * the flush) and :1769 (the content-block registration call). Registration
      * is best-effort and usually runs from the shutdown handler, where an
@@ -1589,6 +1643,207 @@ class ClientTest extends TestCase
             'data is an int'    => [42],
             'slice is a string' => [['greetings' => 'not the phrase map']],
             'slice is an int'   => [['greetings' => 7]],
+        ];
+    }
+
+    /**
+     * A 2xx with no `data` key at all, which used to be waved through.
+     *
+     * The first version of the fix above carved this shape out and cached `[]`
+     * for it, reasoning that "a project with no translations legitimately has an
+     * empty catalog". That reasoning was wrong, and checkable: every translations
+     * response goes through `ApiResponse::resourceResponse()`, which assigns
+     * `$this->simpleResponse['data'] = $data` unconditionally, so an empty
+     * catalog serializes WITH the key. The backend has no path that omits it —
+     * a 2xx without `data` is always foreign.
+     *
+     * It is also reachable without anything exotic. `HttpClient::handleResponse()`
+     * turns any empty-bodied 2xx into `[]` (needed for 204), and an empty 200
+     * from a proxy or load balancer is an ordinary event. That read as "no data",
+     * cached `[]`, and blanked translations for the TTL — the exact mode the fix
+     * above exists to prevent, re-opened by its own carve-out.
+     *
+     * @dataProvider absentDataProvider
+     */
+    public function testAResponseWithNoDataKeyIsTreatedAsMalformed($response)
+    {
+        $cache = new FileCache(sys_get_temp_dir() . '/langsys-test-' . uniqid());
+        $key = 'translations_project-id_es-es';
+
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'read', 'write_enabled' => false],
+        ]);
+        $mockHttp->setResponse('GET', 'translations', $response);
+
+        $client = $this->createClientWithMockHttp($mockHttp, $cache);
+        $client->setLocale('es-es');
+
+        $this->assertSame('Hello', $client->translate('Hello', null, 'greetings'));
+        $this->assertNull($cache->get($key), 'a response with no data key must leave the cache untouched');
+
+        // And the catalog is still repairable: a healthy server on the next
+        // request must be able to serve a real translation.
+        $this->assertSame(
+            'Hola',
+            $this->clientAgainstServerMap(['greetings' => ['Hello' => 'Hola']], $cache)
+                ->translate('Hello', null, 'greetings'),
+            'one bodyless 200 must not blank the catalog for the rest of the TTL'
+        );
+
+        $cache->clear();
+    }
+
+    /**
+     * A failed fetch must be asked ONCE per request, not once per phrase.
+     *
+     * Nothing about a failure is cacheable - writing a value for it is exactly
+     * how one bad response blanks a project for a TTL - but the first fix
+     * retried on every call instead, so a 200-phrase page during an incident
+     * issued 200 requests against a dependency already in trouble. "The next
+     * request tries again" was true; what it hid was that the next CALL tried
+     * again.
+     *
+     * @dataProvider failingTransportProvider
+     */
+    public function testAFailedCatalogFetchIsAskedOncePerRequest($configure)
+    {
+        $cache = new FileCache(sys_get_temp_dir() . '/langsys-test-' . uniqid());
+
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'read', 'write_enabled' => false],
+        ]);
+        $configure($mockHttp);
+
+        $client = $this->createClientWithMockHttp($mockHttp, $cache);
+        $client->setLocale('es-es');
+
+        $mockHttp->clearRequests();
+
+        for ($i = 0; $i < 5; $i++) {
+            $this->assertSame('Hello', $client->translate('Hello', null, 'greetings'));
+        }
+
+        $fetches = 0;
+        foreach ($mockHttp->getRequests() as $request) {
+            if ($request['method'] === 'GET' && strpos($request['endpoint'], 'translations') !== false) {
+                $fetches++;
+            }
+        }
+
+        $this->assertSame(1, $fetches, '5 renders during an incident must not be 5 fetches');
+        $this->assertNull(
+            $cache->get('translations_project-id_es-es'),
+            'and memoizing the failure must still write nothing'
+        );
+
+        // The memo belongs to the request, not the process: a long-lived worker
+        // must retry once the next request begins.
+        $client->resetRequestState();
+        $client->translate('Hello', null, 'greetings');
+
+        $fetches = 0;
+        foreach ($mockHttp->getRequests() as $request) {
+            if ($request['method'] === 'GET' && strpos($request['endpoint'], 'translations') !== false) {
+                $fetches++;
+            }
+        }
+
+        $this->assertSame(2, $fetches, 'resetRequestState() must clear the memo');
+
+        $cache->clear();
+    }
+
+    /**
+     * The same memo, when the failure is an \Error rather than an \Exception.
+     *
+     * Both vectors above fail with a LangsysException, so the memo's own catch
+     * could be narrowed to \Exception and they would not notice — leaving an
+     * \Error un-memoized and a 200-phrase page back to 200 fetches, in exactly
+     * the incident where hammering the dependency hurts most. The mutation that
+     * exposed this is the reason the seam list is derived by grepping the file
+     * each time rather than carried forward.
+     */
+    public function testAFailedCatalogFetchIsAskedOncePerRequestForAnErrorToo()
+    {
+        $counting = new class extends \Langsys\SDK\Http\HttpClient {
+            public $calls = 0;
+
+            public function __construct()
+            {
+                parent::__construct(new \Langsys\SDK\Config([
+                    'api_key' => 'test-api-key',
+                    'project_id' => 'project-id',
+                ]));
+            }
+
+            public function get($endpoint, array $params = [])
+            {
+                if (strpos($endpoint, 'authorize-project') !== false) {
+                    return ['data' => ['key_type' => 'read', 'write_enabled' => false]];
+                }
+
+                $this->calls++;
+
+                throw new \TypeError('an \Error from the catalog fetch');
+            }
+
+            public function post($endpoint, array $data = [])
+            {
+                throw new \TypeError('an \Error from the catalog fetch');
+            }
+        };
+
+        $client = $this->createClientWithMockHttp(new MockHttpClient());
+        $client->setLocale('es-es');
+
+        $reflection = new \ReflectionClass($client);
+        foreach (['http', 'translations', 'translatableItems'] as $target) {
+            $property = $reflection->getProperty($target);
+            $property->setAccessible(true);
+
+            if ($target === 'http') {
+                $property->setValue($client, $counting);
+                continue;
+            }
+
+            $resource = $property->getValue($client);
+            $resourceHttp = (new \ReflectionClass($resource))->getProperty('http');
+            $resourceHttp->setAccessible(true);
+            $resourceHttp->setValue($resource, $counting);
+        }
+
+        for ($i = 0; $i < 5; $i++) {
+            $this->assertSame('Hello', $client->translate('Hello', null, 'greetings'));
+        }
+
+        $this->assertSame(1, $counting->calls, 'an \Error must be memoized like any other failure');
+
+        $client->resetRequestState();
+        $client->translate('Hello', null, 'greetings');
+
+        $this->assertSame(2, $counting->calls, 'and forgotten when the request ends');
+    }
+
+    public function failingTransportProvider()
+    {
+        return [
+            'malformed body' => [function ($mock) {
+                $mock->setResponse('GET', 'translations', ['status' => true, 'data' => 'not a map']);
+            }],
+            'no data key' => [function ($mock) {
+                $mock->setResponse('GET', 'translations', ['status' => true]);
+            }],
+        ];
+    }
+
+    public function absentDataProvider()
+    {
+        return [
+            'status only, no data key' => [['status' => true]],
+            // What handleResponse() hands back for an empty-bodied 2xx.
+            'empty body'               => [[]],
         ];
     }
 

@@ -121,6 +121,24 @@ class Client
     protected $translationsMemoryCache = [];
 
     /**
+     * Locales whose catalog fetch has already failed during THIS request.
+     *
+     * A failed fetch is not cacheable - writing anything for it is how a bad
+     * response blanks a project for a whole TTL - but it should not be retried
+     * once per phrase either. Without this, a 200-phrase page during an outage
+     * or a malformed-response incident issues 200 requests, each one waiting on
+     * the same broken dependency, turning a degraded page into a slow one and
+     * adding load to a service already in trouble.
+     *
+     * Deliberately per-REQUEST, not per-process, and cleared by
+     * resetRequestState() alongside the rest: under a long-lived runtime a
+     * failure latched for the life of the worker would outlast the incident.
+     *
+     * @var array<string, true>
+     */
+    protected $translationFetchFailures = [];
+
+    /**
      * @var Interpolator|null Placeholder interpolator (lazily created)
      */
     protected $interpolator;
@@ -556,6 +574,7 @@ class Client
     {
         $this->writeEnabled = null;
         $this->translationsMemoryCache = [];
+        $this->translationFetchFailures = [];
 
         return $this;
     }
@@ -666,10 +685,26 @@ class Client
             }
         }
 
+        // Already failed this request? Fail the same way again without asking
+        // the API a second time. Re-raised rather than answered with [], because
+        // an empty catalog is a VALUE and callers would cache it; the whole
+        // point is that a failure produces no value at all.
+        if (isset($this->translationFetchFailures[$memoryKey])) {
+            throw new LangsysException(sprintf(
+                'Translations fetch for %s already failed during this request',
+                $locale
+            ));
+        }
+
         $this->logger->debug('Translations cache miss', ['locale' => $locale]);
 
         // Fetch from API
-        $translations = $this->translations->getTranslationMap($locale);
+        try {
+            $translations = $this->translations->getTranslationMap($locale);
+        } catch (\Throwable $e) {
+            $this->translationFetchFailures[$memoryKey] = true;
+            throw $e;
+        }
 
         // Store in both caches
         if ($useCache) {

@@ -98,8 +98,28 @@ class Translations
 
         $response = $this->getFlat($locale);
 
-        if (!isset($response['data'])) {
-            return [];
+        // A 2xx with no `data` key is FOREIGN, not an empty catalog.
+        //
+        // This was carved out as "a project with no translations legitimately
+        // has an empty catalog" and that is false: every translations response
+        // goes through ApiResponse::resourceResponse(), which assigns
+        // simpleResponse['data'] unconditionally, so an empty catalog arrives
+        // WITH the key. Nothing in the backend omits it.
+        //
+        // And the carve-out was reachable without anything exotic:
+        // HttpClient::handleResponse() turns any empty-bodied 2xx into [] - it
+        // has to, for 204 - so an empty 200 from a proxy or load balancer read
+        // as "no data", cached [], and blanked translations for the whole TTL.
+        // That is the very mode the validation below exists to prevent, let
+        // back in through the one door left open for it.
+        //
+        // array_key_exists, not isset: `{"data":null}` is also not a catalog,
+        // and isset() cannot tell it from an absent key.
+        if (!array_key_exists('data', $response)) {
+            throw new LangsysException(sprintf(
+                'Translations response for %s carried no data key',
+                $locale
+            ));
         }
 
         $data = $response['data'];
