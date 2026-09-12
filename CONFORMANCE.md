@@ -241,14 +241,23 @@ TOK-1 names four elements; `PageTranslator::SKIP_ELEMENTS` has always carried si
 path and is skipped on the page path. Aligning either way is normative — SVG `<text>` is visible
 translatable content while MathML is not — so neither was chosen here.
 
-**Release is gated on a live blast-radius measurement, requested from the backend
-2026-09-11 and not yet returned.** TOK-1 and TOK-2 change which `custom_id` this SDK
-derives, so any live content block whose phrases carry `U+00A0`, `U+2028`/`U+2029`, or
-script/style source re-keys on its next registration. The request asks for live rows with
-denominators and the human-touched split, the same shape as the pipe-form count of
-2026-08-21 — where the live-versus-deleted split turned out to be the whole story (32 live
-of 518, not 330 of 3,012). The code lands either way; the number decides when it ships.
-Recorded here because a request that exists only in a message thread is not a record.
+**Blast radius measured on production 2026-09-12 — negligible, and no migration follows.**
+TOK-1 and TOK-2 change which `custom_id` this SDK derives, so a live content block whose
+phrases carry `U+00A0`, `U+2028`/`U+2029`, or script/style source re-keys on its next
+registration. Measured:
+
+```
+live content blocks affected        1  of 516
+translated words behind them      794
+live phrases affected               6  of 17,432   (all U+00A0)
+```
+
+Every affected phrase is the `U+00A0` case; no block was affected by the script/style or
+line-separator changes. The operator has ruled that **no orphan handling and no id migration
+will be built** for this. Recorded here with denominators because the figure that decides a
+release should be checkable, and because the comparable measurement in August (pipe-form ids)
+was reported an order of magnitude apart by two sweeps until the live-versus-deleted split
+was stated — 32 live of 518, not 330 of 3,012.
 
 **`U+FEFF` — CLOSED.** It was a live divergence (JS `\s` matches it, PCRE's does not);
 the collapse set is now JavaScript's `\s` exactly, so U+FEFF collapses and U+0085/U+180E no
