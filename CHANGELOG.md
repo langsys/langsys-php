@@ -9,8 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ⚠️ Release gate
 
-**Canonicalization id change: measured on production 2026-09-12 and ruled
-negligible.** Aligning the tokenizer with the other SDKs changes the identity of
+**Canonicalization id change: measured on production and ruled negligible.**
+The figures are from a production measurement supplied by the operator on
+2026-09-12 — this repo has no production access and did not derive them. Aligning the tokenizer with the other SDKs changes the identity of
 any content block whose text contains a non-breaking space, a line separator, or
 script/style source. On production that is **1 live block of 516, behind it 794
 translated words, and 6 affected phrases of 17,432 — every one of them the

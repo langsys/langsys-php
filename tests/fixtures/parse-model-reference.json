@@ -3,7 +3,7 @@
   "purpose": "A tokenized phrase's key IS its encoded string, so any disagreement about how the DOM is BUILT changes the key before canonicalisation is even reached. Canonicalisation cannot close these; only the parser can.",
   "js_family_source": "langsys-js-server @ 8105faa, real Chromium 153 measured against parse5 over these same families: 9 of 9 agreed, so these are the JS-FAMILY answer rather than one engine's.",
   "measured_at": "2026-09-12",
-  "measured_by": "langsys-php-sdk, libxml2 via DOMDocument::loadHTML, loaded exactly as PageTranslator loads a page",
+  "measured_by": "langsys-php-sdk, libxml2 via DOMDocument::loadHTML with LIBXML_HTML_NOIMPLIED|LIBXML_HTML_NODEFDTD. The test wraps each fragment in a <div> to give the tokenizer a root; the real translatePage route (PageTranslator::parseDocument) reproduces every value identically, verified both ways.",
   "agreement": "3 of 7 — implied close agrees 3/3; raw text 0/2 and foster parenting 0/2 diverge",
   "cases": [
     {
@@ -14,7 +14,22 @@
       "libxml2": "{m0o}Keep{m0c}{m1o}a {m2o}b{m2c}{m1c}",
       "agrees": false,
       "why": "Chromium and parse5 make a <textarea> body RAW TEXT, so <b> is literal characters. libxml2 parses it as markup, so <b> becomes an element and takes a slot.",
-      "libxml2_tree": "<p>Keep</p><textarea>a <b>b</b></textarea>"
+      "libxml2_tree": "<p>Keep</p><textarea>a <b>b</b></textarea>",
+      "content_block": {
+        "libxml2_tokens": [
+          "Keep",
+          "a",
+          "b"
+        ],
+        "js_family_tokens": [
+          "Keep",
+          "a <b>b</b>"
+        ],
+        "libxml2_block_id": "43ddeea82d4a0e2fc85c5f78215caf7f",
+        "js_family_block_id": null,
+        "splits_block_id": true,
+        "note": "ARITY split: 3 tokens against 2. Per CID-1 an arity change re-keys EVERY block containing one."
+      }
     },
     {
       "id": "raw-text-title",
@@ -24,7 +39,22 @@
       "libxml2": "{m0o}a {m1o}b{m1c}{m0c}{m2o}Keep{m2c}",
       "agrees": false,
       "why": "Same as textarea, and it also shifts every later slot index: the <p> is slot 1 in the JS family and slot 2 here.",
-      "libxml2_tree": "<title>a <b>b</b></title><p>Keep</p>"
+      "libxml2_tree": "<title>a <b>b</b></title><p>Keep</p>",
+      "content_block": {
+        "libxml2_tokens": [
+          "a",
+          "b",
+          "Keep"
+        ],
+        "js_family_tokens": [
+          "a <b>b</b>",
+          "Keep"
+        ],
+        "libxml2_block_id": "d55c2b5c806bde213b0637da096c6b36",
+        "js_family_block_id": "196856a6c25d7713fbb976c1a1ab0ff5",
+        "splits_block_id": true,
+        "note": "Same arity split. Measured on both sides here: 3 tokens against 2."
+      }
     },
     {
       "id": "foster-stray-element",
@@ -34,7 +64,21 @@
       "libxml2": "{m0o}{m1o}stray{m1c}{m2o}{m3o}cell{m3c}{m2c}{m0c}",
       "agrees": false,
       "why": "Chromium and parse5 FOSTER-PARENT the stray <b> OUT of the table, so it becomes a sibling BEFORE it. libxml2 leaves it inside. They also insert a <tbody> that libxml2 does not, which adds a further slot level.",
-      "libxml2_tree": "<table><b>stray</b><tr><td>cell</td></tr></table>"
+      "libxml2_tree": "<table><b>stray</b><tr><td>cell</td></tr></table>",
+      "content_block": {
+        "libxml2_tokens": [
+          "stray",
+          "cell"
+        ],
+        "js_family_tokens": [
+          "stray",
+          "cell"
+        ],
+        "libxml2_block_id": "c9a556e320152d0bd3fc239bbb2b6d40",
+        "js_family_block_id": "c9a556e320152d0bd3fc239bbb2b6d40",
+        "splits_block_id": false,
+        "note": "IDENTICAL. Hoisting the stray element out of the table does not change document ORDER, and the token array encodes order without nesting - so the content-block id survives what splits the phrase key."
+      }
     },
     {
       "id": "foster-loose-text",
@@ -44,7 +88,21 @@
       "libxml2": "{m0o}loose text{m1o}{m2o}x{m2c}{m1c}{m0c}",
       "agrees": false,
       "why": "The JS family moves the loose text out of the table entirely, so it leads the phrase with no slot around it. libxml2 keeps it inside the table's slot.",
-      "libxml2_tree": "<table>loose text<tr><td>x</td></tr></table>"
+      "libxml2_tree": "<table>loose text<tr><td>x</td></tr></table>",
+      "content_block": {
+        "libxml2_tokens": [
+          "loose text",
+          "x"
+        ],
+        "js_family_tokens": [
+          "loose text",
+          "x"
+        ],
+        "libxml2_block_id": "0a1f1ae92500780beac5287122a3d74c",
+        "js_family_block_id": "0a1f1ae92500780beac5287122a3d74c",
+        "splits_block_id": false,
+        "note": "Identical, same reason."
+      }
     },
     {
       "id": "implied-close-p",
@@ -54,7 +112,21 @@
       "libxml2": "{m0o}one{m0c}{m1o}two{m1c}",
       "agrees": true,
       "why": "An unclosed <p> is closed by the next one in every model measured.",
-      "libxml2_tree": "<p>one</p><p>two</p>"
+      "libxml2_tree": "<p>one</p><p>two</p>",
+      "content_block": {
+        "libxml2_tokens": [
+          "one",
+          "two"
+        ],
+        "js_family_tokens": [
+          "one",
+          "two"
+        ],
+        "libxml2_block_id": "499d5997c918fd2997c9baea33d52dc6",
+        "js_family_block_id": "499d5997c918fd2997c9baea33d52dc6",
+        "splits_block_id": false,
+        "note": "The trees agree, so both identity paths agree."
+      }
     },
     {
       "id": "implied-close-li",
@@ -64,7 +136,21 @@
       "libxml2": "{m0o}{m1o}one{m1c}{m2o}two{m2c}{m0c}",
       "agrees": true,
       "why": "Bare <li> closes the previous one, identically.",
-      "libxml2_tree": "<ul><li>one</li><li>two</li></ul>"
+      "libxml2_tree": "<ul><li>one</li><li>two</li></ul>",
+      "content_block": {
+        "libxml2_tokens": [
+          "one",
+          "two"
+        ],
+        "js_family_tokens": [
+          "one",
+          "two"
+        ],
+        "libxml2_block_id": "499d5997c918fd2997c9baea33d52dc6",
+        "js_family_block_id": "499d5997c918fd2997c9baea33d52dc6",
+        "splits_block_id": false,
+        "note": "The trees agree, so both identity paths agree."
+      }
     },
     {
       "id": "implied-close-option",
@@ -74,7 +160,23 @@
       "libxml2": "{m0o}{m1o}one{m1c}{m2o}two{m2c}{m0c}",
       "agrees": true,
       "why": "Bare <option> likewise.",
-      "libxml2_tree": "<select><option>one</option><option>two</option></select>"
+      "libxml2_tree": "<select><option>one</option><option>two</option></select>",
+      "content_block": {
+        "libxml2_tokens": [
+          "one",
+          "two"
+        ],
+        "js_family_tokens": [
+          "one",
+          "two"
+        ],
+        "libxml2_block_id": "499d5997c918fd2997c9baea33d52dc6",
+        "js_family_block_id": "499d5997c918fd2997c9baea33d52dc6",
+        "splits_block_id": false,
+        "note": "The trees agree, so both identity paths agree."
+      }
     }
-  ]
+  ],
+  "two_identity_paths": "A tokenized <Phrase> key is a MARKER STRING, so it encodes nesting and is sensitive to any tree difference. A content block's custom_id is a flat ORDERED TOKEN ARRAY, so it survives a tree difference that preserves document order. Measured consequence: foster parenting splits the phrase key ONLY, while a raw-text body carrying markup splits BOTH - and the block half is an ARITY change, which per CID-1 re-keys every block containing one. The raw-text family is therefore the more damaging of the two, which is the opposite of this file's first reading.",
+  "provenance": "libxml2 columns are measured in this repo. JS-family PHRASE keys are langsys-js-server @ 8105faa, real Chromium 153 against parse5, 9/9. JS-family TOKEN ARRAYS for the foster rows are DERIVED by the TS lane from a hoisted tree, not measured in parse5 or Chromium - flagged by them rather than presented as measured, and to be confirmed by whoever holds parse5 before anyone relies on them."
 }

@@ -1994,4 +1994,79 @@ class PageTranslatorTest extends TestCase
 
         $this->assertContains('A long title', $registered, 'the element\'s own attribute must register collapsed');
     }
+
+    /**
+     * The fallback that loses markup must LOG, not fatal.
+     *
+     * A `debug()` call was added here against a `$this->logger` the class did
+     * not have, so on the one path that reaches it the warning became "Call to
+     * a member function debug() on null" and took the render down. A line whose
+     * whole purpose is to avoid failing silently failed loudly instead.
+     *
+     * It also made the mutation evidence for the descendant-replace fix weaker
+     * than reported: that mutant reddened via this fatal rather than via the
+     * assertions, and a mutant killed by a crash proves the crash, not the
+     * guard.
+     *
+     * Driven directly, because the simple-phrase gate makes the fallback hard
+     * to reach from translatePage() - which is exactly why it went unnoticed.
+     */
+    public function testTheMarkupLosingFallbackLogsRatherThanFatals(): void
+    {
+        $reflection = new \ReflectionClass(PageTranslator::class);
+        $translator = $reflection->newInstanceWithoutConstructor();
+
+        // Deliberately NOT injecting a logger: the property must be usable on
+        // an instance built without the constructor, or the guard depends on
+        // construction order.
+        $method = $reflection->getMethod('replaceTextContent');
+        $method->setAccessible(true);
+
+        $doc = new \DOMDocument();
+        libxml_use_internal_errors(true);
+        $doc->loadHTML('<?xml encoding="UTF-8"><p>Hello<b></b>World</p>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        libxml_clear_errors();
+
+        $element = $doc->getElementsByTagName('p')->item(0);
+
+        $logger = $reflection->getProperty('logger');
+        $logger->setAccessible(true);
+        $logger->setValue($translator, new \Langsys\SDK\Log\NullLogger());
+
+        $method->invokeArgs($translator, [$element, 'HelloWorld', 'X']);
+
+        $this->assertSame('X', $element->textContent, 'the fallback still runs');
+    }
+
+    /**
+     * And a constructed translator has a usable logger without being given one.
+     */
+    public function testAConstructedTranslatorAlwaysHasALogger(): void
+    {
+        $translator = new PageTranslator($this->createMockClient());
+
+        $logger = (new \ReflectionClass($translator))->getProperty('logger');
+        $logger->setAccessible(true);
+
+        $this->assertNotNull($logger->getValue($translator));
+        $this->assertTrue(method_exists($logger->getValue($translator), 'debug'));
+    }
+
+    /**
+     * The own-attribute site, pinned with a PLACEHOLDER rather than whitespace.
+     *
+     * The first version of this test used `title="A long\n   title"`, which
+     * `Whitespace::collapse` handles too - so a collapse-only revert at that
+     * site passed. `%name%` is the discriminator: only `Canonical::phrase`
+     * rewrites it, so a site using the wrong normaliser still looks correct on
+     * whitespace and fails only on placeholders.
+     */
+    public function testATokenizedRunsOwnAttributeCanonicalisesPlaceholders(): void
+    {
+        $registered = $this->registeredTexts(
+            '<html><body><p data-ls-phrase title="Hello %name%">Hi</p></body></html>'
+        );
+
+        $this->assertContains('Hello {name}', $registered, 'the element\'s own attribute must canonicalise placeholders');
+    }
 }

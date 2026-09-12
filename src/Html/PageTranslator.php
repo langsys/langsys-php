@@ -2,6 +2,8 @@
 
 namespace Langsys\SDK\Html;
 
+use Langsys\SDK\Log\LoggerInterface;
+use Langsys\SDK\Log\NullLogger;
 use DOMDocument;
 use DOMElement;
 use DOMNode;
@@ -96,6 +98,11 @@ class PageTranslator
     protected $currentLocale = null;
 
     /**
+     * @var LoggerInterface Never null - see the constructor.
+     */
+    protected $logger;
+
+    /**
      * Create a new PageTranslator instance.
      *
      * @param \Langsys\SDK\Client $client The Langsys client
@@ -107,6 +114,20 @@ class PageTranslator
         $this->htmlParser = new HtmlParser($translatableAttributes);
         $this->headHandler = new HeadHandler();
         $this->markupTokenizer = new MarkupTokenizer();
+
+        // Declared and defaulted, never assumed. A debug() call was added to
+        // this class against a $this->logger that did not exist: on the path
+        // that reaches it the warning became "Call to a member function
+        // debug() on null" and took the render down - a line whose entire
+        // purpose was to avoid failing silently, failing loudly instead, in
+        // the one fallback that exists for markup we are about to lose.
+        //
+        // NullLogger rather than null, so the property is always callable even
+        // when the client cannot supply one (a test double, a partially
+        // constructed client).
+        $this->logger = (is_object($client) && method_exists($client, 'getLogger') && $client->getLogger() !== null)
+            ? $client->getLogger()
+            : new NullLogger();
     }
 
     /**

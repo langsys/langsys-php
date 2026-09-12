@@ -497,4 +497,55 @@ class MarkupTokenizerTest extends TestCase
         sort($families);
         $this->assertSame(['foster parenting', 'implied close', 'raw text'], $families);
     }
+
+    /**
+     * The two identity paths do NOT have the same exposure, and the difference
+     * is the opposite of this lane's first reading.
+     *
+     * A `<Phrase>` key is a MARKER STRING: it encodes nesting, so any tree
+     * difference moves it. A content block's `custom_id` is a flat ORDERED
+     * TOKEN ARRAY: it survives a tree difference that preserves document order.
+     *
+     * So foster parenting splits the phrase key only - hoisting the stray
+     * element out of the table does not reorder anything - while a raw-text
+     * body carrying markup splits BOTH, and its block half is an ARITY change
+     * (3 tokens against 2), which per CID-1 re-keys every block containing one.
+     *
+     * Raised by the TypeScript lane against this fixture; measured here.
+     *
+     * @dataProvider parseModelProvider
+     */
+    public function testContentBlockIdsSurviveOnlyOrderPreservingTreeDifferences($case): void
+    {
+        $parser = new \Langsys\SDK\Html\HtmlParser();
+        $tokens = array_values($parser->extractPhrases($case['html']));
+        $block = $case['content_block'];
+
+        if (isset($block['libxml2_tokens'])) {
+            $this->assertSame($block['libxml2_tokens'], $tokens, $case['id'] . ' token array');
+            $this->assertSame(
+                $block['libxml2_block_id'],
+                $parser->generateCustomId('UI', $tokens),
+                $case['id'] . ' block id'
+            );
+        }
+
+        if (!isset($block['js_family_tokens'])) {
+            return;
+        }
+
+        $jsId = $parser->generateCustomId('UI', $block['js_family_tokens']);
+        $ourId = $parser->generateCustomId('UI', $tokens);
+
+        if ($block['splits_block_id']) {
+            $this->assertNotSame($jsId, $ourId, $case['id'] . ': ' . $block['note']);
+            $this->assertNotSame(
+                count($block['js_family_tokens']),
+                count($tokens),
+                $case['id'] . ' is recorded as an ARITY split; equal arity would make it a value split'
+            );
+        } else {
+            $this->assertSame($jsId, $ourId, $case['id'] . ': ' . $block['note']);
+        }
+    }
 }
