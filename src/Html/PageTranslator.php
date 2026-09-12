@@ -65,6 +65,13 @@ class PageTranslator
      * The CONTENT-BLOCK path does tokenize SVG text, and that is not a
      * contradiction to fix by making them match - it is what the TS core does
      * too, so the block path is already fleet-consistent.
+     *
+     * Note for anyone running mutation coverage: removing `svg` from this list
+     * changes NO output and no test can catch it, because the walk drops bare
+     * text under a non-block element anyway. That is an equivalent mutant
+     * rather than a coverage gap - the entry states intent and guards the day
+     * something promotes `svg` to a block element, which is exactly how the
+     * regression above happened.
      */
     const SKIP_ELEMENTS = [
         'script', 'style', 'noscript', 'template', 'math', 'svg',

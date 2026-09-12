@@ -72,8 +72,12 @@ final class Whitespace
         // falling through with null would silently erase the phrase. The
         // ASCII-only pass is a worse normalisation but a real one, and a phrase
         // that survives imperfectly beats a phrase that vanishes.
+        //
+        // Byte escapes, not \t\n\v\f\r: inside a PCRE character class `\v`
+        // is the vertical-whitespace CLASS, not a vertical tab, so the spelling
+        // that reads as "ASCII only" silently matched U+0085 as well.
         if ($collapsed === null) {
-            $collapsed = preg_replace('/[\t\n\v\f\r ]+/', ' ', (string) $text);
+            $collapsed = preg_replace('/[\x09\x0A\x0B\x0C\x0D\x20]+/', ' ', (string) $text);
         }
 
         return trim((string) $collapsed);

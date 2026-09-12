@@ -2306,4 +2306,92 @@ class ClientTest extends TestCase
 
         return $texts;
     }
+
+    // =========================================================================
+    // Canonicalisation sites that were live but unpinned
+    // =========================================================================
+
+    /**
+     * The block-path TEXT lookup, placeholder half.
+     *
+     * `Canonical::phrase()` exists so capture and lookup cannot diverge, but the
+     * test for it called the function twice and never reached a lookup site — so
+     * the lookup half could be reverted with the suite green, which is exactly
+     * the F1 shape the class was introduced to prevent, one commit later.
+     *
+     * A phrase authored `Hello %name%` is stored `Hello {name}`; the lookup must
+     * canonicalise the rendered text the same way or nothing matches.
+     */
+    public function testABlockAuthoredWithPercentPlaceholdersResolves()
+    {
+        $parser = new \Langsys\SDK\Html\HtmlParser();
+        $id = $parser->generateCustomId('UI', ['Hello {name}']);
+
+        $client = $this->clientWithCatalog(['UI' => [$id => ['Hello {name}' => 'Hola {name}']]]);
+
+        $this->assertStringContainsString(
+            'Hola Sarah',
+            $client->translateContentBlock('<p>Hello %name%</p>', 'UI', ['name' => 'Sarah'])
+        );
+    }
+
+    /**
+     * The block-path ATTRIBUTE apply. Registration collapses the value, so the
+     * apply side must too, or a wrapped alt renders untranslated.
+     */
+    public function testABlockAttributeWrappedAcrossLinesIsTranslated()
+    {
+        $parser = new \Langsys\SDK\Html\HtmlParser();
+        $id = $parser->generateCustomId('UI', ['A long alt']);
+
+        $client = $this->clientWithCatalog(['UI' => [$id => ['A long alt' => 'Alt traducido']]]);
+
+        $this->assertStringContainsString(
+            'alt="Alt traducido"',
+            $client->translateContentBlock("<img alt=\"A long\n   alt\">", 'UI')
+        );
+    }
+
+    /**
+     * A trailing newline is not a sibling.
+     *
+     * Templates emit `"<strong>Buy now</strong>\n"` constantly. Counting raw
+     * child nodes made that look like a multi-node fragment, so the ordinary
+     * shape silently stopped being stamped when the text-sibling guard landed.
+     *
+     * @dataProvider insignificantEdgeTextProvider
+     */
+    public function testWhitespaceOnlyEdgeTextDoesNotBlockStamping($html)
+    {
+        $client = $this->clientWithCatalog(['UI' => []]);
+
+        $this->assertStringContainsString(
+            'data-ls-contentblock=',
+            $client->translateContentBlock($html, 'UI')
+        );
+    }
+
+    public function insignificantEdgeTextProvider()
+    {
+        return [
+            'trailing newline'   => ["<strong>Buy now</strong>\n"],
+            'leading newline'    => ["\n<strong>Buy now</strong>"],
+            'both, and indented' => ["\n    <strong>Buy now</strong>\n"],
+            'non-breaking only'  => ["<strong>Buy now</strong>\u{00A0}"],
+        ];
+    }
+
+    /**
+     * Control: REAL text beside the element still blocks stamping, which is the
+     * case the guard exists for.
+     */
+    public function testRealTextStillBlocksStamping()
+    {
+        $client = $this->clientWithCatalog(['UI' => []]);
+
+        $this->assertStringNotContainsString(
+            'data-ls-contentblock',
+            $client->translateContentBlock('Buy <strong>now</strong>', 'UI')
+        );
+    }
 }

@@ -325,10 +325,11 @@ the identical string.
 - **What counts as whitespace now matches the JavaScript SDKs exactly.** Three
   characters were treated differently on either side, so the same content could
   be filed under two identities depending on which SDK saw it first.
-- **Text inside `<svg>` is now translated.** It is copy a reader reads, so it is
-  treated as copy; the page and content-block paths had also disagreed about
-  this, and now agree. MathML remains untranslated, being notation rather than
-  prose.
+- **Text inside `<svg>` is translated when a block is translated directly.**
+  Whole-page translation still leaves SVG labels in the base language: making
+  it translate them cost the text around inline icons and damaged the graphics
+  themselves, so it was reverted pending a narrower approach. MathML remains
+  untranslated, being notation rather than prose.
 - **A phrase written with `%name%` is now stored as `{name}`**, matching the
   other SDKs, so the same sentence written either way is one phrase rather than
   two.

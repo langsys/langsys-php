@@ -1507,46 +1507,56 @@ class PageTranslatorTest extends TestCase
     }
 
     /**
-     * SRV-5's measurable half: each miss registers once per subtree.
+     * SRV-5's measurable half: each miss is produced once per subtree.
      *
-     * The fail-loudly half has no site in a DOM walker - there is no component
-     * to fail on - but "at most once per subtree" applies to any renderer, and
-     * a re-entrant one registers 2^n copies of the same miss. Asserted on the
-     * COUNT: the duplicates would be identical, so a set-based assertion hides
-     * exactly the defect the rule exists for.
+     * Asserted on the RAW WALKER, not on what gets POSTed, and the distinction
+     * is the whole test. Three dedupe layers sit between the walk and the wire
+     * (findNewPhrasesWithCategory's `$seen`, the pendingPhrases key, the
+     * pendingContentBlocks id). A walker re-entering every nested block twice
+     * produces eight copies of one miss at depth 3, and all three layers
+     * collapse them to a single POST - so counting requests reports "once" for
+     * a walker doing 2^n work and stays green through exactly the defect the
+     * rule exists for. The earlier version of this test counted requests.
+     *
+     * The duplicates would be identical, which is why a set-based assertion
+     * cannot see them either - the count is right, the SUBJECT was wrong.
      */
-    public function testADeeplyNestedMissIsRegisteredExactlyOnce(): void
+    public function testADeeplyNestedMissIsWalkedExactlyOnce(): void
     {
-        $this->setTranslations(['__uncategorized__' => []]);
-        $this->mockHttp->setResponse('POST', 'translatable-items', ['status' => true]);
-
-        $client = $this->createMockClient();
-        $client->setLocale('es-es');
-        $client->translatePage(
-            '<html><body><div><div><div><p>Deeply nested</p></div></div></div></body></html>'
+        $doc = new \DOMDocument();
+        libxml_use_internal_errors(true);
+        $doc->loadHTML(
+            '<?xml encoding="UTF-8"><html><body><div><div><div><p>Deeply nested</p></div></div></div></body></html>',
+            LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD
         );
+        libxml_clear_errors();
 
-        $this->mockHttp->clearRequests();
-        $client->flushPendingRegistrations();
+        $reflection = new \ReflectionClass(PageTranslator::class);
+        $translator = $reflection->newInstanceWithoutConstructor();
+
+        $parser = $reflection->getProperty('htmlParser');
+        $parser->setAccessible(true);
+        $parser->setValue($translator, new HtmlParser());
+
+        $walk = $reflection->getMethod('walkForExtraction');
+        $walk->setAccessible(true);
+
+        $phrases = [];
+        $blocks = [];
+        $walk->invokeArgs($translator, [$doc->documentElement, &$phrases, &$blocks, null]);
 
         $occurrences = 0;
-        foreach ($this->mockHttp->getRequests() as $request) {
-            if ($request['method'] !== 'POST' || !isset($request['data']['translatable_items'])) {
-                continue;
-            }
-            foreach ($request['data']['translatable_items'] as $item) {
-                if (isset($item['phrase']) && $item['phrase'] === 'Deeply nested') {
-                    $occurrences++;
-                }
-                foreach (isset($item['phrases']) ? $item['phrases'] : [] as $nested) {
-                    if (isset($nested['phrase']) && $nested['phrase'] === 'Deeply nested') {
-                        $occurrences++;
-                    }
-                }
+        foreach ($phrases as $phrase) {
+            if (isset($phrase['text']) && $phrase['text'] === 'Deeply nested') {
+                $occurrences++;
             }
         }
 
-        $this->assertSame(1, $occurrences, 'a depth-3 subtree must register its miss once, not 2^n times');
+        $this->assertSame(
+            1,
+            $occurrences,
+            'a depth-3 subtree must be WALKED once; dedupe downstream would hide 2^n here'
+        );
     }
 
     /**
@@ -1673,5 +1683,84 @@ class PageTranslatorTest extends TestCase
 
         $this->assertStringContainsString('<path', $rendered, 'the graphic must not be destroyed');
         $this->assertStringContainsString('<text', $rendered, 'nor its text element flattened away');
+    }
+
+    /**
+     * The page path's padding restoration, which had only its Client-side twin
+     * pinned: non-breaking padding around a translated run must survive, or
+     * words run together in the rendered page.
+     */
+    public function testPagePathPreservesNonBreakingPadding(): void
+    {
+        $rendered = $this->translatePageWithCatalog(
+            "<html><body><p>\u{00A0}Buy now\u{00A0}</p></body></html>",
+            ['Buy now' => 'Compra ya']
+        );
+
+        $this->assertMatchesRegularExpression(
+            '/>[\s\x{00A0}]Compra ya[\s\x{00A0}]</u',
+            $rendered,
+            'padding either side of the translated run must survive'
+        );
+    }
+
+    /**
+     * A tokenized phrase's descendant ATTRIBUTES are registered canonicalised,
+     * and looked up the same way. Both halves were live and neither was pinned.
+     */
+    public function testTokenizedDescendantAttributesAreCanonicalised(): void
+    {
+        $registered = [];
+        foreach ($this->registeredPayloadFor(
+            "<html><body><p data-ls-phrase>Hi <img alt=\"A long\n  alt\"> there</p></body></html>"
+        ) as $item) {
+            if (isset($item['phrase'])) {
+                $registered[] = $item['phrase'];
+            }
+        }
+
+        $this->assertContains(
+            'A long alt',
+            $registered,
+            'a descendant attribute inside a tokenized run must register collapsed'
+        );
+    }
+
+    public function testTokenizedDescendantAttributesAreTranslated(): void
+    {
+        $rendered = $this->translatePageWithCatalog(
+            "<html><body><p data-ls-phrase>Hi <img alt=\"A long\n  alt\"> there</p></body></html>",
+            ['A long alt' => 'Alt traducido']
+        );
+
+        $this->assertStringContainsString(
+            'alt="Alt traducido"',
+            $rendered,
+            'the apply side must look up the key the registration side wrote'
+        );
+    }
+
+    /**
+     * The other page-path padding site: a content block's text node, reached
+     * through walkAndTranslate rather than the single-phrase branch. Both had
+     * to be pinned separately - the first test covered only one of them, so the
+     * second could be reverted to ASCII `\s` with the suite green.
+     */
+    public function testPagePathPreservesNonBreakingPaddingInsideABlock(): void
+    {
+        $parser = new HtmlParser();
+        $id = $parser->generateCustomId('__uncategorized__', ['Buy now', 'Later']);
+
+        $rendered = $this->translatePageWithCatalog(
+            "<html><body><p>\u{00A0}Buy now\u{00A0}<span>Later</span></p></body></html>",
+            [$id => ['Buy now' => 'Compra ya', 'Later' => 'Luego']]
+        );
+
+        $this->assertStringContainsString('Compra ya', $rendered, 'sanity: the block resolved');
+        $this->assertMatchesRegularExpression(
+            '/>[\s\x{00A0}]Compra ya[\s\x{00A0}]</u',
+            $rendered,
+            'padding around a block text node must survive too'
+        );
     }
 }

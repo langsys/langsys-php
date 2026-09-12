@@ -218,12 +218,16 @@ once already, and a path citation cannot tell you whether the bytes changed.
 | `legacy-custom-id-reference.json` | `langsys-python` | `dc5556466dc54fe82e81ac9fdbf4549b2b76e7ce` |
 | `canonicalization-reference.json` | `langsys-js-typescript` @ `6596faf` | `e4c1f185974fbf2ebda6154f36b8ed7416f1d7fa` |
 
-`tokenizer-reference.json` is authored here; its current blob is recorded so a
-silent edit is detectable:
+`tokenizer-reference.json` is authored here. Its blob is recorded as a VALUE, not
+as a command to run — a command tells you what the file is now, which is exactly
+what a silent edit also tells you:
 
 ```
-git rev-parse HEAD:tests/fixtures/tokenizer-reference.json
+5689f3c1425502f3a2c4afd4b48e9bdbfc25a32d
 ```
+
+Re-derive with `git rev-parse HEAD:tests/fixtures/tokenizer-reference.json` and
+update this line deliberately when the file is meant to change.
 
 Its row "script and style contents are never harvested" was **corrected on
 2026-09-11** from `["Keep","var a=1;",".a{}"]` to `["Keep"]`. The name stated

@@ -1458,11 +1458,26 @@ class Client
             return;
         }
 
+        // Whitespace-only text nodes at the edges do not count as siblings.
+        // A template that emits "<strong>Buy now</strong>\n" produces a
+        // trailing text node, and counting it made the fragment look
+        // multi-node - so the ordinary template-emitted shape silently stopped
+        // being stamped. Real text beside the element still blocks stamping;
+        // that is the case this guard exists for.
         $elements = [];
+        $significant = 0;
         foreach ($wrapper->childNodes as $child) {
             if ($child instanceof \DOMElement) {
                 $elements[] = $child;
+                $significant++;
+                continue;
             }
+
+            if ($child instanceof \DOMText && \Langsys\SDK\Html\Whitespace::collapse($child->textContent) === '') {
+                continue;
+            }
+
+            $significant++;
         }
 
         // The fragment must be a single node ENTIRE, not merely a single
@@ -1471,11 +1486,11 @@ class Client
         // WHOLE fragment (["Buy","now"]) while that element's own subtree
         // derives ["now"] - a false identity claim in the served bytes, which
         // any later reader then believes.
-        if (count($elements) !== 1 || $wrapper->childNodes->length !== 1) {
+        if (count($elements) !== 1 || $significant !== 1) {
             $this->logger->debug('Not stamping a content block id: the fragment has no single host element', [
                 'custom_id' => $customId,
                 'element_roots' => count($elements),
-                'child_nodes' => $wrapper->childNodes->length,
+                'significant_nodes' => $significant,
             ]);
 
             return;

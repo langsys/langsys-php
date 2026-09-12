@@ -608,10 +608,13 @@ class HtmlParser
         // source changed. An analytics payload carrying a nonce or a timestamp
         // changes on every render.
         //
-        // The two paths still differ on svg and math, which PageTranslator also
-        // skips and TOK-1 does not name. Measured and reported rather than
-        // unilaterally aligned: TOK-1 is a four-element list, and widening it
-        // here would put this SDK ahead of the spec instead of level with it.
+        // TOK-1's list is script/style/template/noscript/math. `svg` is NOT on
+        // it - SVG <text> is visible copy - so this path tokenizes SVG text,
+        // matching the TS core. PageTranslator still SKIPS svg, which is a
+        // known non-conformance on that path, not a disagreement to resolve
+        // here: making it conform by treating <svg> as a block broke every
+        // icon-bearing paragraph on the page and destroyed standalone graphics.
+        // See PageTranslator::SKIP_ELEMENTS.
         if ($node instanceof DOMElement && in_array(strtolower($node->nodeName), self::NON_PROSE_ELEMENTS, true)) {
             return;
         }

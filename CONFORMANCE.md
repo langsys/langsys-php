@@ -158,7 +158,7 @@ written**; the six misses are the two causes below.
 | TOK-2 | provisional | `::testUnicodeWhitespaceCollapsesLikeAnyOtherWhitespace` (6 vectors — internal, edges, and the whitespace-only count case), `::testAWhitespaceOnlyNodeDoesNotChangeABlockId`, and the fixture's `nbsp-in-text`, `attr-nbsp` and `line-separators` rows. Fixed in `src/Html/Whitespace.php`, one shared helper, because **the SDK had seven copies of this normalisation and they disagreed** — six ASCII-only (`HtmlParser`, `Client`, `TranslatableItems`, `PageTranslator`×3) and one already `/u` (`MarkupTokenizer`), plus three sites in `HeadHandler` (the `<title>` and both `<meta content>` paths) that did no collapse at all. The brief named four sites; the sweep found ten. Several are registration/lookup pairs, so a phrase registered as `A long description` was looked up as `A\u{00A0}long description` and missed forever, re-registering on every render. **Ruling folded in (spec 8.0.1): the collapsed set is JavaScript's `\s`, exactly** — not PCRE's, which differs on three reachable codepoints and made each a silent id divergence: U+FEFF (PCRE no / JS yes — PHP kept it, TS dropped it), U+0085 and U+180E (PCRE yes / JS no — PHP collapsed them, TS kept them). Spelled out in `Whitespace::JS_WHITESPACE` rather than written as `\s`. `::testTheCollapseSetIsJavascriptsWhitespace` (8 vectors, controls on both sides). **Three more register/lookup pairs found in review, all of which made translation fail outright rather than merely move an id:** the page `<title>` (registered collapsed, looked up raw — so titles silently never translated, and were not re-registered either), page-path attribute values (collected trimmed, looked up raw — a miss on PLAIN SPACES, which is why attributes looked like they worked), and the edge checks that re-add padding after a translated run, which used ASCII `\s` and dropped non-breaking padding so words ran together. `tests/Html/HeadHandlerTest.php::testATitleIsRegisteredAndTranslatedOnTheSameRender` and `::testEveryHeadPhraseRegisteredIsFoundOnApply`, `tests/Html/PageTranslatorTest.php::testPageAttributesAreRegisteredAndTranslatedOnTheSameRender`, `tests/ClientTest.php::testNonBreakingPaddingSurvivesApply`. Mutation: dropping the JS set reddens 8 named cases; reverting the title lookup reddens 4 |
 | TOK-3 | provisional | The 27-entry list in `HtmlParser`, which the spec takes as normative in this SDK's order. The order is load-bearing: it decides the sequence phrases are produced in, and therefore the id |
 | TOK-4 | provisional | Satisfied by the same helper — `extractAttributePhrases()` routes every attribute value through `normalizeWhitespace()`. Proven by the fixture's `attr-nbsp` row, which is `nbsp-in-text`'s twin: the same content in an attribute must produce the same id |
-| TOK-5 | provisional | `tests/Format/InterpolatorTest.php::testPercentPlaceholdersAreAccepted` (8 vectors). **`%name%` previously reached the reader verbatim** — a placeholder rendered as literal text on the page. Normalised to `{name}` once, before ICU detection, so no downstream path learns a second spelling. Rewritten **only for keys the caller supplied**, which is the safety property: `Save 20% on 5% APR` and `width: 100%` have no matching parameter and are returned untouched. **Ruling folded in (spec 8.0.1): `%name%` normalises to `{name}` at CAPTURE too**, not only at render. The stored phrase previously carried whatever the author wrote, so `Hello %name%` and `Hello {name}` were two phrases with two ids and the JS core stored only the brace form — measured `bb74011a…` here against `1e4b462c…` there, which now agree. Both sides go through `Html\Canonical::phrase()`, one function, because applying this at capture and not at lookup would have recreated the exact register/lookup break the whitespace work had to be fixed for twice. At capture there is no parameter list to gate on, so the narrow pattern is the only guard: `Save 20% on 5% APR` and `width: 100%` are untouched; the knowingly-accepted residual is prose where two signs bracket a bare word. `tests/Html/HtmlParserTest.php::testPlaceholdersAreCanonicalisedAtCapture` (6 vectors), `::testBothPlaceholderSpellingsProduceOneBlockId`, `::testCapturedPlaceholderPhrasesAreFoundOnLookup`. Mutation: removing the normalisation reddens 2 cases |
+| TOK-5 | provisional | `tests/Format/InterpolatorTest.php::testPercentPlaceholdersAreAccepted` (8 vectors). **`%name%` previously reached the reader verbatim** — a placeholder rendered as literal text on the page. Normalised to `{name}` once, before ICU detection, so no downstream path learns a second spelling. Rewritten **only for keys the caller supplied**, which is the safety property: `Save 20% on 5% APR` and `width: 100%` have no matching parameter and are returned untouched. **Ruling folded in (spec 8.0.1): `%name%` normalises to `{name}` at CAPTURE too**, not only at render. The stored phrase previously carried whatever the author wrote, so `Hello %name%` and `Hello {name}` were two phrases with two ids and the JS core stored only the brace form — measured `bb74011a…` here against `1e4b462c…` there, which now agree. Both sides go through `Html\Canonical::phrase()`, one function, because applying this at capture and not at lookup would have recreated the exact register/lookup break the whitespace work had to be fixed for twice. At capture there is no parameter list to gate on, so the narrow pattern is the only guard: `Save 20% on 5% APR` and `width: 100%` are untouched; the knowingly-accepted residual is prose where two signs bracket a bare word. `tests/Html/HtmlParserTest.php::testPlaceholdersAreCanonicalisedAtCapture` (6 vectors), `::testBothPlaceholderSpellingsProduceOneBlockId`, `::testCapturedPlaceholderPhrasesAreFoundOnLookup`. Mutation: removing the render-side normalisation reddens 2 cases; removing the capture-side one reddens 5 |
 
 ## Identity stamping
 
@@ -175,7 +175,7 @@ written**; the six misses are the two causes below.
 | SRV-2 | provisional | `Client::$translationsMemoryCache` is per-instance and cleared by `resetRequestState()`, which also clears the fetch-failure memo — `tests/ClientTest.php::testAFailedCatalogFetchIsAskedOncePerRequest` pins the clearing half. The long-lived-runtime hazard (Octane, Swoole, RoadRunner) is what that method exists for |
 | SRV-3 | provisional | `flushPendingRegistrations()` runs from a shutdown handler — after the response is flushed — and is gated on the server's per-request write decision. `::testFlushReportsDroppedWhenTheRequestMayNotWrite` proves the read-only half; GATE-3 and GATE-5 carry the rest |
 | SRV-4 | **not implemented** | **Rowed against the rule body rather than the brief.** This lane was briefed to row SRV-4 `n/a` as "the JS hydration half". That is wrong for the half the profile actually assigns here: the body's first sentence — *the server MUST hand the client the catalog it rendered with* — is the SERVER's obligation, and only the synchronous seed belongs to the browser core. This SDK has no hand-off: nothing in `src/` emits a catalog for a client to pick up. `getTranslations()` is public, so an integrator can serialise it themselves, but the SDK neither does it nor documents it. Recorded as a gap, because `n/a` here would claim a pass for work that does not exist. **Do not implement against this row without checking the spec first:** the rule's author has confirmed it over-binds a page-translation server SDK — SRV-4 is the hydration hand-off, and the profile word `server` was meant as *the server side of a hydration hand-off* (`langsys-js-server` produces a `result.catalog` for a client to seed from). `translatePage()` emits terminal HTML that nothing hydrates, so there is no client to hand a catalog to. A normative clarification is in flight via the Reviewer, after which this becomes `n/a` for the same **structural** reason as SRV-5 — no hydration model, not absent work. Held at `not implemented` until the rule is corrected, since that is the more honest of the two while the published text reads as it does |
-| SRV-5 | partly provisional, partly n/a | **Also not for the brief's reason.** The profile names `server`, so this does not fall away on profile — it falls away on mechanism. SRV-5 governs *component child capture*: Svelte's re-entrant render registering 2^n copies of one miss, and React capturing a `Suspense` fallback so a block is keyed on a loading spinner. This SDK walks a DOM once and has no component model, no re-entrant render and no lazy children, so neither failure has a site here. The mechanism is named so the claim is checkable rather than asserted. **Corrected after review:** rowing the WHOLE rule `n/a` was too broad. The *fail-loudly* half has no site here — there is no component to fail on — but the *once-per-subtree* half is mechanically applicable to a DOM walker and is **measured passing**: a depth-3 nested block registers its miss exactly once, asserted on the COUNT, since duplicates are identical and a set-based assertion would hide them. `tests/Html/PageTranslatorTest.php::testADeeplyNestedMissIsRegisteredExactlyOnce`. SRV-4 above is the same shape and is expected to become `n/a` once its clarification lands |
+| SRV-5 | partly provisional, partly n/a | **Also not for the brief's reason.** The profile names `server`, so this does not fall away on profile — it falls away on mechanism. SRV-5 governs *component child capture*: Svelte's re-entrant render registering 2^n copies of one miss, and React capturing a `Suspense` fallback so a block is keyed on a loading spinner. This SDK walks a DOM once and has no component model, no re-entrant render and no lazy children, so neither failure has a site here. The mechanism is named so the claim is checkable rather than asserted. **Corrected twice.** Rowing the WHOLE rule `n/a` was too broad: the *fail-loudly* half has no site here, but *once-per-subtree* applies to any walker. The first attempt to measure it counted REQUESTS, and that could not see the property — three dedupe layers (`findNewPhrasesWithCategory`'s `$seen`, the `pendingPhrases` key, the `pendingContentBlocks` id) collapse a walker producing 2^n copies down to one POST, so a re-entrant walker passed. Now asserted on the RAW WALKER output before any dedupe (`tests/Html/PageTranslatorTest.php::testADeeplyNestedMissIsWalkedExactlyOnce`), with a re-entrant mutant confirming it reddens. "Duplicates are identical so assert the count" was right about the count and wrong about the subject. SRV-4 above is the same shape and is expected to become `n/a` once its clarification lands |
 
 ## Conformance meta
 
@@ -241,9 +241,24 @@ TOK-1 names four elements; `PageTranslator::SKIP_ELEMENTS` has always carried si
 path and is skipped on the page path. Aligning either way is normative — SVG `<text>` is visible
 translatable content while MathML is not — so neither was chosen here.
 
-**`U+FEFF` is a live cross-SDK divergence with no vector.** JavaScript's `\s` matches it; PCRE's
-`/u` does not, so this SDK leaves it in a token where a JS SDK drops it. Reported rather than
-guessed at; `src/Html/Whitespace.php` records the boundary in its docblock.
+**Release is gated on a live blast-radius measurement, requested from the backend
+2026-09-11 and not yet returned.** TOK-1 and TOK-2 change which `custom_id` this SDK
+derives, so any live content block whose phrases carry `U+00A0`, `U+2028`/`U+2029`, or
+script/style source re-keys on its next registration. The request asks for live rows with
+denominators and the human-touched split, the same shape as the pipe-form count of
+2026-08-21 — where the live-versus-deleted split turned out to be the whole story (32 live
+of 518, not 330 of 3,012). The code lands either way; the number decides when it ships.
+Recorded here because a request that exists only in a message thread is not a record.
+
+**`U+FEFF` — CLOSED.** It was a live divergence (JS `\s` matches it, PCRE's does not);
+the collapse set is now JavaScript's `\s` exactly, so U+FEFF collapses and U+0085/U+180E no
+longer do. `src/Html/Whitespace.php` records the full comparison.
+
+**`U+000B`/`U+000C` are a divergence this SDK cannot close.** libxml2 DROPS them from DOM
+text entirely (`<p>a\x0Bb</p>` yields `ab`), where a JS DOM keeps them and collapses them to
+a space (`a b`). So a document carrying a vertical tab or form feed derives different ids in
+the two SDKs regardless of what this SDK's collapse does. Raised to the spec rather than
+worked around.
 
 
 
@@ -357,7 +372,7 @@ correction from a missed one.
 ```sh
 # Run from the repo root. Exits non-zero on any mismatch.
 fail=0
-while IFS='\t' read -r exp phrase; do
+while IFS="$(printf '\t')" read -r exp phrase; do
   [ -z "$exp" ] && continue
   got=$(sed '/^## Stale-phrase check/q' CONFORMANCE.md | grep -Fc -- "$phrase")
   if [ "$got" != "$exp" ]; then
@@ -377,8 +392,21 @@ EOF
 exit $fail
 ```
 
-Last run 2026-09-12: all nine match. The non-zero expectations are deliberate —
+**This block previously could not run at all**, and the line recording a passing run was
+written from a copy that differed from it. `IFS='\t'` in `sh` sets IFS to the two literal
+characters `\` and `t`, not a tab: every line lands in `$exp`, `$phrase` is empty, and
+`grep -Fc ''` matches all 344 lines of the file. It printed nine mismatches and exited 1,
+and had never done anything else. A check that cannot pass, recorded as passing, in the file
+whose whole argument is against exactly that — noted here rather than quietly corrected.
+
+The non-zero expectations are deliberate —
 `53 of 79` appears in the header and in the computed-summary block; `042dedb5` in the
 version line, both rebase notes, the ahead-of-publication note and the script provenance;
 `b657b490` once and `45cdddf8` twice are correction records naming what this file used to cite.
+
+**Run 2026-09-12 against this text**, extracted verbatim from this block, under `sh`, `bash`
+and `zsh`: all nine match, exit 0. Positive control: with `All 45 binding` planted above, it
+reports the mismatch and exits 1. Re-run it by extracting this block rather than by
+retyping it — the previous failure was precisely a recorded run of text that differed from
+what was committed.
 
