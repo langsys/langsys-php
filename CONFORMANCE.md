@@ -443,25 +443,39 @@ counted as occurrences and every expectation fails - the check would be measurin
 several places) is written down as such, so that the NEXT person can tell a surviving
 correction from a missed one.
 
+The check covers **CONFORMANCE.md and CHANGELOG.md**. It was CONFORMANCE-only, and the gap
+showed: the release gate in CHANGELOG went on describing content blocks harvesting script
+source as a live hazard for a whole release after TOK-1 closed it, and nothing here could see
+that. A stale claim is as damaging in the file customers read as in the one reviewers do.
+
 ```sh
 # Run from the repo root. Exits non-zero on any mismatch.
+# Fields: expected_count <TAB> file <TAB> phrase
 fail=0
-while IFS="$(printf '\t')" read -r exp phrase; do
+while IFS="$(printf '\t')" read -r exp file phrase; do
   [ -z "$exp" ] && continue
-  got=$(sed '/^## Stale-phrase check/q' CONFORMANCE.md | grep -Fc -- "$phrase")
+  if [ "$file" = CONFORMANCE.md ]; then
+    body=$(sed '/^## Stale-phrase check/q' CONFORMANCE.md)
+  else
+    body=$(cat "$file")
+  fi
+  got=$(printf '%s' "$body" | grep -Fc -- "$phrase")
   if [ "$got" != "$exp" ]; then
     printf 'MISMATCH  expected %s got %s  %s\n' "$exp" "$got" "$phrase"; fail=1
   fi
 done <<'EOF'
-0	binding rules (all | server)  41
-0	All 45 binding
-0	45 of 67
-0	41 of 67
-0	git show origin/main:docs/sdk-spec.mdx
-2	53 of 79
-5	042dedb5
-1	b657b490
-2	45cdddf8
+0	CONFORMANCE.md	binding rules (all | server)  41
+0	CONFORMANCE.md	All 45 binding
+0	CONFORMANCE.md	45 of 67
+0	CONFORMANCE.md	41 of 67
+0	CONFORMANCE.md	git show origin/main:docs/sdk-spec.mdx
+2	CONFORMANCE.md	53 of 79
+5	CONFORMANCE.md	042dedb5
+1	CONFORMANCE.md	b657b490
+2	CONFORMANCE.md	45cdddf8
+0	CONFORMANCE.md	7f978ecb
+0	CHANGELOG.md	has no skip
+0	CHANGELOG.md	never consults
 EOF
 exit $fail
 ```

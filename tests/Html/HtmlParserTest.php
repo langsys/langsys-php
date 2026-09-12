@@ -2026,4 +2026,78 @@ class HtmlParserTest extends TestCase
 
         $this->assertSame(bin2hex("a b\xFF"), bin2hex($out));
     }
+
+    // =========================================================================
+    // Fixtures must not carry invisible characters as literals
+    // =========================================================================
+
+    /**
+     * A codepoint a test asserts about must not be written as itself.
+     *
+     * Raised by the TypeScript lane against their own file: a row whose whole
+     * purpose was asserting that U+FEFF collapses contained a RAW U+FEFF, and
+     * every BOM-stripper deletes that codepoint. Had one run, the row would
+     * have gone on passing while asserting something else entirely - the same
+     * shape as a test that cannot fail, and invisible in every diff and review.
+     *
+     * This SDK had the same problem in three files, two of which are vendored.
+     *
+     * The exemption is keyed on the BLOB, not the filename. A vendored fixture
+     * is adopted byte-identically and its blob is cited in CONFORMANCE, so
+     * escaping it would destroy the property that makes it worth having -
+     * re-vendoring is the only legitimate way it changes. Keying on the blob
+     * means the exemption stops applying the moment the bytes do change, so a
+     * local edit to a vendored file fails here instead of hiding behind a name.
+     *
+     * @dataProvider fixtureFileProvider
+     */
+    public function testFixturesWriteInvisibleCharactersAsEscapes($path, $blob): void
+    {
+        $vendored = [
+            // canonicalization-reference.json, langsys-js-typescript @ 6596faf
+            'e4c1f185974fbf2ebda6154f36b8ed7416f1d7fa' => 'adopted byte-identically from langsys-js-typescript',
+            // legacy-custom-id-reference.json, langsys-python
+            'dc5556466dc54fe82e81ac9fdbf4549b2b76e7ce' => 'adopted byte-identically from langsys-python',
+        ];
+
+        if (isset($vendored[$blob])) {
+            $this->addToAssertionCount(1);
+            return;
+        }
+
+        $raw = file_get_contents($path);
+        $found = [];
+
+        foreach (preg_split('//u', $raw, -1, PREG_SPLIT_NO_EMPTY) as $char) {
+            $cp = mb_ord($char, 'UTF-8');
+            if (in_array($cp, self::INVISIBLE_CODEPOINTS, true)) {
+                $found[sprintf('U+%04X', $cp)] = true;
+            }
+        }
+
+        $this->assertSame(
+            [],
+            array_keys($found),
+            basename($path) . ' carries invisible characters as literals; write them as \\uXXXX escapes'
+        );
+    }
+
+    /**
+     * The codepoints that must never appear raw in a fixture: whitespace this
+     * SDK collapses, plus the format characters it deliberately does not.
+     */
+    const INVISIBLE_CODEPOINTS = [
+        0x0085, 0x00A0, 0x000B, 0x000C, 0x180E, 0x2007, 0x200A, 0x200B,
+        0x2028, 0x2029, 0x202F, 0x2060, 0x3000, 0xFEFF,
+    ];
+
+    public function fixtureFileProvider(): array
+    {
+        $out = [];
+        foreach (glob(dirname(__DIR__) . '/fixtures/*.json') as $path) {
+            $out[basename($path)] = [$path, sha1("blob " . filesize($path) . "\0" . file_get_contents($path))];
+        }
+
+        return $out;
+    }
 }

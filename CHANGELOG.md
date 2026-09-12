@@ -60,10 +60,23 @@ website and most plausibly renders through the page path. An earlier revision of
 this branch covered only the content-block path and would have left the hazard
 fully live where it is most likely to fire.
 
-**Scope limit — content blocks containing inline `<script>` or `<style>` are
-outside what this fallback can reach.** `HtmlParser::walkNode()` has no skip
-list and the content-block path never consults `PageTranslator::SKIP_ELEMENTS`
-(documented on `main` in 224dc8b), so script source is extracted as a phrase.
+**Scope limit — RESOLVED SINCE, and left here as a record rather than deleted.**
+When this gate was written, content blocks containing an inline `<script>` or
+`<style>` were outside what the fallback could reach: `HtmlParser::walkNode()`
+had no skip list at all, so script source was extracted as a phrase. TOK-1 in
+this same release closed it — the content-block path now skips `<script>`,
+`<style>`, `<template>`, `<noscript>` and `<math>`, so
+`<div><h2>Our pricing</h2><script>track({sku:"SKU-1"});</script></div>` yields
+`["Our pricing"]` and its id no longer moves with the script payload. The
+paragraph below described the behaviour accurately when written; it is kept
+because the cost analysis is the reason the rule exists, and struck through in
+substance rather than silently removed.
+
+The original text follows. `HtmlParser::walkNode()` had no skip
+list and the content-block path never consulted `PageTranslator::SKIP_ELEMENTS`
+(the fixture's script/style coverage is discussed on `main` in 224dc8b, which is
+a README commit — it is not where that behaviour was introduced), so script
+source was extracted as a phrase.
 When that source varies between renders — an analytics payload carrying a SKU,
 a nonce, a timestamp — the phrase set varies with it, and the block's id is
 different every time:
@@ -82,13 +95,14 @@ Neither the current nor the legacy id is stable, so no id-based lookup can match
 such a block. They resolve to nothing, render untranslated, and re-register on
 every request.
 
-**This is not a defect in the fallback, and not 838's to fix.** `walkNode()` has
-never had a skip list, so the harvesting predates the id change and both id
-forms are equally unstable under it — the pipe form is no more matchable here
-than the current one. It is tracked separately as a cross-SDK defect affecting
-both the PHP and JS lineages; fixing it re-keys every content block containing a
-script or style, so it needs a coordinated tokenizer decision rather than a
-unilateral change here.
+**This was not a defect in the fallback, and was not 838's to fix — until the
+coordinated decision it asked for actually arrived.** `walkNode()` had never had
+a skip list, so the harvesting predated the id change and both id forms were
+equally unstable under it. It was tracked as a cross-SDK defect affecting both
+the PHP and JS lineages, needing a coordinated tokenizer decision rather than a
+unilateral change here. That decision is TOK-1, and this release implements it;
+the re-keying it warned about was measured on production and is the 1-block,
+6-phrase figure at the top of this gate.
 
 The consequence is worth stating plainly, because it is larger than catalog
 noise: per render such a block creates a new block row that is never cleaned up

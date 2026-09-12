@@ -342,10 +342,10 @@
     {
         "category": "Legal",
         "tokens": [
-            "line one line two",
-            "para break"
+            "line one\u2028line two",
+            "para\u2029break"
         ],
-        "canonical_json": "[\"Legal\",[\"line one line two\",\"para break\"]]",
+        "canonical_json": "[\"Legal\",[\"line one\u2028line two\",\"para\u2029break\"]]",
         "custom_id": "7a91549c8e51919ed854f126d2e27588",
         "codepoints": {
             "category": [
