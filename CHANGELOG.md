@@ -298,6 +298,41 @@ both meta-description paths) had never normalised at all.
   placeholder is only substituted when a value for that name was actually
   supplied.
 
+Note for integrators: a content block being seen for the first time is now
+returned re-serialised rather than byte-for-byte as given, so entity spellings
+and self-closing tags may differ from the input even when nothing was
+translated. The rendered result is equivalent HTML; it is not guaranteed to be
+the identical string.
+
+### Fixed — found reviewing the tokenizer work above
+
+- **Page titles stopped translating.** Collapsing whitespace when a title was
+  *recorded* but not when it was *looked up* meant the two never matched again,
+  so titles silently stayed in the source language — and were not re-recorded
+  either, because as far as the SDK could tell the work was already done. The
+  same mismatch affected image alt text and other attributes on translated
+  pages, where it went unnoticed because it only showed up when the text was
+  written across more than one line.
+- **A translated block could claim an identity that wasn't its own.** Where a
+  block was a mix of text and markup (`Buy <strong>now</strong>`), the identity
+  stamp landed on the inner element, labelling it as the whole block. Anything
+  reading the page afterwards believed it.
+- **Padding around a translated phrase could vanish**, running words together,
+  when that padding was a non-breaking space.
+
+### Changed
+
+- **What counts as whitespace now matches the JavaScript SDKs exactly.** Three
+  characters were treated differently on either side, so the same content could
+  be filed under two identities depending on which SDK saw it first.
+- **Text inside `<svg>` is now translated.** It is copy a reader reads, so it is
+  treated as copy; the page and content-block paths had also disagreed about
+  this, and now agree. MathML remains untranslated, being notation rather than
+  prose.
+- **A phrase written with `%name%` is now stored as `{name}`**, matching the
+  other SDKs, so the same sentence written either way is one phrase rather than
+  two.
+
 ### Added
 
 - **Rendered content blocks now carry their own identity** (`data-ls-contentblock`),

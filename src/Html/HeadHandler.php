@@ -81,7 +81,7 @@ class HeadHandler
         if ($titles->length > 0) {
             // trim() alone left every internal run - and every U+00A0 - intact,
             // because no collapse ever ran on this path at all (TOK-2).
-            $titleText = Whitespace::collapse($titles->item(0)->textContent);
+            $titleText = Canonical::phrase($titles->item(0)->textContent);
             if ($titleText !== '') {
                 $phrases[] = $titleText;
             }
@@ -94,7 +94,7 @@ class HeadHandler
             // collapse at all, so a description carrying a non-breaking space or
             // wrapped across source lines registered exactly as authored - and
             // the apply side below had to match it byte for byte to render.
-            $content = Whitespace::collapse($meta->getAttribute('content'));
+            $content = Canonical::phrase($meta->getAttribute('content'));
             if ($content === '') {
                 continue;
             }
@@ -222,7 +222,16 @@ class HeadHandler
         }
 
         $titleElement = $titles->item(0);
-        $originalText = trim($titleElement->textContent);
+
+        // Canonical::phrase, not trim(), and this is the LOOKUP side.
+        //
+        // extractPhrases() collapses, so the catalog key is the collapsed form.
+        // Trimming only here meant looking up a key that was never registered
+        // while the key that WAS registered could never be found - the title
+        // silently stopped translating, and was not even re-registered, since
+        // the collapsed form was already in the catalog. Collapsing one side of
+        // a register/lookup pair is worse than collapsing neither.
+        $originalText = Canonical::phrase($titleElement->textContent);
 
         if ($originalText === '') {
             return;
@@ -252,7 +261,7 @@ class HeadHandler
             // collapse at all, so a description carrying a non-breaking space or
             // wrapped across source lines registered exactly as authored - and
             // the apply side below had to match it byte for byte to render.
-            $content = Whitespace::collapse($meta->getAttribute('content'));
+            $content = Canonical::phrase($meta->getAttribute('content'));
             if ($content === '') {
                 continue;
             }

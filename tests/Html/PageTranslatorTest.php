@@ -1396,4 +1396,191 @@ class PageTranslatorTest extends TestCase
 
         return $client;
     }
+
+    /**
+     * The page path's attribute register/lookup pair.
+     *
+     * Collection trimmed; the apply side looked up the RAW attribute value. So
+     * an alt text wrapped across source lines - the ordinary way anyone writes
+     * long alt copy - registered as the collapsed phrase and was then never
+     * found again.
+     *
+     * Driven as a true round trip: register the page, take whatever catalog
+     * entry that produced, feed exactly that back, and require the same page to
+     * render it. Building the catalog by hand is what hid this - an attribute
+     * on the page path registers inside a CONTENT BLOCK, keyed by custom_id,
+     * not as a flat phrase, so a hand-built flat catalog fails for every input
+     * and proves nothing about the pair.
+     *
+     * The plain-space control is the load-bearing row: it passed throughout the
+     * defect, which is why page attributes looked like they worked.
+     *
+     * @dataProvider pageAttributeWhitespaceProvider
+     */
+    public function testPageAttributesAreRegisteredAndTranslatedOnTheSameRender($attrValue, $expectedPhrase): void
+    {
+        $html = '<html><body><p>Text <img alt="' . $attrValue . '"></p></body></html>';
+
+        $registered = $this->registeredPayloadFor($html);
+        $this->assertNotEmpty($registered, 'nothing registered at all');
+
+        $phrases = [];
+        $catalog = [];
+        foreach ($registered as $item) {
+            if ($item['type'] === 'content_block') {
+                $entry = [];
+                foreach ($item['phrases'] as $nested) {
+                    $phrases[] = $nested['phrase'];
+                    $entry[$nested['phrase']] = 'X:' . $nested['phrase'];
+                }
+                $catalog[$item['custom_id']] = $entry;
+            } elseif (isset($item['phrase'])) {
+                $phrases[] = $item['phrase'];
+                $catalog[$item['phrase']] = 'X:' . $item['phrase'];
+            }
+        }
+
+        $this->assertContains($expectedPhrase, $phrases, 'registration side canonicalised the attribute');
+
+        $rendered = $this->translatePageWithCatalog($html, $catalog);
+
+        $this->assertStringContainsString(
+            'alt="X:' . $expectedPhrase . '"',
+            $rendered,
+            'apply side never found the key the registration side wrote'
+        );
+    }
+
+    public function pageAttributeWhitespaceProvider(): array
+    {
+        return [
+            // The control. This passed before the fix, which is how the pair
+            // stayed broken - attributes appeared to work.
+            'plain single spaces'  => ['A short alt', 'A short alt'],
+            'wrapped across lines' => ["A long\n     alt", 'A long alt'],
+            'internal run'         => ['A  long   alt', 'A long alt'],
+            'non-breaking space'   => ["A\u{00A0}long alt", 'A long alt'],
+        ];
+    }
+
+    /**
+     * Phrases this SDK actually POSTs for a page, as opposed to what it claims
+     * to have found. Registration is what creates the catalog key, so this is
+     * the only honest left-hand side for a register/lookup test.
+     */
+    private function registeredPayloadFor($html): array
+    {
+        $this->setTranslations(['__uncategorized__' => []]);
+        $this->mockHttp->setResponse('POST', 'translatable-items', ['status' => true]);
+
+        $client = $this->createMockClient();
+        $client->setLocale('es-es');
+        $client->translatePage($html);
+
+        $this->mockHttp->clearRequests();
+        $client->flushPendingRegistrations();
+
+        $items = [];
+        foreach ($this->mockHttp->getRequests() as $request) {
+            if ($request['method'] !== 'POST' || !isset($request['data']['translatable_items'])) {
+                continue;
+            }
+            foreach ($request['data']['translatable_items'] as $item) {
+                $items[] = $item;
+            }
+        }
+
+        return $items;
+    }
+
+    /**
+     * Render a page against a catalog keyed exactly as given.
+     */
+    private function translatePageWithCatalog($html, array $catalog): string
+    {
+        $this->setTranslations(['__uncategorized__' => $catalog]);
+
+        $client = $this->createMockClient();
+        $client->setLocale('es-es');
+
+        return $client->translatePage($html);
+    }
+
+    /**
+     * SRV-5's measurable half: each miss registers once per subtree.
+     *
+     * The fail-loudly half has no site in a DOM walker - there is no component
+     * to fail on - but "at most once per subtree" applies to any renderer, and
+     * a re-entrant one registers 2^n copies of the same miss. Asserted on the
+     * COUNT: the duplicates would be identical, so a set-based assertion hides
+     * exactly the defect the rule exists for.
+     */
+    public function testADeeplyNestedMissIsRegisteredExactlyOnce(): void
+    {
+        $this->setTranslations(['__uncategorized__' => []]);
+        $this->mockHttp->setResponse('POST', 'translatable-items', ['status' => true]);
+
+        $client = $this->createMockClient();
+        $client->setLocale('es-es');
+        $client->translatePage(
+            '<html><body><div><div><div><p>Deeply nested</p></div></div></div></body></html>'
+        );
+
+        $this->mockHttp->clearRequests();
+        $client->flushPendingRegistrations();
+
+        $occurrences = 0;
+        foreach ($this->mockHttp->getRequests() as $request) {
+            if ($request['method'] !== 'POST' || !isset($request['data']['translatable_items'])) {
+                continue;
+            }
+            foreach ($request['data']['translatable_items'] as $item) {
+                if (isset($item['phrase']) && $item['phrase'] === 'Deeply nested') {
+                    $occurrences++;
+                }
+                foreach (isset($item['phrases']) ? $item['phrases'] : [] as $nested) {
+                    if (isset($nested['phrase']) && $nested['phrase'] === 'Deeply nested') {
+                        $occurrences++;
+                    }
+                }
+            }
+        }
+
+        $this->assertSame(1, $occurrences, 'a depth-3 subtree must register its miss once, not 2^n times');
+    }
+
+    /**
+     * SVG text is registered by the PAGE path too, not only the block path.
+     *
+     * The two paths used to disagree about `<svg>`: the block path tokenized
+     * it, the page path skipped it outright. Removing it from SKIP_ELEMENTS was
+     * not enough on its own - the generic walk drops bare text under a
+     * non-block element, so `<svg>` was recursed into and its `<text>` silently
+     * discarded. This test is what catches that half; without it, dropping
+     * `svg` from BLOCK_ELEMENTS leaves the whole suite green.
+     *
+     * MathML stays untranslated, and the ordinary paragraph is the control that
+     * the page path registered anything at all.
+     */
+    public function testThePagePathRegistersSvgTextButNotMath(): void
+    {
+        $registered = $this->registeredPayloadFor(
+            '<html><body><svg><text>SvgLabel</text></svg>'
+            . '<math><mi>MathLabel</mi></math><p>Ordinary</p></body></html>'
+        );
+
+        $phrases = [];
+        foreach ($registered as $item) {
+            if (isset($item['phrase'])) {
+                $phrases[] = $item['phrase'];
+            }
+            foreach (isset($item['phrases']) ? $item['phrases'] : [] as $nested) {
+                $phrases[] = $nested['phrase'];
+            }
+        }
+
+        $this->assertContains('Ordinary', $phrases, 'control: the page path must register something');
+        $this->assertContains('SvgLabel', $phrases, 'SVG text is visible copy and must be translated');
+        $this->assertNotContains('MathLabel', $phrases, 'MathML is notation, not prose');
+    }
 }

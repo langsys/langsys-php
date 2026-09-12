@@ -1465,10 +1465,17 @@ class Client
             }
         }
 
-        if (count($elements) !== 1) {
+        // The fragment must be a single node ENTIRE, not merely a single
+        // element among text siblings. Counting elements alone stamped
+        // `Buy <strong>now</strong>` on the <strong>, giving it the id of the
+        // WHOLE fragment (["Buy","now"]) while that element's own subtree
+        // derives ["now"] - a false identity claim in the served bytes, which
+        // any later reader then believes.
+        if (count($elements) !== 1 || $wrapper->childNodes->length !== 1) {
             $this->logger->debug('Not stamping a content block id: the fragment has no single host element', [
                 'custom_id' => $customId,
                 'element_roots' => count($elements),
+                'child_nodes' => $wrapper->childNodes->length,
             ]);
 
             return;
@@ -1534,7 +1541,7 @@ class Client
             // Must normalise IDENTICALLY to HtmlParser, which registered these
             // phrases: this is the lookup side, so any divergence is a
             // permanent miss that re-registers on every render.
-            $normalizedText = \Langsys\SDK\Html\Whitespace::collapse($node->textContent);
+            $normalizedText = \Langsys\SDK\Html\Canonical::phrase($node->textContent);
             if ($normalizedText !== '') {
                 $translated = isset($translations[$normalizedText]) ? $translations[$normalizedText] : null;
 
@@ -1548,8 +1555,8 @@ class Client
 
                 if ($translated !== $normalizedText) {
                     // Preserve whitespace pattern
-                    $leadingSpace = preg_match('/^\s/', $node->textContent) ? ' ' : '';
-                    $trailingSpace = preg_match('/\s$/', $node->textContent) ? ' ' : '';
+                    $leadingSpace = preg_match('/^' . \Langsys\SDK\Html\Whitespace::JS_WHITESPACE . '/u', $node->textContent) ? ' ' : '';
+                    $trailingSpace = preg_match('/' . \Langsys\SDK\Html\Whitespace::JS_WHITESPACE . '$/u', $node->textContent) ? ' ' : '';
                     $node->textContent = $leadingSpace . $translated . $trailingSpace;
                 }
             }
@@ -1606,7 +1613,11 @@ class Client
      */
     protected function translateAttributeValue(\DOMElement $node, $attr, array $translations, array $params, $locale)
     {
-        $value = $node->getAttribute($attr);
+        // Canonicalised, because this is the LOOKUP side of the attribute pair.
+        // HtmlParser::extractAttributePhrases() collapses before registering,
+        // so an alt wrapped across source lines is filed under the collapsed
+        // form; looking up the raw value could never find it.
+        $value = \Langsys\SDK\Html\Canonical::phrase($node->getAttribute($attr));
 
         if ($value === '') {
             return;

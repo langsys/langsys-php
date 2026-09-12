@@ -216,7 +216,7 @@ class TranslatableItems
         // Collapse and trim exactly as the tokenizer does (TOK-2) - this text
         // becomes a content block's stored HTML, and a mismatch here against
         // HtmlParser is a mismatch between what we send and what we look up.
-        $html = \Langsys\SDK\Html\Whitespace::collapse($html);
+        $html = \Langsys\SDK\Html\Canonical::phrase($html);
 
         // Clean up space around tags
         $html = preg_replace('/>\s+</', '><', $html);

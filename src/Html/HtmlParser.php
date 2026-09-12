@@ -570,11 +570,11 @@ class HtmlParser
     /**
      * Elements whose text content is code rather than prose (TOK-1).
      *
-     * Exactly the four the spec names. PageTranslator::SKIP_ELEMENTS carries two
-     * more - svg and math - and that divergence is deliberate and reported, not
-     * an oversight: see walkNode().
+     * Exactly the five the spec names. `svg` is deliberately ABSENT: SVG
+     * `<text>` is visible copy a reader is expected to read, so it is
+     * translated. MathML is notation rather than prose and is excluded.
      */
-    const NON_PROSE_ELEMENTS = ['script', 'style', 'template', 'noscript'];
+    const NON_PROSE_ELEMENTS = ['script', 'style', 'template', 'noscript', 'math'];
 
     /**
      * Both spellings of the content-block marker, canonical form first (MARK-2).
@@ -731,7 +731,7 @@ class HtmlParser
      */
     protected function normalizeWhitespace($text)
     {
-        return Whitespace::collapse($text);
+        return Canonical::phrase($text);
     }
 
     /**

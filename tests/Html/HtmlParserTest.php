@@ -571,14 +571,61 @@ class HtmlParserTest extends TestCase
         $this->assertContains('Submit', $phrases);
     }
 
+    /**
+     * This test used to assert only that 'Real text' was PRESENT, with a note
+     * conceding that DOMDocument might parse the script and style anyway - so
+     * it passed while the parser was harvesting `var x = "JavaScript text";`
+     * and `.class { content: "CSS text"; }` as translatable phrases and sending
+     * them for machine translation. A test that cannot fail is worse than an
+     * absent one, because it is counted as coverage.
+     *
+     * assertSame on the whole list is the difference: it fails on anything
+     * extra, which is precisely what the rule forbids.
+     */
     public function testScriptAndStyleTagsIgnored()
     {
         $html = '<div><script>var x = "JavaScript text";</script><style>.class { content: "CSS text"; }</style><p>Real text</p></div>';
-        $phrases = $this->parser->extractPhrases($html);
 
-        // Script and style content should not be treated as translatable text
-        // Note: DOMDocument may still parse these, so this tests actual behavior
-        $this->assertContains('Real text', $phrases);
+        $this->assertSame(['Real text'], array_values($this->parser->extractPhrases($html)));
+    }
+
+    /**
+     * TOK-1 in the shape the spec states it: one document carrying all four
+     * excluded elements plus ordinary markup.
+     *
+     * The ordinary-markup control is the whole test. Built only from excluded
+     * elements, this passes against a tokenizer that tokenizes nothing at all -
+     * so the surviving phrase is what proves the parser was working and chose
+     * to skip the rest.
+     */
+    public function testTok1ExcludesAllFourElementsInOneDocument()
+    {
+        $html = '<div>'
+            . '<script>window.dataLayer.push(1)</script>'
+            . '<style>.plan{color:#fff}</style>'
+            . '<template><p>Template copy</p></template>'
+            . '<noscript>Enable JavaScript</noscript>'
+            . '<p>Plans</p>'
+            . '</div>';
+
+        $this->assertSame(['Plans'], array_values($this->parser->extractPhrases($html)));
+    }
+
+    /**
+     * `<template>` on its own, because it is the one exclusion no test covered:
+     * dropping it from the list reddened nothing, while the element is live
+     * under libxml2 (which puts template children in the tree, unlike a
+     * scripting-enabled parser).
+     *
+     * Stated as a de-duplication so the failure is legible: without the
+     * exclusion the same sentence is harvested twice, which both changes the
+     * block's id and registers template source as page copy.
+     */
+    public function testTemplateContentsAreNotHarvested()
+    {
+        $html = '<template><p>Same sentence</p></template><p>Same sentence</p>';
+
+        $this->assertSame(['Same sentence'], array_values($this->parser->extractPhrases($html)));
     }
 
     public function testCommentsIgnored()
@@ -1798,5 +1845,147 @@ class HtmlParserTest extends TestCase
             'ls spelling off'      => ['data-ls-contentblock', 'false', false],
             'langsys spelling off' => ['data-langsys-contentblock', '0', false],
         ];
+    }
+
+    // =========================================================================
+    // TOK-1 / TOK-2, as ruled for spec 8.0.1
+    // =========================================================================
+
+    /**
+     * SVG text is visible copy and IS translated; MathML is notation and is not.
+     *
+     * The two paths used to disagree: the block path tokenized both, the page
+     * path skipped both, so the same `<svg>` produced different phrase lists
+     * depending on which entry point saw it. The ordinary-markup control is
+     * what proves the tokenizer ran at all.
+     */
+    public function testSvgTextIsTranslatedAndMathIsNot()
+    {
+        $html = '<svg><text>SvgLabel</text></svg><math><mi>MathLabel</mi></math><p>Ordinary</p>';
+
+        $this->assertSame(
+            ['SvgLabel', 'Ordinary'],
+            array_values($this->parser->extractPhrases($html))
+        );
+    }
+
+    /**
+     * The collapse set is JavaScript's `\s`, not PCRE's.
+     *
+     * The JS core is the identity authority, so PCRE's set was the wrong
+     * standard. Written as escapes, and asserted per codepoint, because the
+     * three that differ are invisible in any rendering of this file.
+     *
+     * @dataProvider jsWhitespaceProvider
+     */
+    public function testTheCollapseSetIsJavascriptsWhitespace($codepoint, $collapses, $why)
+    {
+        $char = mb_chr($codepoint, 'UTF-8');
+        $tokens = array_values($this->parser->extractPhrases('<p>a' . $char . 'b</p>'));
+
+        $this->assertSame(
+            $collapses ? ['a b'] : ['a' . $char . 'b'],
+            $tokens,
+            sprintf('U+%04X: %s', $codepoint, $why)
+        );
+    }
+
+    public function jsWhitespaceProvider()
+    {
+        return [
+            // The three that used to differ from the JS core.
+            'U+FEFF now collapses'      => [0xFEFF, true,  'JS \s matches it; PCRE \s does not - PHP used to keep it'],
+            'U+0085 no longer collapses' => [0x0085, false, 'PCRE \s matches it; JS \s does not - PHP used to collapse it'],
+            'U+180E no longer collapses' => [0x180E, false, 'PCRE \s matches it; JS \s does not - PHP used to collapse it'],
+
+            // Controls on both sides, so the rows above cannot pass by the
+            // collapse being broken in general or disabled entirely.
+            'U+00A0 still collapses'    => [0x00A0, true,  'the original TOK-2 case'],
+            'U+3000 still collapses'    => [0x3000, true,  'ideographic space, matched by both'],
+            'U+2007 still collapses'    => [0x2007, true,  'figure space, matched by both'],
+            'U+200B still content'      => [0x200B, false, 'zero-width space is matched by neither'],
+            'U+2060 still content'      => [0x2060, false, 'word joiner is matched by neither'],
+        ];
+    }
+
+    /**
+     * TOK-5 at CAPTURE: a phrase carries `{name}`, whichever form was authored.
+     *
+     * The Interpolator already accepted both at render time, but the phrase
+     * stored in the catalog still carried whatever the author wrote - so
+     * `Hello %name%` and `Hello {name}` were two different phrases with two
+     * different block ids, and the JS core stored only the brace form. Measured
+     * before: `bb74011a...` here against `1e4b462c...` there.
+     *
+     * @dataProvider capturedPlaceholderProvider
+     */
+    public function testPlaceholdersAreCanonicalisedAtCapture($html, $expected, $why)
+    {
+        $this->assertSame($expected, array_values($this->parser->extractPhrases($html)), $why);
+    }
+
+    public function capturedPlaceholderProvider()
+    {
+        return [
+            'percent form is stored as braces' => [
+                '<p>Hello %name%</p>', ['Hello {name}'],
+                'the escape form must not create a second phrase',
+            ],
+            'brace form is unchanged' => [
+                '<p>Hello {name}</p>', ['Hello {name}'],
+                'positive control - the canonical form stays canonical',
+            ],
+            'both forms converge on one id' => [
+                '<p>%a% and {b}</p>', ['{a} and {b}'],
+                'a phrase may carry both spellings',
+            ],
+            'in an attribute too' => [
+                '<img alt="Hi %name%">', ['Hi {name}'],
+                'attribute values are phrases and follow the same rule',
+            ],
+
+            // The pattern is the only guard at capture, since there is no
+            // parameter list to consult. These are what keep it narrow.
+            'percentages are untouched' => [
+                '<p>Save 20% on 5% APR</p>', ['Save 20% on 5% APR'],
+                'spaces between the signs mean it cannot be an identifier',
+            ],
+            'a lone percent is untouched' => [
+                '<p>width: 100%</p>', ['width: 100%'],
+                'no closing sign, no rewrite',
+            ],
+        ];
+    }
+
+    /**
+     * And both spellings produce the SAME block id, which is the whole point -
+     * the id is what strands translations when it moves.
+     */
+    public function testBothPlaceholderSpellingsProduceOneBlockId()
+    {
+        $percent = $this->parser->extractPhrases('<p>Hello %name%</p>');
+        $brace = $this->parser->extractPhrases('<p>Hello {name}</p>');
+
+        $this->assertSame(
+            $this->parser->generateCustomId('UI', $brace),
+            $this->parser->generateCustomId('UI', $percent)
+        );
+    }
+
+    /**
+     * Registration and lookup must canonicalise placeholders identically, or
+     * this fix recreates the exact register/lookup break the whitespace work
+     * had to be fixed for twice.
+     */
+    public function testCapturedPlaceholderPhrasesAreFoundOnLookup()
+    {
+        $canonical = \Langsys\SDK\Html\Canonical::phrase('Hello %name%');
+
+        $this->assertSame('Hello {name}', $canonical);
+        $this->assertSame(
+            $canonical,
+            \Langsys\SDK\Html\Canonical::phrase('Hello {name}'),
+            'both spellings must reach one key on both sides'
+        );
     }
 }

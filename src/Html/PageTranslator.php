@@ -37,13 +37,29 @@ class PageTranslator
         'figure', 'figcaption',
         // Interactive
         'details', 'summary', 'dialog',
+        // Graphics. SVG <text> is visible copy, so the subtree is extracted
+        // like any other smallest block. Listing `svg` rather than its children
+        // keeps the SVG-specific knowledge to one entry: the generic walk skips
+        // bare text under a non-block element, so removing `svg` from
+        // SKIP_ELEMENTS alone made it recursed-into and still silently dropped.
+        'svg',
     ];
 
     /**
      * Elements to skip entirely (never translate contents).
      */
+    /**
+     * Elements the page walk does not descend into.
+     *
+     * `svg` was here and has been removed: SVG `<text>` is visible copy, so it
+     * is translated like any other text (TOK-1 names script/style/template/
+     * noscript/math and deliberately not svg). This was the TOP-LEVEL case
+     * only - a nested `<svg>` inside a translated subtree already leaked
+     * through both paths, so the two paths disagreed with each other about the
+     * same element depending on where it sat.
+     */
     const SKIP_ELEMENTS = [
-        'script', 'style', 'noscript', 'template', 'svg', 'math',
+        'script', 'style', 'noscript', 'template', 'math',
     ];
 
     /**
@@ -459,7 +475,12 @@ class PageTranslator
 
         foreach ($attributes as $attr) {
             if ($element->hasAttribute($attr)) {
-                $value = trim($element->getAttribute($attr));
+                // TOK-4, and a register/lookup pair: collection trimmed while
+                // the apply side looked up the RAW value, so an alt text
+                // wrapped across source lines registered collapsed and was
+                // never found again - a miss on plain spaces, not only on
+                // non-ASCII whitespace.
+                $value = Canonical::phrase($element->getAttribute($attr));
                 if ($value !== '') {
                     $found[] = $value;
                 }
@@ -469,7 +490,7 @@ class PageTranslator
         foreach ($element->getElementsByTagName('*') as $descendant) {
             foreach ($attributes as $attr) {
                 if ($descendant->hasAttribute($attr)) {
-                    $value = trim($descendant->getAttribute($attr));
+                    $value = Canonical::phrase($descendant->getAttribute($attr));
                     if ($value !== '') {
                         $found[] = $value;
                     }
@@ -594,7 +615,7 @@ class PageTranslator
     {
         // TOK-2: the page path registers phrases too, so it must canonicalise
         // identically to the block path or the same text yields two phrases.
-        return Whitespace::collapse($element->textContent);
+        return Canonical::phrase($element->textContent);
     }
 
     /**
@@ -754,8 +775,10 @@ class PageTranslator
                     continue;
                 }
 
-                $value = $target->getAttribute($attr);
-                if (trim($value) === '') {
+                // The lookup side of the pair above: must canonicalise the
+                // same way, or the key we registered can never be found.
+                $value = Canonical::phrase($target->getAttribute($attr));
+                if ($value === '') {
                     continue;
                 }
 
@@ -782,11 +805,11 @@ class PageTranslator
         // This handles cases like <p>Hello</p> -> <p>Hola</p>
         foreach ($element->childNodes as $child) {
             if ($child instanceof DOMText) {
-                $normalizedText = Whitespace::collapse($child->textContent);
+                $normalizedText = Canonical::phrase($child->textContent);
                 if ($normalizedText === $original) {
                     // Preserve leading/trailing whitespace pattern
-                    $leadingSpace = preg_match('/^\s/', $child->textContent) ? ' ' : '';
-                    $trailingSpace = preg_match('/\s$/', $child->textContent) ? ' ' : '';
+                    $leadingSpace = preg_match('/^' . Whitespace::JS_WHITESPACE . '/u', $child->textContent) ? ' ' : '';
+                    $trailingSpace = preg_match('/' . Whitespace::JS_WHITESPACE . '$/u', $child->textContent) ? ' ' : '';
                     $child->textContent = $leadingSpace . $translated . $trailingSpace;
                     return;
                 }
@@ -821,7 +844,7 @@ class PageTranslator
         // Handle text nodes
         if ($node instanceof DOMText) {
             // Lookup side - must match what getElementText() registered.
-            $normalizedText = Whitespace::collapse($node->textContent);
+            $normalizedText = Canonical::phrase($node->textContent);
             if ($normalizedText !== '') {
                 $translated = isset($translations[$normalizedText]) ? $translations[$normalizedText] : null;
 
@@ -835,8 +858,8 @@ class PageTranslator
 
                 if ($translated !== $normalizedText) {
                     // Preserve whitespace pattern
-                    $leadingSpace = preg_match('/^\s/', $node->textContent) ? ' ' : '';
-                    $trailingSpace = preg_match('/\s$/', $node->textContent) ? ' ' : '';
+                    $leadingSpace = preg_match('/^' . Whitespace::JS_WHITESPACE . '/u', $node->textContent) ? ' ' : '';
+                    $trailingSpace = preg_match('/' . Whitespace::JS_WHITESPACE . '$/u', $node->textContent) ? ' ' : '';
                     $node->textContent = $leadingSpace . $translated . $trailingSpace;
                 }
             }
@@ -889,7 +912,12 @@ class PageTranslator
      */
     protected function translateAttribute(DOMElement $node, $attr, array $translations)
     {
-        $value = $node->getAttribute($attr);
+        // Canonicalised, because this is a LOOKUP side. The collection side
+        // (collectAttributePhrases) registers the collapsed form, so looking up
+        // the raw value could never match - and it missed on plain spaces, not
+        // just on non-ASCII whitespace, so "attributes work" was never true for
+        // any alt written across two source lines.
+        $value = Canonical::phrase($node->getAttribute($attr));
 
         if ($value === '') {
             return;

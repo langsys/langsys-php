@@ -2169,4 +2169,141 @@ class ClientTest extends TestCase
             'empty string' => [''],
         ];
     }
+
+    /**
+     * Not stamped when the single element has TEXT siblings.
+     *
+     * `Buy <strong>now</strong>` counted one element and stamped the
+     * `<strong>` with the whole fragment's id, while that element's own subtree
+     * derives a different one - so the served HTML asserted an identity for a
+     * node that does not have it, and any later reader believes the markup.
+     * The earlier multi-root test used two ELEMENTS, so it never saw this.
+     *
+     * @dataProvider textSiblingProvider
+     */
+    public function testABlockWithTextSiblingsIsNotStamped($html)
+    {
+        $client = $this->clientWithCatalog(['UI' => []]);
+
+        $rendered = $client->translateContentBlock($html, 'UI');
+
+        $this->assertStringNotContainsString('data-ls-contentblock', $rendered);
+    }
+
+    public function textSiblingProvider()
+    {
+        return [
+            'text before the element' => ['Buy <strong>now</strong>'],
+            'text after the element'  => ['<strong>Buy</strong> now'],
+            'text on both sides'      => ['Buy <strong>it</strong> now'],
+        ];
+    }
+
+    /**
+     * Positive control: the single-element case still stamps, so the guard
+     * above did not simply disable stamping.
+     */
+    public function testASingleElementFragmentStillStamps()
+    {
+        $client = $this->clientWithCatalog(['UI' => []]);
+
+        $this->assertStringContainsString(
+            'data-ls-contentblock=',
+            $client->translateContentBlock('<div><p>Buy now</p></div>', 'UI')
+        );
+    }
+
+    /**
+     * F7: non-breaking padding around a translated run is not silently dropped.
+     *
+     * The edge checks that decide whether to re-add a leading/trailing space
+     * used ASCII `\s`, so a run padded with U+00A0 lost its padding on apply -
+     * words ran together in the rendered page. Now measured against the same
+     * JavaScript set the collapse uses, so the two cannot drift apart.
+     */
+    public function testNonBreakingPaddingSurvivesApply()
+    {
+        // Keyed by the block's custom_id, which is how a content block's
+        // translations are actually stored. A flat phrase catalog never
+        // resolves here and would make the assertion below measure nothing.
+        $parser = new \Langsys\SDK\Html\HtmlParser();
+        $blockId = $parser->generateCustomId('UI', ['Buy now']);
+
+        $client = $this->clientWithCatalog(['UI' => [$blockId => ['Buy now' => 'Compra ya']]]);
+
+        $rendered = $client->translateContentBlock("<p>\u{00A0}Buy now\u{00A0}</p>", 'UI');
+
+        $this->assertStringContainsString('Compra ya', $rendered, 'sanity: the run translated');
+        $this->assertMatchesRegularExpression(
+            '/>[\s\x{00A0}]Compra ya[\s\x{00A0}]</u',
+            $rendered,
+            'the padding either side must survive, or words run together on the page'
+        );
+    }
+
+    /**
+     * MARK-2, end to end on the page path: a JS-rendered host carrying
+     * `data-ls-phrase` must NOT be re-split.
+     *
+     * A PHP page hosting a JS-rendered component is the ordinary case. If the
+     * page walk does not recognise the other SDK's spelling it splits the host
+     * at its tag boundaries, registers the pieces as separate phrases, and the
+     * component's own single phrase is stranded.
+     */
+    public function testAJsRenderedHostIsNotReSplitOnThePagePath()
+    {
+        $client = $this->clientWithCatalog(['__uncategorized__' => []]);
+        $client->translatePage('<html><body><p data-ls-phrase>Buy <strong>now</strong></p></body></html>');
+
+        $queued = $this->queuedPhraseTexts($client);
+
+        $this->assertNotContains('Buy', $queued, 'the host was split at the tag boundary');
+        $this->assertNotContains('now', $queued, 'the host was split at the tag boundary');
+    }
+
+    /**
+     * Positive control: without the marker the same markup IS split, so the
+     * test above is measuring the marker and not a page path that registers
+     * nothing.
+     */
+    public function testTheSameHostWithoutAMarkerIsSplit()
+    {
+        $client = $this->clientWithCatalog(['__uncategorized__' => []]);
+        $client->translatePage('<html><body><p>Buy <strong>now</strong></p></body></html>');
+
+        $queued = $this->queuedPhraseTexts($client);
+
+        $this->assertNotEmpty($queued, 'the page path must register something, or the marker test is vacuous');
+    }
+
+    /**
+     * Every phrase text this client has queued, from BOTH queues.
+     *
+     * A run that gets split lands in the content-block queue as separate
+     * phrases, not in the phrase queue - so reading pendingPhrases alone
+     * reports "nothing was split" for markup that was split into a block.
+     */
+    private function queuedPhraseTexts($client)
+    {
+        $reflection = new \ReflectionClass($client);
+
+        $phrases = $reflection->getProperty('pendingPhrases');
+        $phrases->setAccessible(true);
+        $blocks = $reflection->getProperty('pendingContentBlocks');
+        $blocks->setAccessible(true);
+
+        $texts = [];
+        foreach ($phrases->getValue($client) as $item) {
+            if (isset($item['phrase'])) {
+                $texts[] = $item['phrase'];
+            }
+        }
+        foreach ($blocks->getValue($client) as $block) {
+            foreach (isset($block['phrases']) ? $block['phrases'] : [] as $phrase) {
+                $texts[] = is_array($phrase) && isset($phrase['phrase']) ? $phrase['phrase'] : $phrase;
+            }
+        }
+
+        return $texts;
+    }
 }

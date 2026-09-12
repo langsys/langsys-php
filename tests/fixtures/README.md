@@ -7,6 +7,7 @@ langsys-js-typescript as well as this SDK:
 |---|---|
 | `interpolation-reference.json` | template + params -> rendered string |
 | `tokenizer-reference.json` | HTML -> tokens -> canonical JSON -> custom_id |
+| `canonicalization-reference.json` | the cross-SDK TOK-1/TOK-2/TOK-4 vectors: HTML -> tokens -> custom_id, with **each lane's measured output** beside the expectation |
 | `custom-id-reference.json` | category + tokens -> custom_id |
 
 **Why one per boundary rather than one suite.** Every cross-SDK defect found so
@@ -205,3 +206,26 @@ plain `{id}` placeholder is not, because it needs CLDR number formatting.
 Dates are deliberately absent: `IntlDateFormatter` output depends on the runtime
 timezone and ICU version, so a date fixture pins the environment rather than the
 contract.
+
+## Shared fixtures, cited by blob
+
+Two files here are adopted byte-identically from sibling SDKs rather than
+authored in this repo. Cite them by blob, never by path: the path has moved
+once already, and a path citation cannot tell you whether the bytes changed.
+
+| File | Origin | Blob |
+|---|---|---|
+| `legacy-custom-id-reference.json` | `langsys-python` | `dc5556466dc54fe82e81ac9fdbf4549b2b76e7ce` |
+| `canonicalization-reference.json` | `langsys-js-typescript` @ `6596faf` | `e4c1f185974fbf2ebda6154f36b8ed7416f1d7fa` |
+
+`tokenizer-reference.json` is authored here; its current blob is recorded so a
+silent edit is detectable:
+
+```
+git rev-parse HEAD:tests/fixtures/tokenizer-reference.json
+```
+
+Its row "script and style contents are never harvested" was **corrected on
+2026-09-11** from `["Keep","var a=1;",".a{}"]` to `["Keep"]`. The name stated
+the intent and the data recorded the defect, so the row locked in the behaviour
+it was named for preventing.

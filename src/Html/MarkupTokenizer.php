@@ -369,6 +369,6 @@ class MarkupTokenizer
      */
     protected function collapseWhitespace($text)
     {
-        return Whitespace::collapse($text);
+        return Canonical::phrase($text);
     }
 }
