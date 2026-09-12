@@ -164,8 +164,8 @@ written**; the six misses are the two causes below.
 | SRV-1 | provisional | The served bytes are the translated ones by construction: `translatePage()` and `translateContentBlock()` return translated HTML synchronously, and there is no post-hydration correction step because there is no hydration. Carried by the rendering tests in `tests/Html/PageTranslatorTest.php` |
 | SRV-2 | provisional | `Client::$translationsMemoryCache` is per-instance and cleared by `resetRequestState()`, which also clears the fetch-failure memo — `tests/ClientTest.php::testAFailedCatalogFetchIsAskedOncePerRequest` pins the clearing half. The long-lived-runtime hazard (Octane, Swoole, RoadRunner) is what that method exists for |
 | SRV-3 | provisional | `flushPendingRegistrations()` runs from a shutdown handler — after the response is flushed — and is gated on the server's per-request write decision. `::testFlushReportsDroppedWhenTheRequestMayNotWrite` proves the read-only half; GATE-3 and GATE-5 carry the rest |
-| SRV-4 | **not implemented** | **Rowed against the rule body rather than the brief.** This lane was briefed to row SRV-4 `n/a` as "the JS hydration half". That is wrong for the half the profile actually assigns here: the body's first sentence — *the server MUST hand the client the catalog it rendered with* — is the SERVER's obligation, and only the synchronous seed belongs to the browser core. This SDK has no hand-off: nothing in `src/` emits a catalog for a client to pick up. `getTranslations()` is public, so an integrator can serialise it themselves, but the SDK neither does it nor documents it. Recorded as a gap, because `n/a` here would claim a pass for work that does not exist |
-| SRV-5 | n/a (no component model) | **Also not for the brief's reason.** The profile names `server`, so this does not fall away on profile — it falls away on mechanism. SRV-5 governs *component child capture*: Svelte's re-entrant render registering 2^n copies of one miss, and React capturing a `Suspense` fallback so a block is keyed on a loading spinner. This SDK walks a DOM once and has no component model, no re-entrant render and no lazy children, so neither failure has a site here. The mechanism is named so the claim is checkable rather than asserted |
+| SRV-4 | **not implemented** | **Rowed against the rule body rather than the brief.** This lane was briefed to row SRV-4 `n/a` as "the JS hydration half". That is wrong for the half the profile actually assigns here: the body's first sentence — *the server MUST hand the client the catalog it rendered with* — is the SERVER's obligation, and only the synchronous seed belongs to the browser core. This SDK has no hand-off: nothing in `src/` emits a catalog for a client to pick up. `getTranslations()` is public, so an integrator can serialise it themselves, but the SDK neither does it nor documents it. Recorded as a gap, because `n/a` here would claim a pass for work that does not exist. **Do not implement against this row without checking the spec first:** the rule's author has confirmed it over-binds a page-translation server SDK — SRV-4 is the hydration hand-off, and the profile word `server` was meant as *the server side of a hydration hand-off* (`langsys-js-server` produces a `result.catalog` for a client to seed from). `translatePage()` emits terminal HTML that nothing hydrates, so there is no client to hand a catalog to. A normative clarification is in flight via the Reviewer, after which this becomes `n/a` for the same **structural** reason as SRV-5 — no hydration model, not absent work. Held at `not implemented` until the rule is corrected, since that is the more honest of the two while the published text reads as it does |
+| SRV-5 | n/a (no component model) | **Also not for the brief's reason.** The profile names `server`, so this does not fall away on profile — it falls away on mechanism. SRV-5 governs *component child capture*: Svelte's re-entrant render registering 2^n copies of one miss, and React capturing a `Suspense` fallback so a block is keyed on a loading spinner. This SDK walks a DOM once and has no component model, no re-entrant render and no lazy children, so neither failure has a site here. The mechanism is named so the claim is checkable rather than asserted. SRV-4 above is the same shape and is expected to join it once its clarification lands |
 
 ## Conformance meta
 
@@ -219,6 +219,23 @@ print(len(binding), len(binding) - len(missing), missing)
 ```
 
 ## Findings raised against this revision
+
+**SRV-4 over-binds a page-translation server SDK — ACCEPTED by the rule's author, clarification
+in flight.** Rowing it `not implemented` rather than the briefed `n/a` surfaced that the profile
+word `server` meant *the server side of a hydration hand-off*. Routed to the Reviewer; this file
+holds the gap row until the published text changes.
+
+**`svg` and `math` diverge between this SDK's two paths — ROUTED, both paths held as they are.**
+TOK-1 names four elements; `PageTranslator::SKIP_ELEMENTS` has always carried six. Measured:
+`<svg><text>SvgLabel</text></svg><math><mi>MathLabel</mi></math>` tokenizes on the content-block
+path and is skipped on the page path. Aligning either way is normative — SVG `<text>` is visible
+translatable content while MathML is not — so neither was chosen here.
+
+**`U+FEFF` is a live cross-SDK divergence with no vector.** JavaScript's `\s` matches it; PCRE's
+`/u` does not, so this SDK leaves it in a token where a JS SDK drops it. Reported rather than
+guessed at; `src/Html/Whitespace.php` records the boundary in its docblock.
+
+
 
 Three places where an honest row could not simply be written, raised with the spec author
 rather than resolved locally.
