@@ -321,7 +321,7 @@ survives a tree difference that preserves document order. Measured:
 | Family | `<Phrase>` key | content-block `custom_id` |
 |---|---|---|
 | foster parenting | **splits** | **survives** — `c9a556e3…` on both trees (category `UI`; the category is part of the hash, so the value is not reproducible without it — the fixture records it); hoisting the stray element does not reorder anything |
-| raw text | **splits** | **splits, and by ARITY** — 3 tokens against 2, which per CID-1 re-keys every block containing one |
+| raw text | **splits** | **splits, and by ARITY** — 3 tokens against 2, which per CID-1 re-keys every block containing one. The 3 is measured here; **the 2 is the TS lane's derivation, not a measurement** — their test DOM builds this body the libxml2 way and so could not have confirmed it |
 
 So the raw-text family is the more damaging, not foster parenting. I reported the opposite to
 two lanes before measuring the block half; the TypeScript lane raised the distinction and it is
