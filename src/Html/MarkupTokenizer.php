@@ -58,10 +58,21 @@ class MarkupTokenizer
 
     /**
      * Elements whose contents must never be translated or registered.
-     * Mirrors PageTranslator::SKIP_ELEMENTS.
+     *
+     * This is the THIRD route text can reach - a tokenized run, marked with
+     * data-ls-phrase - alongside the page walk and the content-block walk, and
+     * all three have to agree about what a phrase is or the same markup gets
+     * different ids depending on how it was reached.
+     *
+     * `svg` is deliberately absent: SVG <text> is visible copy and is
+     * tokenized, per TOK-1. It WAS here, with a comment claiming this list
+     * mirrored PageTranslator::SKIP_ELEMENTS - which stopped being true the
+     * moment the page path learned to translate SVG text, so a marked run
+     * containing an icon registered `Hi {m0o}{m0c}` and its label was never
+     * translated. `math` stays: notation, not prose.
      */
     const OPAQUE_ELEMENTS = [
-        'script', 'style', 'noscript', 'template', 'svg', 'math',
+        'script', 'style', 'noscript', 'template', 'math',
     ];
 
     /**

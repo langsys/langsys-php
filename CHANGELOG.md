@@ -312,6 +312,15 @@ and self-closing tags may differ from the input even when nothing was
 translated. The rendered result is equivalent HTML; it is not guaranteed to be
 the identical string.
 
+### Fixed — links and emphasis no longer vanish from translated pages
+
+- **A phrase wrapped in a link or other inline markup lost that markup when
+  translated.** `<li><a href="/pricing">Pricing</a></li>` came back as
+  `<li>Precios</li>` — the link gone, so a translated navigation menu stopped
+  being clickable. The same applied to `<strong>`, `<span>` and anything else
+  wrapping the whole of a phrase, and to a `<br>` inside one. This is older
+  than the current work and affects released versions.
+
 ### Fixed — found reviewing the tokenizer work above
 
 - **Page titles stopped translating.** Collapsing whitespace when a title was
@@ -333,8 +342,8 @@ the identical string.
 - **What counts as whitespace now matches the JavaScript SDKs exactly.** Three
   characters were treated differently on either side, so the same content could
   be filed under two identities depending on which SDK saw it first.
-- **Text inside `<svg>` is now translated**, on both whole-page and
-  block-by-block translation. Labels in charts, diagrams and inline icons are
+- **Text inside `<svg>` is now translated**, on whole-page translation,
+  block-by-block translation, and inside a marked keep-together phrase. Labels in charts, diagrams and inline icons are
   copy a reader reads, so they are treated as copy. The drawing itself is left
   alone — only the text inside it changes — and text sitting beside an icon is
   unaffected. MathML remains untranslated, being notation rather than prose.

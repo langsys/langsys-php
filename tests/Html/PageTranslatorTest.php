@@ -1860,4 +1860,138 @@ class PageTranslatorTest extends TestCase
             'padding around a block text node must survive too'
         );
     }
+
+    /**
+     * A phrase wrapped in inline markup keeps its markup (SEVERE, pre-existing).
+     *
+     * `replaceTextContent()` looked only at DIRECT child text nodes and then
+     * fell back to `$element->textContent = $translated`, which replaces every
+     * child with a string. So a phrase whose text sits one level down - a link,
+     * a `<strong>`, a `<span>` - had its wrapper DELETED from the served bytes
+     * on translation. `<li><a href="#">Label</a></li>` rendered as
+     * `<li>X:Label</li>`: the link is gone, and with it the navigation.
+     *
+     * Present on `main` (224dc8b) as well as this branch, so not a regression
+     * of the canonicalization work - but it is the same apply path, and the
+     * shapes below are ordinary: nav items, card links, buttons, table cells.
+     *
+     * @dataProvider inlineWrapperProvider
+     */
+    public function testAPhraseWrappedInInlineMarkupKeepsItsMarkup($html, $phrase, $mustKeep): void
+    {
+        $rendered = $this->translatePageWithCatalog(
+            '<html><body>' . $html . '</body></html>',
+            [$phrase => 'X:' . $phrase]
+        );
+
+        $this->assertStringContainsString('X:' . $phrase, $rendered, 'sanity: the phrase translated');
+        $this->assertStringContainsString($mustKeep, $rendered, 'the wrapper must survive translation');
+    }
+
+    public function inlineWrapperProvider(): array
+    {
+        return [
+            'link in a list item' => ['<li><a href="#">Label</a></li>', 'Label', '<a href="#"'],
+            'link in a heading'   => ['<h1><a href="/">Home</a></h1>', 'Home', '<a href="/"'],
+            'strong in a p'       => ['<p><strong>Bold</strong></p>', 'Bold', '<strong>'],
+            'span in a cell'      => ['<td><span>Cell</span></td>', 'Cell', '<span>'],
+            'nested wrappers'     => ['<p><a href="/"><strong>Deep</strong></a></p>', 'Deep', '<strong>'],
+        ];
+    }
+
+    /**
+     * And an element whose text is split by a `<br>` keeps the `<br>`.
+     */
+    public function testABreakInsideATranslatedElementSurvives(): void
+    {
+        $rendered = $this->translatePageWithCatalog(
+            '<html><body><p>Hello<br></p></body></html>',
+            ['Hello' => 'X:Hello']
+        );
+
+        $this->assertStringContainsString('X:Hello', $rendered);
+        $this->assertStringContainsString('<br', $rendered, 'the break must survive');
+    }
+
+    /**
+     * The THIRD route: a tokenized run (data-ls-phrase) containing an icon.
+     *
+     * `MarkupTokenizer::OPAQUE_ELEMENTS` still listed `svg`, under a comment
+     * claiming it mirrored `SKIP_ELEMENTS` - which stopped being true the
+     * moment the page path learned to translate SVG text. So a marked run
+     * registered `Hi {m0o}{m0c}` with the label swallowed, and "both paths
+     * translate SVG text" was two routes out of three.
+     */
+    public function testATokenizedRunExposesSvgText(): void
+    {
+        $registered = $this->registeredTexts(
+            '<html><body><p data-ls-phrase>Hi <svg><path/><text>Label</text></svg></p></body></html>'
+        );
+
+        $this->assertCount(1, $registered, 'a marked run is one phrase');
+        $this->assertStringContainsString('Label', $registered[0], 'the icon label must be inside the tokenized phrase');
+        $this->assertStringContainsString('Hi', $registered[0]);
+    }
+
+    /**
+     * The four canonicalisation sites that were live but unpinned - each an
+     * apply or registration site where reverting to a collapse-only
+     * normalisation changed behaviour and reddened nothing.
+     *
+     * `%name%` is the discriminator: it is normalised by Canonical::phrase and
+     * NOT by Whitespace::collapse, so a site using the wrong one still handles
+     * whitespace correctly and silently fails on placeholders.
+     */
+    public function testABlockTextNodeResolvesAPercentPlaceholder(): void
+    {
+        $parser = new HtmlParser();
+        $id = $parser->generateCustomId('__uncategorized__', ['Hello {name}', 'Later']);
+
+        $rendered = $this->translatePageWithCatalog(
+            '<html><body><p>Hello %name% <span>Later</span></p></body></html>',
+            [$id => ['Hello {name}' => 'Hola {name}', 'Later' => 'X:Later']]
+        );
+
+        $this->assertStringContainsString('Hola Sarah', str_replace('{name}', 'Sarah', $rendered));
+        $this->assertStringNotContainsString('%name%', $rendered, 'the placeholder must not reach the reader');
+    }
+
+    public function testASinglePhraseElementResolvesAPercentPlaceholder(): void
+    {
+        $rendered = $this->translatePageWithCatalog(
+            '<html><body><p>Hello %name%<br></p></body></html>',
+            ['Hello {name}' => 'Hola {name}']
+        );
+
+        $this->assertStringContainsString('Hola', $rendered);
+        $this->assertStringContainsString('<br', $rendered, 'and the break survives');
+    }
+
+    /**
+     * getTextContent() decides whether an element is a simple phrase or a
+     * content block, by comparing its text against the extracted phrase list.
+     * Canonicalising one side and not the other changed which of the two it
+     * became - an identity change, since the id is derived differently.
+     */
+    public function testAPercentPlaceholderDoesNotChangeAnElementsShape(): void
+    {
+        $registered = [];
+        foreach ($this->registeredPayloadFor('<html><body><p>Hello %name%<br></p></body></html>') as $item) {
+            $registered[] = $item['type'] . ':' . (isset($item['phrase']) ? $item['phrase'] : '');
+        }
+
+        $this->assertSame(['phrase:Hello {name}'], $registered, 'must register as a phrase, not a content block');
+    }
+
+    /**
+     * An element's OWN translatable attribute, inside a tokenized run.
+     */
+    public function testATokenizedRunsOwnAttributeIsCanonicalised(): void
+    {
+        $registered = $this->registeredTexts(
+            "<html><body><p data-ls-phrase title=\"A long\n   title\">Hi</p></body></html>"
+        );
+
+        $this->assertContains('A long title', $registered, 'the element\'s own attribute must register collapsed');
+    }
 }

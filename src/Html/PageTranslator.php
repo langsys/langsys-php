@@ -854,23 +854,81 @@ class PageTranslator
      */
     protected function replaceTextContent(DOMElement $element, $original, $translated)
     {
-        // For simple text-only elements, just replace textContent
-        // This handles cases like <p>Hello</p> -> <p>Hola</p>
+        // Find the text node carrying the phrase, at any depth, and replace it
+        // in place.
+        //
+        // This used to check DIRECT children only and then fall back to
+        // `$element->textContent = $translated`, which replaces every child
+        // with a string. A phrase wrapped in inline markup - <li><a>Label</a>
+        // </li>, <p><strong>Bold</strong></p> - has its text one level down,
+        // so the wrapper was DELETED on translation: links disappeared from
+        // translated pages, which for a nav item means the navigation stops
+        // working.
+        //
+        // The direct-child loop that stood here was kept at first and then
+        // removed: replaceDescendantText() checks direct children before it
+        // recurses, so the two were the same comparison written twice - and
+        // duplicating it made the first copy unmutable, since breaking it just
+        // let the second copy answer. Two copies of one rule drifting apart is
+        // the defect this whole lane keeps finding.
+        if ($this->replaceDescendantText($element, $original, $translated)) {
+            return;
+        }
+
+        // Last resort, and it loses markup. Reached only when no single text
+        // node carries the phrase - the text is split across several nodes, as
+        // in a tokenized run, which the tokenizer path handles instead. Logged
+        // rather than silent, because losing markup should be visible.
+        $this->logger->debug('Replacing an element\'s whole content; markup inside it will be lost', [
+            'element' => $element->nodeName,
+            'phrase' => $original,
+        ]);
+
+        $element->textContent = $translated;
+    }
+
+    /**
+     * Replace the first descendant text node carrying $original, in place.
+     *
+     * Depth-first so the innermost wrapper wins, and skipping subtrees that are
+     * excluded from translation or are not prose - a phrase must never be
+     * written into a <script> or a node the author opted out of.
+     *
+     * @param DOMElement $element
+     * @param string $original
+     * @param string $translated
+     * @return bool Whether a node was replaced
+     */
+    protected function replaceDescendantText(DOMElement $element, $original, $translated)
+    {
         foreach ($element->childNodes as $child) {
             if ($child instanceof DOMText) {
-                $normalizedText = Canonical::phrase($child->textContent);
-                if ($normalizedText === $original) {
-                    // Preserve leading/trailing whitespace pattern
-                    $leadingSpace = preg_match('/^' . Whitespace::JS_WHITESPACE . '/u', $child->textContent) ? ' ' : '';
-                    $trailingSpace = preg_match('/' . Whitespace::JS_WHITESPACE . '$/u', $child->textContent) ? ' ' : '';
-                    $child->textContent = $leadingSpace . $translated . $trailingSpace;
-                    return;
+                if (Canonical::phrase($child->textContent) !== $original) {
+                    continue;
                 }
+
+                $leadingSpace = preg_match('/^' . Whitespace::JS_WHITESPACE . '/u', $child->textContent) ? ' ' : '';
+                $trailingSpace = preg_match('/' . Whitespace::JS_WHITESPACE . '$/u', $child->textContent) ? ' ' : '';
+                $child->textContent = $leadingSpace . $translated . $trailingSpace;
+
+                return true;
+            }
+
+            if (!$child instanceof DOMElement) {
+                continue;
+            }
+
+            if (HtmlParser::isTranslationExcluded($child)
+                || in_array(strtolower($child->nodeName), HtmlParser::NON_PROSE_ELEMENTS, true)) {
+                continue;
+            }
+
+            if ($this->replaceDescendantText($child, $original, $translated)) {
+                return true;
             }
         }
 
-        // Fallback: just set textContent (may lose br tags)
-        $element->textContent = $translated;
+        return false;
     }
 
     /**

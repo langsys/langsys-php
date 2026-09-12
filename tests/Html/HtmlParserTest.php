@@ -1988,4 +1988,42 @@ class HtmlParserTest extends TestCase
             'both spellings must reach one key on both sides'
         );
     }
+
+    /**
+     * The ASCII fallback's character class, byte for byte.
+     *
+     * It only runs on malformed UTF-8, which is why its spelling went
+     * unnoticed: inside a PCRE class `\v` is the vertical-whitespace CLASS, not
+     * a vertical tab, so `[\t\n\v\f\r ]` also matched U+0085 - and on a
+     * malformed string that means eating the lead byte of a truncated
+     * sequence, corrupting bytes the collapse was supposed to leave alone.
+     *
+     * Asserted on BYTES, not on a string comparison: the difference is one
+     * byte inside an invalid sequence, which renders as nothing at all.
+     */
+    public function testTheAsciiFallbackDoesNotEatNonAsciiBytes()
+    {
+        // Invalid UTF-8, so preg_replace with /u returns null and the fallback
+        // runs. \xC2\x85 is a well-formed NEL; the trailing \xFF makes the
+        // whole string invalid.
+        $input = "a\xC2\x85b\xFF";
+
+        $out = \Langsys\SDK\Html\Whitespace::collapse($input);
+
+        $this->assertSame(
+            bin2hex("a\xC2\x85b\xFF"),
+            bin2hex($out),
+            'the fallback must leave non-ASCII bytes alone; the old class ate the lead byte'
+        );
+    }
+
+    /**
+     * Control: the fallback still collapses the ASCII whitespace it is for.
+     */
+    public function testTheAsciiFallbackStillCollapsesAsciiWhitespace()
+    {
+        $out = \Langsys\SDK\Html\Whitespace::collapse("a \t\n b\xFF");
+
+        $this->assertSame(bin2hex("a b\xFF"), bin2hex($out));
+    }
 }
