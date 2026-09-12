@@ -45,36 +45,19 @@ class PageTranslator
     /**
      * Elements the page walk does not descend into.
      *
-     * `svg` is here, and the spec says SVG text should be translated - so this
-     * is a KNOWN, deliberate non-conformance on the page path, not an oversight.
+     * `svg` is deliberately NOT here. SVG `<text>` is visible copy, so it is
+     * tokenized and translated like any other text - see the svg branch in
+     * walkForExtraction(), and `containsGraphic()` for the apply side.
      *
-     * It was removed once and reverted. Removing it alone did nothing (the walk
-     * drops bare text under a non-block element), and making `svg` a block
-     * element instead broke the commonest markup on a page: `containsNestedBlocks()`
-     * then reported true for the icon's parent, so the walker recursed past it
-     * and skipped the parent's OWN text - `<p>Click <svg/> to continue</p>`
-     * registered nothing at all. Standalone SVG fared worse: extracted as a
-     * simple phrase, it went through the text-content fallback and every
-     * `<path>` in the graphic was replaced by the translated string.
-     *
-     * Doing this properly means translating the `<text>` node in place rather
-     * than treating `<svg>` as a container of prose. Until that exists, skipping
-     * is the honest behaviour: SVG labels stay in the base language, which is a
-     * missing translation rather than a deleted graphic or a lost paragraph.
-     *
-     * The CONTENT-BLOCK path does tokenize SVG text, and that is not a
-     * contradiction to fix by making them match - it is what the TS core does
-     * too, so the block path is already fleet-consistent.
-     *
-     * Note for anyone running mutation coverage: removing `svg` from this list
-     * changes NO output and no test can catch it, because the walk drops bare
-     * text under a non-block element anyway. That is an equivalent mutant
-     * rather than a coverage gap - the entry states intent and guards the day
-     * something promotes `svg` to a block element, which is exactly how the
-     * regression above happened.
+     * It WAS here, and an earlier attempt to remove it promoted `svg` to a
+     * block element, which broke every icon-bearing paragraph on the page:
+     * containsNestedBlocks() then reported true for the icon's parent, so the
+     * walker recursed past it and skipped the parent's own text. `svg` stays
+     * out of BLOCK_ELEMENTS for that reason - it is handled as a leaf where it
+     * is found, not promoted to a container.
      */
     const SKIP_ELEMENTS = [
-        'script', 'style', 'noscript', 'template', 'math', 'svg',
+        'script', 'style', 'noscript', 'template', 'math',
     ];
 
     /**
@@ -385,6 +368,32 @@ class PageTranslator
                 continue;
             }
 
+            // A standalone <svg>: its <text> nodes are prose, but the element
+            // around them is a GRAPHIC. Handled here as a leaf rather than by
+            // recursing - the generic walk only descends into elements and
+            // would drop the bare text under <text> entirely, which is why
+            // simply removing `svg` from SKIP_ELEMENTS changed nothing.
+            //
+            // Registered as a content block, never as a simple phrase, because
+            // the simple-phrase apply path replaces the element's whole
+            // textContent and would delete every <path> in the drawing.
+            if ($tagName === 'svg') {
+                $extractedPhrases = $this->htmlParser->extractPhrases($this->getInnerHtml($child));
+
+                if (!empty($extractedPhrases)) {
+                    $itemCategory = $effectiveCategory !== null ? $effectiveCategory : '__uncategorized__';
+                    $contentBlocks[] = [
+                        'customId' => $this->htmlParser->generateCustomId($itemCategory, $extractedPhrases),
+                        'phrases' => $extractedPhrases,
+                        'element' => $child,
+                        'html' => $this->getInnerHtml($child),
+                        'category' => $itemCategory,
+                    ];
+                }
+
+                continue;
+            }
+
             // Is this a block element?
             if (in_array($tagName, self::BLOCK_ELEMENTS, true)) {
                 if ($this->containsNestedBlocks($child)) {
@@ -407,7 +416,16 @@ class PageTranslator
 
                     // If exactly 1 phrase and it matches the text content,
                     // treat as simple phrase (even with inline formatting like <strong>)
-                    if (count($extractedPhrases) === 1 && $extractedPhrases[0] === $textContent) {
+                    // `&& !containsGraphic()`: the simple-phrase branch applies
+                    // its translation by replacing the element's textContent,
+                    // which is fine for inline formatting and fatal for a
+                    // drawing. `<p><svg><path/><text>Label</text></svg></p>`
+                    // rendered as `<p>Etiqueta</p>` - the whole graphic gone.
+                    // A subtree containing an <svg> always takes the content
+                    // block branch, whose apply walks text nodes in place.
+                    if (count($extractedPhrases) === 1
+                        && $extractedPhrases[0] === $textContent
+                        && !$this->containsGraphic($child)) {
                         $phrases[] = [
                             'text' => $textContent,
                             'element' => $child,
@@ -430,6 +448,26 @@ class PageTranslator
                 $this->walkForExtraction($child, $phrases, $contentBlocks, $effectiveCategory);
             }
         }
+    }
+
+    /**
+     * Whether this subtree contains a drawing whose elements must survive.
+     *
+     * Used to keep a subtree out of the simple-phrase branch, which translates
+     * by assigning to textContent and so replaces every child element with a
+     * string. Inline formatting (`<strong>`, `<em>`) survives that because it
+     * carries no meaning beyond the text; a `<path>` does not.
+     *
+     * @param DOMElement $element
+     * @return bool
+     */
+    protected function containsGraphic(DOMElement $element)
+    {
+        if (strtolower($element->nodeName) === 'svg') {
+            return true;
+        }
+
+        return $element->getElementsByTagName('svg')->length > 0;
     }
 
     /**

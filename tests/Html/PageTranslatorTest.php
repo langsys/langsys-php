@@ -1464,6 +1464,24 @@ class PageTranslatorTest extends TestCase
     }
 
     /**
+     * Every phrase text a page registers, in order, from both wire shapes.
+     */
+    private function registeredTexts($html): array
+    {
+        $texts = [];
+        foreach ($this->registeredPayloadFor($html) as $item) {
+            if (isset($item['phrase'])) {
+                $texts[] = $item['phrase'];
+            }
+            foreach (isset($item['phrases']) ? $item['phrases'] : [] as $nested) {
+                $texts[] = $nested['phrase'];
+            }
+        }
+
+        return $texts;
+    }
+
+    /**
      * Phrases this SDK actually POSTs for a page, as opposed to what it claims
      * to have found. Registration is what creates the catalog key, so this is
      * the only honest left-hand side for a register/lookup test.
@@ -1560,41 +1578,120 @@ class PageTranslatorTest extends TestCase
     }
 
     /**
-     * CHARACTERISATION, not conformance: the page path does NOT translate SVG
-     * text, and the spec says it should.
+     * TOK-1: the page path translates SVG text, and skips MathML.
      *
-     * This asserts the current behaviour so the gap is visible and so the day
-     * it closes, this test fails and has to be rewritten deliberately. It is
-     * not evidence for TOK-1 and the conformance row says so.
+     * This was a characterisation test asserting the opposite - the gap was
+     * real and recorded - and it failed the moment the gap closed, which is
+     * what a characterisation test is for.
      *
-     * The attempt that made it conform is why the gap is still here: treating
-     * `<svg>` as a block broke every icon-bearing paragraph, heading and list
-     * item on the page path, and destroyed standalone graphics. The two tests
-     * below this one pin both of those. Doing it properly means translating the
-     * `<text>` node in place.
-     *
-     * The content-block path DOES tokenize SVG text, matching the TS core.
+     * `<svg>` is handled as a LEAF where it is found, not promoted to a block
+     * element. The promotion is what broke icon-bearing paragraphs the first
+     * time: it made containsNestedBlocks() true for the icon's parent, so the
+     * walker recursed past it and skipped the parent's own text.
      */
-    public function testThePagePathDoesNotYetTranslateSvgText(): void
+    public function testThePagePathTranslatesSvgTextButNotMath(): void
     {
-        $registered = [];
-        foreach ($this->registeredPayloadFor(
+        $registered = $this->registeredTexts(
             '<html><body><svg><text>SvgLabel</text></svg>'
             . '<math><mi>MathLabel</mi></math><p>Ordinary</p></body></html>'
-        ) as $item) {
+        );
+
+        // Sorted, not in document order: a standalone <svg> registers as a
+        // content block and the paragraph as a phrase, and the two queues flush
+        // as separate batches - so cross-queue order is an artefact of the
+        // flush, not a property worth pinning. Order WITHIN a block is a real
+        // property and is asserted in testAnInlineIconKeepsDocumentOrder.
+        sort($registered);
+
+        $this->assertSame(['Ordinary', 'SvgLabel'], $registered);
+    }
+
+    /**
+     * D1's ordering clause: a block containing an inline icon registers its own
+     * text AND the svg's text, in document order.
+     *
+     * This is the clause the first attempt broke - promoting `<svg>` to a block
+     * element made the walker skip the parent's own text, so `Hello` vanished
+     * and only `Label` survived. assertSame on the whole list, because the
+     * defect was text going missing and containment cannot see that.
+     *
+     * @dataProvider inlineIconOrderProvider
+     */
+    public function testAnInlineIconKeepsDocumentOrder($html, array $expected): void
+    {
+        $this->assertSame($expected, $this->registeredTexts('<html><body>' . $html . '</body></html>'));
+    }
+
+    public function inlineIconOrderProvider(): array
+    {
+        return [
+            'text then icon text' => [
+                '<p>Hello <svg><text>Label</text></svg></p>', ['Hello', 'Label'],
+            ],
+            'icon text then text' => [
+                '<p><svg><text>Label</text></svg> Hello</p>', ['Label', 'Hello'],
+            ],
+            'text either side' => [
+                '<p>Before <svg><text>Mid</text></svg> After</p>', ['Before', 'Mid', 'After'],
+            ],
+            'decorative icon, no svg text' => [
+                '<p>Click <svg><path/></svg> to continue</p>', ['Click', 'to continue'],
+            ],
+        ];
+    }
+
+    /**
+     * D1's in-place clause: translating SVG text replaces the text node and
+     * leaves the drawing alone.
+     *
+     * Both shapes that used to destroy it: a standalone `<svg>`, and an `<svg>`
+     * that is an element's only content - the latter took the simple-phrase
+     * branch, which applies by assigning to textContent, and rendered
+     * `<p>Etiqueta</p>` with every `<path>` gone.
+     *
+     * @dataProvider svgApplyProvider
+     */
+    public function testTranslatingSvgTextLeavesTheDrawingIntact($html, $why): void
+    {
+        $rendered = $this->translatePageWithCatalog($html, $this->catalogFor($html));
+
+        $this->assertStringContainsString('X:Label', $rendered, 'the label must actually translate');
+        $this->assertStringContainsString('<path', $rendered, $why);
+        $this->assertStringContainsString('<text', $rendered, 'the text element must survive too');
+    }
+
+    public function svgApplyProvider(): array
+    {
+        $svg = '<svg viewBox="0 0 10 10"><path d="M0 0L1 1"/><text x="1">Label</text></svg>';
+
+        return [
+            'standalone'        => ['<html><body>' . $svg . '</body></html>', 'a standalone drawing must survive'],
+            'only child of a p' => ['<html><body><p>' . $svg . '</p></body></html>', 'this shape used to render as <p>Etiqueta</p>'],
+            'beside text'       => ['<html><body><p>Hello ' . $svg . '</p></body></html>', 'and beside text'],
+        ];
+    }
+
+    /**
+     * A catalog that resolves whatever the page registers, flat and by block id,
+     * so an apply test does not have to know which shape it will take.
+     */
+    private function catalogFor($html): array
+    {
+        $catalog = [];
+        foreach ($this->registeredPayloadFor($html) as $item) {
             if (isset($item['phrase'])) {
-                $registered[] = $item['phrase'];
+                $catalog[$item['phrase']] = 'X:' . $item['phrase'];
             }
-            foreach (isset($item['phrases']) ? $item['phrases'] : [] as $nested) {
-                $registered[] = $nested['phrase'];
+            if (isset($item['phrases'])) {
+                $entry = [];
+                foreach ($item['phrases'] as $nested) {
+                    $entry[$nested['phrase']] = 'X:' . $nested['phrase'];
+                }
+                $catalog[$item['custom_id']] = $entry;
             }
         }
 
-        $this->assertSame(
-            ['Ordinary'],
-            $registered,
-            'known gap: SVG text is skipped on the page path; MathML is correctly skipped'
-        );
+        return $catalog;
     }
 
     /**
