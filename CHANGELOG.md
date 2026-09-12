@@ -72,7 +72,7 @@ paragraph below described the behaviour accurately when written; it is kept
 because the cost analysis is the reason the rule exists, and struck through in
 substance rather than silently removed.
 
-The original text follows. `HtmlParser::walkNode()` had no skip
+What follows is the original analysis, EDITED rather than quoted: its descriptions of the behaviour are moved to the past tense, and its closing claims that the hazard was still live are rewritten, because leaving them in the present tense under a RESOLVED header would assert a hazard that no longer exists. `HtmlParser::walkNode()` had no skip
 list and the content-block path never consulted `PageTranslator::SKIP_ELEMENTS`
 (the fixture's script/style coverage is discussed on `main` in 224dc8b, which is
 a README commit — it is not where that behaviour was introduced), so script
@@ -91,9 +91,9 @@ the input and the example does not reproduce without it:
   -> 55b0f8a69c72a22b3dd829d9e4d2e3ac   (legacy form: 97250baee9d7…)
 ```
 
-Neither the current nor the legacy id is stable, so no id-based lookup can match
-such a block. They resolve to nothing, render untranslated, and re-register on
-every request.
+Neither the current nor the legacy id was stable, so no id-based lookup could
+match such a block. They resolved to nothing, rendered untranslated, and
+re-registered on every request.
 
 **This was not a defect in the fallback, and was not 838's to fix — until the
 coordinated decision it asked for actually arrived.** `walkNode()` had never had
@@ -110,23 +110,21 @@ noise: per render such a block creates a new block row that is never cleaned up
 **billed machine-translation batch covering the whole block × every target
 locale**. Confirmed against the backend by the verification pass.
 
-For this branch it means "the hazard is covered" holds for content blocks whose
-extracted content is stable between renders, not for all of them. Whether a
-given project's blocks contain inline scripts is a question about their stored
-content, not about this SDK.
+At the time this meant "the hazard is covered" held only for content blocks
+whose extracted content was stable between renders. TOK-1 made that all of
+them: script and style source no longer reaches the token list at all.
 
 **Measured population: zero.** A read-only production investigation (run by the
 backend verification pass, not by this repo — recorded here because it bounds
 the statement above) found **no script-bearing content among the 335 pipe-form
 blocks**, and no genuine instance anywhere in production (~3,012 blocks): no
 harvested script content, no re-registration clusters, no material machine-
-translation spend. So the scope limit is a **prospective** statement about what
-the fallback can and cannot reach, not a description of current exposure — and
-the gate closes clean for the population it was written for.
+translation spend. So the scope limit was a **prospective** statement rather than a description of
+exposure, and the gate closed clean for the population it was written for.
 
-Keep the limit documented anyway. It is true of the mechanism regardless of
-today's data, and the population can change the moment someone puts an analytics
-snippet inside a translated block.
+The limit stays on record, but it no longer describes the SDK: TOK-1 removed the
+mechanism, so an analytics snippet inside a translated block no longer changes
+its id or re-registers it.
 
 ### Added
 

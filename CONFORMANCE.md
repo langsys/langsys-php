@@ -443,10 +443,12 @@ counted as occurrences and every expectation fails - the check would be measurin
 several places) is written down as such, so that the NEXT person can tell a surviving
 correction from a missed one.
 
-The check covers **CONFORMANCE.md and CHANGELOG.md**. It was CONFORMANCE-only, and the gap
+The check covers **CONFORMANCE.md, CHANGELOG.md and tests/fixtures/README.md**. It was CONFORMANCE-only, and the gap
 showed: the release gate in CHANGELOG went on describing content blocks harvesting script
 source as a live hazard for a whole release after TOK-1 closed it, and nothing here could see
-that. A stale claim is as damaging in the file customers read as in the one reviewers do.
+that. A stale claim is as damaging in the file customers read as in the one reviewers do. The fixtures README was added after the same retired hazard turned up still described as live there too - a third file this check could not read.
+
+**Limit of the instrument, stated where it is used:** it matches FIXED STRINGS. A paraphrase of a retired claim - "has never had a skip list" in place of the sentence it retired - passes. It catches a sentence coming back, not an idea coming back.
 
 ```sh
 # Run from the repo root. Exits non-zero on any mismatch.
@@ -476,6 +478,8 @@ done <<'EOF'
 0	CONFORMANCE.md	7f978ecb
 0	CHANGELOG.md	has no skip
 0	CHANGELOG.md	never consults
+0	tests/fixtures/README.md	has no skip
+0	tests/fixtures/README.md	Why it has not been fixed here
 EOF
 exit $fail
 ```
@@ -493,7 +497,7 @@ version line, both rebase notes, the ahead-of-publication note and the script pr
 `b657b490` once and `45cdddf8` twice are correction records naming what this file used to cite.
 
 **Run 2026-09-12 against this text**, extracted verbatim from this block, under `sh`, `bash`
-and `zsh`: all nine match, exit 0. Positive control: with `All 45 binding` planted above, it
+and `zsh`: every row matches, exit 0. (This line said "all nine match"; the block has grown since, and a row count written into the prose about the check drifts exactly the way the check exists to catch, so it is not written down here any more.) Positive control: with `All 45 binding` planted above, it
 reports the mismatch and exits 1. Re-run it by extracting this block rather than by
 retyping it — the previous failure was precisely a recorded run of text that differed from
 what was committed.

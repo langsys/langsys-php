@@ -100,10 +100,12 @@ class PageTranslator
     /**
      * @var LoggerInterface|null Defaulted in the CONSTRUCTOR, not here.
      *
-     * PHP cannot `new` in a property initializer, so an instance built with
-     * newInstanceWithoutConstructor() genuinely has null here. That is a real
-     * limit, not a claim to round off: every constructed instance is safe, and
-     * only reflection can produce one that is not.
+     * PHP cannot `new` in a property initializer, so this is null on any
+     * instance built WITHOUT running this constructor. That is a real limit,
+     * not a claim to round off, and reflection is not the only way in: a
+     * subclass whose constructor skips parent::__construct(), or a plain
+     * unserialize(), produces one too. Every instance that runs this
+     * constructor is safe.
      */
     protected $logger;
 

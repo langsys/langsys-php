@@ -2022,7 +2022,17 @@ class PageTranslatorTest extends TestCase
         // forbids `new` in a property initializer; the constructor supplies it.
         // So the honest claim is that every constructed instance is safe, and
         // that is what this asserts.
-        $translator = new PageTranslator($this->createMockClient());
+        //
+        // The logger comes from the client exactly as it does in production, and
+        // it is a RecordingLogger so the log is OBSERVABLE: the test is named for
+        // logging, and an earlier version asserted only that the fallback ran -
+        // deleting the debug() call reddened nothing.
+        $recorder = new \Langsys\SDK\Tests\Format\RecordingLogger();
+        $client = new Client('test-api-key', 'test-project-id', [
+            'cache' => new NullCache(),
+            'logger' => $recorder,
+        ]);
+        $translator = new PageTranslator($client);
 
         $reflection = new \ReflectionClass(PageTranslator::class);
         $method = $reflection->getMethod('replaceTextContent');
@@ -2038,6 +2048,14 @@ class PageTranslatorTest extends TestCase
         $method->invokeArgs($translator, [$element, 'HelloWorld', 'X']);
 
         $this->assertSame('X', $element->textContent, 'the fallback still runs');
+
+        $logged = array_values(array_filter($recorder->records, function ($record) {
+            return $record[0] === 'debug' && strpos($record[1], 'markup inside it will be lost') !== false;
+        }));
+
+        $this->assertCount(1, $logged, 'the markup-losing fallback must log that it is losing markup');
+        $this->assertSame('p', $logged[0][2]['element']);
+        $this->assertSame('HelloWorld', $logged[0][2]['phrase']);
     }
 
     /**

@@ -133,44 +133,27 @@ attributes including ARIA, button and submit values, `translate="no"` and
 `data-notrans` exclusion, script/style handling, comments, void elements,
 duplicate ordering, and whitespace collapsing.
 
-### Case [12] records a defect, not a decision
+### Case [12] recorded a defect — RESOLVED by TOK-1
 
-That entry used to be described here as "script/style **opacity**", which reads
-as "they are skipped". They are not. The fixture records what the code does:
+This row once asserted `["Keep", "var a=1;", ".a{}"]` for
+`<div><p>Keep</p><script>var a=1;</script><style>.a{}</style></div>`, under a
+description saying script and style contents are never harvested. The data was
+right about the code at the time and the description was the intent: the
+content-block path had no skip list, so a `<script>` inside a content block was
+harvested as a translatable phrase and reached the registration list, while the
+page-walk path did skip it. One boundary, not a general blind spot.
 
-```
-html   : <div><p>Keep</p><script>var a=1;</script><style>.a{}</style></div>
-tokens : ["Keep", "var a=1;", ".a{}"]
-```
+It was left recording the defect rather than the intention because the row is a
+contract `langsys-js-typescript` asserts against, and fixing the tokenizer
+re-keys every content block containing a script or a style, so the direction
+needed a cross-SDK decision. That decision is TOK-1. The content-block path now
+skips `<script>`, `<style>`, `<template>`, `<noscript>` and `<math>`, the row
+asserts `["Keep"]` (corrected 2026-09-11), and the re-keying was measured on
+production as negligible.
 
-`HtmlParser::walkNode()` has no skip list. `PageTranslator::SKIP_ELEMENTS`
-(`src/Html/PageTranslator.php:45`, checked at `:322`) does, but the content-block
-path never reaches that check: `extractAsContentBlock()` hands the element's
-inner HTML straight to `extractPhrases()` (`:488-489`). So a `<script>` inside a
-content block is harvested as a translatable phrase, and it reaches the
-**registration list** — measured, on the documented public API:
-
-```
-$client->translateContentBlock($html, 'pricing');  ->  getPendingContentBlocks()
-  [0] Our pricing
-  [1] Choose a plan
-  [2] window.dataLayer.push({event:"view",sku:"ABC-123"});
-  [3] .plan{color:#fff}
-```
-
-Control, and it is what makes the diagnosis specific: the **same page** without
-`data-langsys-contentblock` queues only `["T","Plans","Pick one"]`. The skip list
-works on the page-walk path and is absent from the content-block path — this is
-one boundary, not a general blind spot.
-
-**Why it has not been fixed here.** This file is a contract
-`langsys-js-typescript` asserts against, so changing case [12] changes their
-build, and changing the tokenizer re-keys every existing content block that
-contains a script or a style. Which direction is correct depends on what the JS
-tokenizer does with the same input, which cannot be determined from this
-repository. Raised with the base SDK and with Darryl; until it is answered, the
-fixture records the behaviour honestly rather than describing an intention the
-code does not have.
+This section described the hazard in the present tense for a release after it
+was fixed — the same staleness later found in the CHANGELOG's release gate. The
+stale-phrase check in `CONFORMANCE.md` now reads this file too.
 
 **The prose was the wrong half to trust.** The word "opacity" and the token list
 sat four lines apart and contradicted each other, and the fixture passed

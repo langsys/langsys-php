@@ -2049,9 +2049,9 @@ class HtmlParserTest extends TestCase
      * means the exemption stops applying the moment the bytes do change, so a
      * local edit to a vendored file fails here instead of hiding behind a name.
      *
-     * @dataProvider fixtureFileProvider
+     * @dataProvider scannedFileProvider
      */
-    public function testFixturesWriteInvisibleCharactersAsEscapes($path, $blob): void
+    public function testSourcesWriteInvisibleCharactersAsEscapes($path, $blob): void
     {
         $vendored = [
             // canonicalization-reference.json, langsys-js-typescript @ 6596faf
@@ -2068,9 +2068,12 @@ class HtmlParserTest extends TestCase
         $raw = file_get_contents($path);
         $found = [];
 
-        foreach (preg_split('//u', $raw, -1, PREG_SPLIT_NO_EMPTY) as $char) {
+        $chars = preg_split('//u', $raw, -1, PREG_SPLIT_NO_EMPTY);
+        $this->assertNotFalse($chars, $path . ' is not valid UTF-8, so it cannot be scanned');
+
+        foreach ($chars as $char) {
             $cp = mb_ord($char, 'UTF-8');
-            if (in_array($cp, self::INVISIBLE_CODEPOINTS, true)) {
+            if (isset(self::invisibleCodepoints()[$cp])) {
                 $found[sprintf('U+%04X', $cp)] = true;
             }
         }
@@ -2078,25 +2081,84 @@ class HtmlParserTest extends TestCase
         $this->assertSame(
             [],
             array_keys($found),
-            basename($path) . ' carries invisible characters as literals; write them as \\uXXXX escapes'
+            $path . ' carries invisible characters as literals; write them as \\uXXXX escapes'
         );
     }
 
     /**
-     * The codepoints that must never appear raw in a fixture: whitespace this
-     * SDK collapses, plus the format characters it deliberately does not.
+     * The codepoints that must never appear raw in a scanned file.
+     *
+     * DERIVED from the collapse set rather than typed out. The typed list went
+     * stale the moment the collapse set became JavaScript's `\s`: it omitted
+     * eleven codepoints the SDK collapses (U+1680, U+2000-U+2006, U+2008,
+     * U+2009, U+205F), so a raw U+2003 in a fixture reddened nothing. Derived,
+     * the scan cannot fall behind the rule it protects.
+     *
+     * Plus, explicitly, the invisible codepoints the SDK deliberately does NOT
+     * collapse - a reader cannot see them and an editor or BOM-stripper may
+     * silently change them, so they must be escaped too - and ASCII VT/FF,
+     * which libxml2 drops from DOM text. These cannot be derived from the
+     * collapse set, because not being in it is what defines them.
      */
-    const INVISIBLE_CODEPOINTS = [
-        0x0085, 0x00A0, 0x000B, 0x000C, 0x180E, 0x2007, 0x200A, 0x200B,
-        0x2028, 0x2029, 0x202F, 0x2060, 0x3000, 0xFEFF,
-    ];
-
-    public function fixtureFileProvider(): array
+    private static function invisibleCodepoints(): array
     {
-        $out = [];
-        foreach (glob(dirname(__DIR__) . '/fixtures/*.json') as $path) {
-            $out[basename($path)] = [$path, sha1("blob " . filesize($path) . "\0" . file_get_contents($path))];
+        static $set = null;
+        if ($set !== null) {
+            return $set;
         }
+
+        $set = [];
+        for ($cp = 0x80; $cp <= 0xFFFF; $cp++) {
+            if ($cp >= 0xD800 && $cp <= 0xDFFF) {
+                continue;
+            }
+            $char = mb_chr($cp, 'UTF-8');
+            if ($char !== false && \Langsys\SDK\Html\Whitespace::collapse('a' . $char . 'b') === 'a b') {
+                $set[$cp] = true;
+            }
+        }
+
+        foreach ([0x000B, 0x000C, 0x0085, 0x180E, 0x200B, 0x2060] as $cp) {
+            $set[$cp] = true;
+        }
+
+        return $set;
+    }
+
+    /**
+     * Every file the scan covers: all PHP under src/ and tests/, the Markdown
+     * under tests/, and the JSON fixtures. It was fixtures only, which let a raw
+     * U+00A0 sit in a test source or in tests/fixtures/README.md with nothing
+     * reddening - and a test file is where an invisible literal does the most
+     * damage, because it is the thing making assertions about that codepoint.
+     */
+    public function scannedFileProvider(): array
+    {
+        $root = dirname(__DIR__, 2);
+        $out = [];
+
+        foreach (['src', 'tests'] as $dir) {
+            $files = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($root . '/' . $dir, \FilesystemIterator::SKIP_DOTS)
+            );
+
+            foreach ($files as $file) {
+                $path = $file->getPathname();
+                $ext = strtolower($file->getExtension());
+                $inScope = $ext === 'php'
+                    || ($dir === 'tests' && $ext === 'md')
+                    || ($dir === 'tests' && $ext === 'json' && strpos($path, '/fixtures/') !== false);
+
+                if (!$inScope) {
+                    continue;
+                }
+
+                $relative = substr($path, strlen($root) + 1);
+                $out[$relative] = [$path, sha1('blob ' . filesize($path) . "\0" . file_get_contents($path))];
+            }
+        }
+
+        ksort($out);
 
         return $out;
     }
