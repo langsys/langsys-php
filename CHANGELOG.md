@@ -337,6 +337,19 @@ the identical string.
 - **Padding around a translated phrase could vanish**, running words together,
   when that padding was a non-breaking space.
 
+### Notes
+
+- **Some markup is read differently by this SDK than by the JavaScript ones,
+  and it is not something either side can fix in its own code.** PHP and the
+  browser disagree about how to interpret three kinds of imperfect HTML: text
+  inside `<textarea>` and `<title>`, content that strays inside a `<table>`,
+  and unclosed tags. Unclosed tags agree. The other two do not, which means the
+  same source can be filed under two different entries depending on which SDK
+  saw it. The table case is the one to know about, because a stray element
+  inside a table splits a phrase with nothing visibly wrong on the page.
+  Measured and recorded in `CONFORMANCE.md` rather than worked around; keeping
+  table markup well-formed avoids it.
+
 ### Changed
 
 - **What counts as whitespace now matches the JavaScript SDKs exactly.** Three

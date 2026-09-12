@@ -280,6 +280,34 @@ was stated — 32 live of 518, not 330 of 3,012.
 the collapse set is now JavaScript's `\s` exactly, so U+FEFF collapses and U+0085/U+180E no
 longer do. `src/Html/Whitespace.php` records the full comparison.
 
+**Four parser-level splits against the JS family — MEASURED 2026-09-12, named, not papered
+over.** A tokenized phrase's key IS its encoded string, so a disagreement about how the DOM is
+BUILT changes the key before canonicalisation is reached; no TOK rule can close one. Measured
+against `langsys-js-server` @ `8105faa`, where real Chromium 153 agreed with parse5 9 of 9 over
+these families, so the expectations are the family's answer rather than one engine's. libxml2
+scores **3 of 7**:
+
+| Family | Result | What libxml2 does differently |
+|---|---|---|
+| implied close | **3/3 agree** | `<p>` after `<p>`, bare `<li>`, bare `<option>` all close identically |
+| raw text | **0/2 diverge** | Chromium and parse5 make a `<textarea>`/`<title>` body RAW TEXT, so `<b>` is literal characters. libxml2 parses it as markup, so `<b>` becomes an element, takes a slot, and shifts every later slot index |
+| foster parenting | **0/2 diverge** | Chromium and parse5 move a stray `<b>` and loose text OUT of a `<table>`, ahead of it. libxml2 leaves both inside. They also insert a `<tbody>` libxml2 does not, adding a slot level |
+
+Each divergence is a **different catalog key for identical source**: `7f978ecb…`/`067f4926…`,
+`17d95274…`/`7c0cf4fb…`, `01a211ec…`/`5ce92472…`, `fdb953f2…`/`419db4c1…` (JS family / libxml2).
+
+This is the same shape as the `<noscript>` reversal the fleet already knows, and the same shape
+as `U+000B`/`U+000C` below: **a parser-model split this SDK cannot close from its own side.**
+Recorded rather than worked around, and pinned by
+`tests/Html/MarkupTokenizerTest.php::testParseModelAgreementIsWhatWeMeasured` — the divergent
+rows assert the divergence, so if one ever starts agreeing the row is stale and must be
+rewritten, and the agreeing rows assert agreement so losing it fails. Fixture:
+`tests/fixtures/parse-model-reference.json`.
+
+The foster-parenting rows are the ones to watch: a stray element inside a table **splits a
+phrase silently**, with no error and nothing visible in the rendered page, and tables are where
+hand-written markup is least likely to be well-formed.
+
 **`U+000B`/`U+000C` are a divergence this SDK cannot close.** libxml2 DROPS them from DOM
 text entirely (`<p>a\x0Bb</p>` yields `ab`), where a JS DOM keeps them and collapses them to
 a space (`a b`). So a document carrying a vertical tab or form feed derives different ids in

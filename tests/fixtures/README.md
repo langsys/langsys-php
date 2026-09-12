@@ -8,6 +8,7 @@ langsys-js-typescript as well as this SDK:
 | `interpolation-reference.json` | template + params -> rendered string |
 | `tokenizer-reference.json` | HTML -> tokens -> canonical JSON -> custom_id |
 | `canonicalization-reference.json` | the cross-SDK TOK-1/TOK-2/TOK-4 vectors: HTML -> tokens -> custom_id, with **each lane's measured output** beside the expectation |
+| `parse-model-reference.json` | where libxml2 and the JS family build different DOMs from the same bytes, and what that does to the key |
 | `custom-id-reference.json` | category + tokens -> custom_id |
 
 **Why one per boundary rather than one suite.** Every cross-SDK defect found so

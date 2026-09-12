@@ -395,4 +395,106 @@ class MarkupTokenizerTest extends TestCase
             $this->renderToHtml($withSentinels, $encoded['slots'])
         );
     }
+
+    // =========================================================================
+    // Parse model — libxml2 against the JS family
+    // =========================================================================
+
+    /**
+     * Where libxml2 and the JS family build DIFFERENT DOMs from the same bytes.
+     *
+     * A tokenized phrase's key IS its encoded string, so a disagreement about
+     * how the tree is BUILT changes the key before canonicalisation is reached.
+     * No amount of TOK-1/TOK-2 work can close one of these: the tokenizer is
+     * faithfully encoding a different tree.
+     *
+     * The JS-family expectations are langsys-js-server @ 8105faa, where real
+     * Chromium 153 was measured against parse5 over these same families and
+     * agreed 9 of 9 - so they are the family's answer, not one engine's.
+     *
+     * This is a CHARACTERISATION of libxml2. The divergent rows assert what
+     * this SDK actually produces, so that a change in libxml2, in our load
+     * flags, or in the tokenizer shows up here rather than as mismatched ids in
+     * production. Agreement rows assert agreement and would fail if it were
+     * lost.
+     *
+     * @dataProvider parseModelProvider
+     */
+    public function testParseModelAgreementIsWhatWeMeasured($case): void
+    {
+        $doc = new \DOMDocument();
+        libxml_use_internal_errors(true);
+        $doc->loadHTML(
+            '<?xml encoding="UTF-8"><div id="lsroot">' . $case['html'] . '</div>',
+            LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD
+        );
+        libxml_clear_errors();
+
+        $root = $doc->getElementById('lsroot');
+        $this->assertNotNull($root, 'the fragment must parse');
+
+        $encoded = (new \Langsys\SDK\Html\MarkupTokenizer())->encode($root);
+
+        $this->assertSame(
+            $case['libxml2'],
+            $encoded['text'],
+            $case['id'] . ' — ' . $case['why']
+        );
+
+        if ($case['agrees']) {
+            $this->assertSame(
+                $case['js_family'],
+                $encoded['text'],
+                $case['id'] . ' agreed with the JS family when measured; it must still agree'
+            );
+        } else {
+            $this->assertNotSame(
+                $case['js_family'],
+                $encoded['text'],
+                $case['id'] . ' is recorded as a divergence; if it now AGREES, the record is '
+                    . 'stale and the conformance row must be rewritten'
+            );
+        }
+    }
+
+    public function parseModelProvider(): array
+    {
+        $fixture = json_decode(
+            file_get_contents(dirname(__DIR__) . '/fixtures/parse-model-reference.json'),
+            true
+        );
+
+        $out = [];
+        foreach ($fixture['cases'] as $case) {
+            $out[$case['family'] . ': ' . $case['id']] = [$case];
+        }
+
+        return $out;
+    }
+
+    /**
+     * The measurement's own control: the comparison can report both outcomes.
+     *
+     * Four of the seven rows above assert a divergence and three assert
+     * agreement, so neither answer is the only one this test can produce. A
+     * measurement that can only say one thing has measured nothing - which is
+     * the failure the JS lane guarded with its own control.
+     */
+    public function testTheParseModelFixtureRecordsBothOutcomes(): void
+    {
+        $fixture = json_decode(
+            file_get_contents(dirname(__DIR__) . '/fixtures/parse-model-reference.json'),
+            true
+        );
+
+        $agree = array_filter($fixture['cases'], function ($c) { return $c['agrees']; });
+        $diverge = array_filter($fixture['cases'], function ($c) { return !$c['agrees']; });
+
+        $this->assertCount(3, $agree, 'implied close agreed on all three');
+        $this->assertCount(4, $diverge, 'raw text and foster parenting diverged on all four');
+
+        $families = array_unique(array_column($fixture['cases'], 'family'));
+        sort($families);
+        $this->assertSame(['foster parenting', 'implied close', 'raw text'], $families);
+    }
 }

@@ -1,0 +1,80 @@
+{
+  "": "Parse-model agreement between libxml2 (this SDK) and the JS family.",
+  "purpose": "A tokenized phrase's key IS its encoded string, so any disagreement about how the DOM is BUILT changes the key before canonicalisation is even reached. Canonicalisation cannot close these; only the parser can.",
+  "js_family_source": "langsys-js-server @ 8105faa, real Chromium 153 measured against parse5 over these same families: 9 of 9 agreed, so these are the JS-FAMILY answer rather than one engine's.",
+  "measured_at": "2026-09-12",
+  "measured_by": "langsys-php-sdk, libxml2 via DOMDocument::loadHTML, loaded exactly as PageTranslator loads a page",
+  "agreement": "3 of 7 — implied close agrees 3/3; raw text 0/2 and foster parenting 0/2 diverge",
+  "cases": [
+    {
+      "id": "raw-text-textarea",
+      "family": "raw text",
+      "html": "<p>Keep</p><textarea>a <b>b</b></textarea>",
+      "js_family": "{m0o}Keep{m0c}{m1o}a <b>b</b>{m1c}",
+      "libxml2": "{m0o}Keep{m0c}{m1o}a {m2o}b{m2c}{m1c}",
+      "agrees": false,
+      "why": "Chromium and parse5 make a <textarea> body RAW TEXT, so <b> is literal characters. libxml2 parses it as markup, so <b> becomes an element and takes a slot.",
+      "libxml2_tree": "<p>Keep</p><textarea>a <b>b</b></textarea>"
+    },
+    {
+      "id": "raw-text-title",
+      "family": "raw text",
+      "html": "<title>a <b>b</b></title><p>Keep</p>",
+      "js_family": "{m0o}a <b>b</b>{m0c}{m1o}Keep{m1c}",
+      "libxml2": "{m0o}a {m1o}b{m1c}{m0c}{m2o}Keep{m2c}",
+      "agrees": false,
+      "why": "Same as textarea, and it also shifts every later slot index: the <p> is slot 1 in the JS family and slot 2 here.",
+      "libxml2_tree": "<title>a <b>b</b></title><p>Keep</p>"
+    },
+    {
+      "id": "foster-stray-element",
+      "family": "foster parenting",
+      "html": "<table><b>stray</b><tr><td>cell</td></tr></table>",
+      "js_family": "{m0o}stray{m0c}{m1o}{m2o}{m3o}{m4o}cell{m4c}{m3c}{m2c}{m1c}",
+      "libxml2": "{m0o}{m1o}stray{m1c}{m2o}{m3o}cell{m3c}{m2c}{m0c}",
+      "agrees": false,
+      "why": "Chromium and parse5 FOSTER-PARENT the stray <b> OUT of the table, so it becomes a sibling BEFORE it. libxml2 leaves it inside. They also insert a <tbody> that libxml2 does not, which adds a further slot level.",
+      "libxml2_tree": "<table><b>stray</b><tr><td>cell</td></tr></table>"
+    },
+    {
+      "id": "foster-loose-text",
+      "family": "foster parenting",
+      "html": "<table>loose text<tr><td>x</td></tr></table>",
+      "js_family": "loose text{m0o}{m1o}{m2o}{m3o}x{m3c}{m2c}{m1c}{m0c}",
+      "libxml2": "{m0o}loose text{m1o}{m2o}x{m2c}{m1c}{m0c}",
+      "agrees": false,
+      "why": "The JS family moves the loose text out of the table entirely, so it leads the phrase with no slot around it. libxml2 keeps it inside the table's slot.",
+      "libxml2_tree": "<table>loose text<tr><td>x</td></tr></table>"
+    },
+    {
+      "id": "implied-close-p",
+      "family": "implied close",
+      "html": "<p>one<p>two",
+      "js_family": "{m0o}one{m0c}{m1o}two{m1c}",
+      "libxml2": "{m0o}one{m0c}{m1o}two{m1c}",
+      "agrees": true,
+      "why": "An unclosed <p> is closed by the next one in every model measured.",
+      "libxml2_tree": "<p>one</p><p>two</p>"
+    },
+    {
+      "id": "implied-close-li",
+      "family": "implied close",
+      "html": "<ul><li>one<li>two</ul>",
+      "js_family": "{m0o}{m1o}one{m1c}{m2o}two{m2c}{m0c}",
+      "libxml2": "{m0o}{m1o}one{m1c}{m2o}two{m2c}{m0c}",
+      "agrees": true,
+      "why": "Bare <li> closes the previous one, identically.",
+      "libxml2_tree": "<ul><li>one</li><li>two</li></ul>"
+    },
+    {
+      "id": "implied-close-option",
+      "family": "implied close",
+      "html": "<select><option>one<option>two</select>",
+      "js_family": "{m0o}{m1o}one{m1c}{m2o}two{m2c}{m0c}",
+      "libxml2": "{m0o}{m1o}one{m1c}{m2o}two{m2c}{m0c}",
+      "agrees": true,
+      "why": "Bare <option> likewise.",
+      "libxml2_tree": "<select><option>one</option><option>two</option></select>"
+    }
+  ]
+}
