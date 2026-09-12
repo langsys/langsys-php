@@ -1278,6 +1278,9 @@ class Client
                 'error' => $e->getMessage(),
             ]);
 
+            // Deliberately NOT stamped: the lookup failed, so we do not know
+            // that this id is the one the catalog holds. Stamping a guess would
+            // publish an identity claim built on an outage.
             return empty($params)
                 ? $html
                 : $this->applyBlockTranslations($html, [], $parser, $params, $locale);
@@ -1296,16 +1299,18 @@ class Client
             // Content block doesn't exist - queue for registration
             $this->queueContentBlockForRegistration($html, $category, $customId, $phrases);
 
-            // No translations yet, but placeholders still resolve against the original.
-            return empty($params)
-                ? $html
-                : $this->applyBlockTranslations($html, [], $parser, $params, $locale);
+            // No translations yet, but the block still HAS an identity, and
+            // stamping it is most valuable here: this is the block a later
+            // reader would otherwise re-derive and re-register. Routed through
+            // applyBlockTranslations even with no params, which the early
+            // return used to skip.
+            return $this->applyBlockTranslations($html, [], $parser, $params, $locale, $customId);
         }
 
         // Apply translations to HTML. A legacy-resolved block reaches here
         // WITHOUT having been queued: queuing is exactly what would create a
         // second block under the new id and strand these translations.
-        return $this->applyBlockTranslations($html, $blockTranslations, $parser, $params, $locale);
+        return $this->applyBlockTranslations($html, $blockTranslations, $parser, $params, $locale, $customId);
     }
 
     /**
@@ -1425,7 +1430,62 @@ class Client
      * @param string|null $locale Locale for placeholder formatting
      * @return string Translated HTML
      */
-    protected function applyBlockTranslations($html, array $translations, HtmlParser $parser, array $params = [], $locale = null)
+    /**
+     * Stamp the resolved id onto a rendered block's host element (MARK-1).
+     *
+     * The point is that the identity survives the round trip. Once the served
+     * HTML carries its own id, a later reader - this SDK, a JS core hydrating
+     * over it, anything - reads the id instead of re-deriving it from the text,
+     * and a block whose text was edited or canonicalised differently is still
+     * recognised as the same block rather than registered afresh.
+     *
+     * Stamped ONLY when the fragment has exactly one element root. A multi-root
+     * fragment has no single host to carry the identity, and picking the first
+     * child would claim the whole block's id for one of its siblings - which
+     * then reads as that sibling's identity the next time anything parses it.
+     * Silence is the honest outcome there.
+     *
+     * Never overwrites an existing marker: if the block already carries one,
+     * that value is another writer's identity claim and outranks ours.
+     *
+     * @param \DOMElement $wrapper
+     * @param string|null $customId
+     * @return void
+     */
+    protected function stampContentBlockId($wrapper, $customId)
+    {
+        if ($customId === null || $customId === '') {
+            return;
+        }
+
+        $elements = [];
+        foreach ($wrapper->childNodes as $child) {
+            if ($child instanceof \DOMElement) {
+                $elements[] = $child;
+            }
+        }
+
+        if (count($elements) !== 1) {
+            $this->logger->debug('Not stamping a content block id: the fragment has no single host element', [
+                'custom_id' => $customId,
+                'element_roots' => count($elements),
+            ]);
+
+            return;
+        }
+
+        $host = $elements[0];
+
+        foreach (HtmlParser::CONTENT_BLOCK_MARKERS as $existing) {
+            if ($host->hasAttribute($existing)) {
+                return;
+            }
+        }
+
+        $host->setAttribute(HtmlParser::CONTENT_BLOCK_STAMP, $customId);
+    }
+
+    protected function applyBlockTranslations($html, array $translations, HtmlParser $parser, array $params = [], $locale = null, $customId = null)
     {
         // Use DOMDocument to properly apply translations
         $internalErrors = libxml_use_internal_errors(true);
@@ -1446,6 +1506,8 @@ class Client
         if ($wrapper === null) {
             return $html;
         }
+
+        $this->stampContentBlockId($wrapper, $customId);
 
         $result = '';
         foreach ($wrapper->childNodes as $child) {
@@ -1469,7 +1531,10 @@ class Client
     {
         // Handle text nodes
         if ($node instanceof \DOMText) {
-            $normalizedText = trim(preg_replace('/\s+/', ' ', $node->textContent));
+            // Must normalise IDENTICALLY to HtmlParser, which registered these
+            // phrases: this is the lookup side, so any divergence is a
+            // permanent miss that re-registers on every render.
+            $normalizedText = \Langsys\SDK\Html\Whitespace::collapse($node->textContent);
             if ($normalizedText !== '') {
                 $translated = isset($translations[$normalizedText]) ? $translations[$normalizedText] : null;
 

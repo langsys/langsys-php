@@ -1,19 +1,26 @@
 # Conformance — langsys/php-sdk
 
-Spec version implemented: **spec blob `45cdddf8`** (`langsys2` @ `f1179ad6`, fetched
-2026-09-10T02:46:31Z via `git show origin/main:docs/sdk-spec.mdx`)
+Spec version implemented: **spec blob `042dedb5`** (`langsys2` @ `c6b08d11`, branch
+`feature/838_write_key_gating`, fetched 2026-09-12T02:57:50Z via
+`git rev-parse origin/feature/838_write_key_gating:docs/sdk-spec.mdx`)
 
-**Coverage: 41 of 67 rules bind this SDK** (profiles `all` or `server`); 26 do not
-(`browser`, `binding` — this repo is a core, not a binding). All 41 are rowed. Computed by
+**Coverage: 53 of 79 rules bind this SDK** (profiles `all` or `server`); 26 do not
+(`browser`, `binding` — this repo is a core, not a binding). All 53 are rowed. Computed by
 the script at the foot of this file, not by eye.
 
-**Rebased from blob `06ae105a` (45 binding) to `45cdddf8` (41 binding).** The four that
-left are GRANT-1…4, re-profiled `all` → `browser` in `cde6acdb`: a grant lends write
-capability to a session that has none, and a server SDK already holds a write key. No new
-rule went unrowed in the move. The blob and commit above are re-derived at each write of
-this file rather than copied forward — a version line carried by hand is a version line
-that goes stale silently, which is how the "Known gaps" section below came to describe
-coverage this file already had.
+**Rebased from blob `45cdddf8` (41 binding) to `042dedb5` (53 binding).** Spec v8 adds three
+families that all bind a server core — TOK-1…5 (tokenizer canonicalization), MARK-1…2
+(identity stamping) and SRV-1…5 (serving translated HTML). Nothing that was rowed became
+unrowed. The previous rebase note recorded the move from `06ae105a` (45 binding), where the
+four that left were GRANT-1…4, re-profiled `all` → `browser`.
+
+**The blob moved mid-lane, which is why it is re-derived here rather than copied from the
+brief.** This lane opened citing `b657b490`; by the time these rows were written the branch
+tip carried `042dedb5`. The difference is the publication marker alone — *(authored)* →
+*(published)* — and **no rule changed**, but a file that cites a blob it did not derive is
+asserting rather than checking. The blob and commit above are re-derived at each write of
+this file: a version line carried by hand is a version line that goes stale silently, which
+is how the "Known gaps" section below once came to understate coverage this file already had.
 Profile: **server**
 
 Every rule maps to the test that proves it. A rule with no test is NOT IMPLEMENTED —
@@ -124,6 +131,42 @@ is not a proven guard.
 | WIRE-5 | provisional | `tests/Http/HttpClientTest.php::testRedirectedRequestsActuallyArriveAtTheDouble` (both mechanisms). The evidence here was previously a citation of `src/Config.php:80` and the README — that the knob EXISTS, which is not the rule. The test now stands up a real server on a loopback port (`tests/fixtures/wire5-double.php`), points an otherwise untouched client at it via each mechanism, and asserts on the request the server RECEIVED: path, `Host`, and that credentials still travel. Documented on both surfaces an integrator reads: `api_url` constructor option and `LANGSYS_API_URL` env var, in the README's environment table and its constructor-options example. The env var is the load-bearing half — it redirects an existing, unmodified integration, which a constructor option cannot |
 | WIRE-4 | provisional | Two fixes, because one was not enough. **Breadth:** every entry-point seam catches `\Throwable`, not `\Exception` — an `\Exception`-only catch is an enumeration of the failures we thought of, and an `\Error` (a `TypeError` from a wrong-shaped cache hit) escaped it and became a 500 on a customer page. **Source:** a malformed cache entry is now treated as a MISS and deleted, so the next request repopulates — degrading on every call while a poisoned entry sits out its TTL is the lesser fix. **Depth:** the shape check is depth 2, not depth 1. A top-level array of SCALAR slices satisfied `is_array()` and then raised a `TypeError` at the first index into a category — reproduced throwing from all three entry points, with the entry left poisoned for the rest of its TTL. **Origin:** the SDK was manufacturing the poison it guarded against — `getTranslations()` wrote whatever the API returned straight into the shared cache, so one malformed response was re-read by every later request; the payload is now validated in `Translations::getTranslationMap()`, which **throws** rather than returning `[]`, before it can reach a cache. **Correction to this row's previous wording, and to the test it described:** "depth 0 AND depth 1 across all three entry points" was true of the reproduction harness and false of the committed test — the depth-1 vectors were keyed on a category no render reads, so the bad slice was never indexed and the test was green against the unfixed code. Re-keyed to `Client::UNCATEGORIZED` they throw 9/9 without the fix. **And the fix's own regression:** returning `[]` for a rejected payload made an empty catalog the cached value, blanking translations for the whole TTL — worse than the defect, and unable to self-heal at all under a read key. `::testMalformedCacheEntryDoesNotReachTheRender` (depth 0 and depth 1, across all three entry points) and `::testMalformedCacheEntryIsInvalidatedRatherThanEndured` (the same vectors, `translate()` only — invalidation is a property of the shared read, not of the caller), `::testARejectedServerMapDoesNotBlankTheCatalogForTheTtl` (three requests, read key, second and third against a healthy server) with `::testAWellFormedServerMapStillPopulatesTheCatalog` as its positive control, and `::testMalformedServerMapIsNeverWrittenToTheCache`. **And the carve-out that re-opened it:** a 2xx with no `data` key was read as an empty catalog and cached, on the reasoning that a project with no translations legitimately has one. False — `ApiResponse::resourceResponse()` assigns `data` unconditionally, so an empty catalog arrives WITH the key, and `HttpClient::handleResponse()` turns any empty-bodied 2xx into `[]`, making an empty 200 from a proxy enough to blank a project for a TTL. Now rejected (`::testAResponseWithNoDataKeyIsTreatedAsMalformed`). **Cost of failing rather than answering:** a failure is memoized per REQUEST — never written to a cache — so an incident costs one fetch per locale per request rather than one per phrase (`::testAFailedCatalogFetchIsAskedOncePerRequest`, which also pins that `resetRequestState()` clears it). Plus the unreachable-API vectors via `tests/Mock/ThrowingHttpClient.php`, and the `\Error` vectors via `tests/Mock/ErrorThrowingHttpClient.php` and `tests/Mock/ErrorThrowingCache.php` — every `\Throwable` seam is now individually reddened by narrowing it to `\Exception`, which six of the seven were not. The enumeration itself was the defect twice over: "all five seams" counted the five I had grepped for, and the one it missed (`Client.php:1142`, the locale fallback) sits BEFORE the entry-point try, so an `\Error` there escaped all three render paths |
 
+## Tokenizer canonicalization
+
+The identity contract every implementation shares. These rules decide what a *phrase* is, and a
+content block's `custom_id` is a hash of its phrase list in order — so a disagreement here is not
+cosmetic, it re-keys blocks and strands their translations.
+
+Measured against `tests/fixtures/canonicalization-reference.json`, authored by
+langsys-js-typescript and adopted byte-identically (`6596faf:tests/fixtures/canonicalization-reference.json`,
+blob `e4c1f185974fbf2ebda6154f36b8ed7416f1d7fa`). **This SDK was 13 of 19 when the file was
+written**; the six misses are the two causes below.
+
+| Rule | Status | Evidence |
+|---|---|---|
+| TOK-1 | provisional | `tests/Html/HtmlParserTest.php::testCanonicalizationMatchesTheCrossSdkVectors` (rows `script-subtree`, `style-subtree`, `noscript-subtree`) plus the corrected `tokenizer-reference.json` row. **The content-block path had no skip list at all** — `HtmlParser::walkNode()` harvested `<script>`, `<style>`, `<template>` and `<noscript>` text as phrases, so minified CSS was registered in the shared catalog and sent for machine translation; and because the id hashes the token list, an analytics payload carrying a nonce re-keyed its block on every render. The page path (`PageTranslator::SKIP_ELEMENTS`) had always skipped them, so this was the block path only. Mutation: re-enabling harvesting reddens 2 named cases |
+| TOK-2 | provisional | `::testUnicodeWhitespaceCollapsesLikeAnyOtherWhitespace` (6 vectors — internal, edges, and the whitespace-only count case), `::testAWhitespaceOnlyNodeDoesNotChangeABlockId`, and the fixture's `nbsp-in-text`, `attr-nbsp` and `line-separators` rows. Fixed in `src/Html/Whitespace.php`, one shared helper, because **the SDK had seven copies of this normalisation and they disagreed** — six ASCII-only (`HtmlParser`, `Client`, `TranslatableItems`, `PageTranslator`×3) and one already `/u` (`MarkupTokenizer`), plus three sites in `HeadHandler` (the `<title>` and both `<meta content>` paths) that did no collapse at all. The brief named four sites; the sweep found ten. Several are registration/lookup pairs, so a phrase registered as `A long description` was looked up as `A\u{00A0}long description` and missed forever, re-registering on every render. Mutation: dropping `/u` reddens 8 named cases |
+| TOK-3 | provisional | The 27-entry list in `HtmlParser`, which the spec takes as normative in this SDK's order. The order is load-bearing: it decides the sequence phrases are produced in, and therefore the id |
+| TOK-4 | provisional | Satisfied by the same helper — `extractAttributePhrases()` routes every attribute value through `normalizeWhitespace()`. Proven by the fixture's `attr-nbsp` row, which is `nbsp-in-text`'s twin: the same content in an attribute must produce the same id |
+| TOK-5 | provisional | `tests/Format/InterpolatorTest.php::testPercentPlaceholdersAreAccepted` (8 vectors). **`%name%` previously reached the reader verbatim** — a placeholder rendered as literal text on the page. Normalised to `{name}` once, before ICU detection, so no downstream path learns a second spelling. Rewritten **only for keys the caller supplied**, which is the safety property: `Save 20% on 5% APR` and `width: 100%` have no matching parameter and are returned untouched. Mutation: removing the normalisation reddens 2 cases |
+
+## Identity stamping
+
+| Rule | Status | Evidence |
+|---|---|---|
+| MARK-1 | provisional | `tests/ClientTest.php::testARenderedBlockIsStampedWithItsResolvedId`, `::testAMultiRootBlockIsNotStamped`, `::testAnExistingStampIsNeverOverwritten` (both spellings), `::testABlockIsNotStampedWhenTheLookupFailed`. Stamped only where the fragment has exactly one element root: claiming a block's id for one of several siblings would make that sibling read as the block the next time anything parsed the page. Not stamped when the lookup failed — that would publish an identity claim built on an outage. An existing marker is another writer's claim and is never overwritten |
+| MARK-2 | provisional | `tests/Html/HtmlParserTest.php::testPhraseMarkerIsReadUnderBothSpellings` (7 vectors including off-values), `::testContentBlockMarkerIsReadUnderBothSpellings` (4), `::testJsSpellingKeepsABlockTogetherOnThePagePath`. Read accepts `data-ls-*` and `data-langsys-*`; what this SDK WRITES stays one spelling. Mutation: dropping the JS spelling reddens 5 cases |
+
+## Serving translated HTML
+
+| Rule | Status | Evidence |
+|---|---|---|
+| SRV-1 | provisional | The served bytes are the translated ones by construction: `translatePage()` and `translateContentBlock()` return translated HTML synchronously, and there is no post-hydration correction step because there is no hydration. Carried by the rendering tests in `tests/Html/PageTranslatorTest.php` |
+| SRV-2 | provisional | `Client::$translationsMemoryCache` is per-instance and cleared by `resetRequestState()`, which also clears the fetch-failure memo — `tests/ClientTest.php::testAFailedCatalogFetchIsAskedOncePerRequest` pins the clearing half. The long-lived-runtime hazard (Octane, Swoole, RoadRunner) is what that method exists for |
+| SRV-3 | provisional | `flushPendingRegistrations()` runs from a shutdown handler — after the response is flushed — and is gated on the server's per-request write decision. `::testFlushReportsDroppedWhenTheRequestMayNotWrite` proves the read-only half; GATE-3 and GATE-5 carry the rest |
+| SRV-4 | **not implemented** | **Rowed against the rule body rather than the brief.** This lane was briefed to row SRV-4 `n/a` as "the JS hydration half". That is wrong for the half the profile actually assigns here: the body's first sentence — *the server MUST hand the client the catalog it rendered with* — is the SERVER's obligation, and only the synchronous seed belongs to the browser core. This SDK has no hand-off: nothing in `src/` emits a catalog for a client to pick up. `getTranslations()` is public, so an integrator can serialise it themselves, but the SDK neither does it nor documents it. Recorded as a gap, because `n/a` here would claim a pass for work that does not exist |
+| SRV-5 | n/a (no component model) | **Also not for the brief's reason.** The profile names `server`, so this does not fall away on profile — it falls away on mechanism. SRV-5 governs *component child capture*: Svelte's re-entrant render registering 2^n copies of one miss, and React capturing a `Suspense` fallback so a block is keyed on a loading spinner. This SDK walks a DOM once and has no component model, no re-entrant render and no lazy children, so neither failure has a site here. The mechanism is named so the claim is checkable rather than asserted |
+
 ## Conformance meta
 
 | Rule | Status | Evidence |
@@ -139,8 +182,8 @@ Produced by the script below, run against the spec blob cited in the header — 
 counted by hand.
 
 ```
-binding rules (all | server)  41 of 67
-rowed                         41
+binding rules (all | server)  53 of 79
+rowed                         53
 missing rows                   0
 ```
 
@@ -148,11 +191,11 @@ missing rows                   0
 # Re-derive the blob and the counts together, so the header cannot drift from the body:
 #
 #   cd ~/Documents/dev/langsys2 && git fetch -q origin \
-#     && git rev-parse --short origin/main:docs/sdk-spec.mdx \
-#     && git show origin/main:docs/sdk-spec.mdx > /tmp/spec.mdx
+#     && git rev-parse --short origin/feature/838_write_key_gating:docs/sdk-spec.mdx \
+#     && git show origin/feature/838_write_key_gating:docs/sdk-spec.mdx > /tmp/spec.mdx
 #
-# Last run 2026-09-10T02:46:31Z against blob 45cdddf8 (langsys2 @ f1179ad6):
-#   67 total, 41 binding, 41 rowed, 0 missing.
+# Last run 2026-09-12T02:57:50Z against blob 042dedb5 (langsys2 @ c6b08d11):
+#   79 total, 53 binding, 53 rowed, 0 missing.
 #
 # python3 - <<'EOF'   (spec at /tmp/spec.mdx = git show origin/main:docs/sdk-spec.mdx)
 import re

@@ -270,6 +270,43 @@ Three things that were claimed as tested and were not:
   all three. Both are now covered by tests that fail if the protection is
   weakened.
 
+### Fixed — the tokenizer now agrees with the other SDKs
+
+The rules that decide what counts as a *phrase* are shared across every Langsys
+SDK, because a content block's identity is derived from its phrases. This SDK
+disagreed with the others in two ways, and both silently changed which block a
+translation belonged to:
+
+- **A non-breaking space was not treated as a space.** Text containing one — and
+  it is what every editor inserts for a "hard" space — produced a different
+  block identity here than in the JavaScript SDKs, so the same content could be
+  registered twice and translated twice. The same applied to the rarer line and
+  paragraph separators. A paragraph containing *only* a non-breaking space
+  counted as a phrase, which changed the identity of every block around it.
+- **Script and style contents were being registered as text.** A content block
+  containing a `<script>` or `<style>` had its source code extracted as
+  translatable phrases, sent for machine translation, and — because identity
+  follows the phrase list — re-identified whenever that source changed, which
+  for an analytics tag carrying a timestamp is every single render.
+
+Both are fixed, and the fix is one shared routine rather than the seven
+near-copies that had drifted apart. Three further places (the page `<title>` and
+both meta-description paths) had never normalised at all.
+
+- **`%name%` placeholders reached readers as literal text.** Both `{name}` and
+  `%name%` are now accepted. Percentages in ordinary copy are untouched: a
+  placeholder is only substituted when a value for that name was actually
+  supplied.
+
+### Added
+
+- **Rendered content blocks now carry their own identity** (`data-ls-contentblock`),
+  and both the `data-ls-*` and `data-langsys-*` spellings are understood when
+  reading. A page rendered by this SDK that also hosts a JavaScript-rendered
+  component no longer risks the two halves disagreeing about where one block
+  ends and the next begins — which previously registered the same content twice
+  and stranded whichever copy was written first.
+
 ### Removed
 
 - **Two unreachable methods in `PageTranslator`** (78 lines). They wrote the

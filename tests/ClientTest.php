@@ -2051,4 +2051,122 @@ class ClientTest extends TestCase
 
         return $client;
     }
+
+    // =========================================================================
+    // MARK-1 — a rendered block carries its resolved id
+    // =========================================================================
+
+    /**
+     * The point is that identity survives the round trip: once the served HTML
+     * carries its own id, a later reader takes it instead of re-deriving it
+     * from the text - so a block whose text was edited, or canonicalised
+     * differently by another SDK, is still recognised as the same block rather
+     * than registered afresh.
+     */
+    public function testARenderedBlockIsStampedWithItsResolvedId()
+    {
+        $client = $this->clientWithCatalog(['UI' => []]);
+        $parser = new \Langsys\SDK\Html\HtmlParser();
+        $expected = $parser->generateCustomId('UI', ['Buy now']);
+
+        $rendered = $client->translateContentBlock('<div class="card"><p>Buy now</p></div>', 'UI');
+
+        $this->assertStringContainsString('data-ls-contentblock="' . $expected . '"', $rendered);
+        $this->assertStringContainsString('class="card"', $rendered, 'the host element is otherwise untouched');
+    }
+
+    /**
+     * Not stamped when there is no single host element.
+     *
+     * Picking the first child of a multi-root fragment would claim the whole
+     * block's id for one of its siblings, and that sibling then reads as having
+     * that identity the next time anything parses the page. Silence is the
+     * honest outcome.
+     */
+    public function testAMultiRootBlockIsNotStamped()
+    {
+        $client = $this->clientWithCatalog(['UI' => []]);
+
+        $rendered = $client->translateContentBlock('<p>One</p><p>Two</p>', 'UI');
+
+        $this->assertStringNotContainsString('data-ls-contentblock', $rendered);
+    }
+
+    /**
+     * An existing marker is another writer's identity claim and outranks ours -
+     * under either spelling, or a JS-rendered host would be restamped with a
+     * PHP-derived id on every server render.
+     *
+     * @dataProvider existingStampProvider
+     */
+    public function testAnExistingStampIsNeverOverwritten($attribute)
+    {
+        $client = $this->clientWithCatalog(['UI' => []]);
+
+        $rendered = $client->translateContentBlock(
+            '<div ' . $attribute . '="theirs"><p>Buy now</p></div>',
+            'UI'
+        );
+
+        $this->assertStringContainsString($attribute . '="theirs"', $rendered);
+        $this->assertStringNotContainsString('data-ls-contentblock="' . md5('x'), $rendered);
+        $this->assertSame(
+            1,
+            preg_match_all('/data-l(?:s|angsys)-contentblock=/', $rendered),
+            'exactly one identity claim survives'
+        );
+    }
+
+    public function existingStampProvider()
+    {
+        return [
+            'JS core spelling'  => ['data-ls-contentblock'],
+            'this SDK spelling' => ['data-langsys-contentblock'],
+        ];
+    }
+
+    /**
+     * A block whose lookup FAILED is not stamped: we do not know that the id we
+     * derived is the one the catalog holds, and stamping a guess publishes an
+     * identity claim built on an outage.
+     */
+    public function testABlockIsNotStampedWhenTheLookupFailed()
+    {
+        $client = $this->clientWithUnreachableApi();
+
+        $rendered = $client->translateContentBlock('<div><p>Buy now</p></div>', 'UI');
+
+        $this->assertStringNotContainsString('data-ls-contentblock', $rendered);
+    }
+
+    // =========================================================================
+    // CID-2 — the sentinel never reaches the hash
+    // =========================================================================
+
+    /**
+     * '__uncategorized__' is this SDK's LOCAL spelling for "no category". The
+     * hash input is the shared one, so the sentinel must be normalised away
+     * before hashing or every uncategorised block has a PHP-only id.
+     *
+     * @dataProvider uncategorizedSpellingProvider
+     */
+    public function testTheUncategorizedSentinelNeverReachesTheHash($category)
+    {
+        $parser = new \Langsys\SDK\Html\HtmlParser();
+
+        $this->assertSame(
+            $parser->generateCustomId('', ['Buy now']),
+            $parser->generateCustomId($category, ['Buy now']),
+            'every spelling of "no category" must hash identically to the empty string'
+        );
+    }
+
+    public function uncategorizedSpellingProvider()
+    {
+        return [
+            'the sentinel' => ['__uncategorized__'],
+            'null'         => [null],
+            'empty string' => [''],
+        ];
+    }
 }

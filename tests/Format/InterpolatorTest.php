@@ -1068,4 +1068,60 @@ class InterpolatorTest extends TestCase
             'supplied plural'        => ['{n, plural, one {# item} other {# items}}', ['n' => 1], '1 item'],
         ];
     }
+
+    // =========================================================================
+    // TOK-5 — %name% is an accepted spelling of {name}
+    // =========================================================================
+
+    /**
+     * Before this, `%name%` reached the reader verbatim: a placeholder rendered
+     * as literal text on the page. The two spellings exist because different
+     * hosts template differently, and the catalog is shared across all of them.
+     *
+     * @dataProvider percentPlaceholderProvider
+     */
+    public function testPercentPlaceholdersAreAccepted($text, array $params, $expected, $why)
+    {
+        $this->assertSame($expected, $this->interpolator->interpolate($text, $params, 'en-us'), $why);
+    }
+
+    public function percentPlaceholderProvider()
+    {
+        return [
+            'percent form substitutes' => [
+                'Hello, %name%!', ['name' => 'Sarah'], 'Hello, Sarah!',
+                'the escape form must behave exactly like the brace form',
+            ],
+            'brace form still substitutes' => [
+                'Hello, {name}!', ['name' => 'Sarah'], 'Hello, Sarah!',
+                'positive control - adding one spelling must not cost the other',
+            ],
+            'both forms in one string' => [
+                'Hi {a} and %b%', ['a' => 'X', 'b' => 'Y'], 'Hi X and Y',
+                'a phrase may legitimately carry both',
+            ],
+            'ICU is unaffected' => [
+                '{n, plural, one {# item} other {# items}}', ['n' => 3], '3 items',
+                'the normalisation runs before ICU and must not disturb it',
+            ],
+
+            // The reason the pattern is narrow and gated on supplied keys.
+            'percentages are not placeholders' => [
+                'Save 20% on 5% APR', ['name' => 'Sarah'], 'Save 20% on 5% APR',
+                'ordinary prose containing a %...% span must not be eaten',
+            ],
+            'percentages with no params at all' => [
+                'Save 20% on 5% APR', [], 'Save 20% on 5% APR',
+                'and the same with nothing supplied',
+            ],
+            'unsupplied key is left verbatim' => [
+                '%unknown% stays', ['name' => 'Sarah'], '%unknown% stays',
+                'an unmatched key must be returned as written, not turned into a visible {unknown}',
+            ],
+            'a CSS-ish value survives' => [
+                'width: 100%; height: 50%', ['name' => 'Sarah'], 'width: 100%; height: 50%',
+                'a rewrite that is not gated on supplied keys would mangle this',
+            ],
+        ];
+    }
 }

@@ -49,6 +49,18 @@ class Interpolator
     const PLACEHOLDER_PATTERN = '/\{([^{}]*)\}/';
 
     /**
+     * The `%name%` escape form (TOK-5).
+     *
+     * Deliberately restricted to identifier characters. A looser pattern would
+     * match across ordinary prose - "Save 20% on 5% APR" contains a `%...%`
+     * span - and turn a percentage into a placeholder. With this pattern the
+     * span between the two signs must look like a variable name, and even then
+     * it is only substituted when the caller actually supplied that key, so
+     * unmatched text is returned untouched rather than eaten.
+     */
+    const PERCENT_PLACEHOLDER_PATTERN = '/%([A-Za-z_][A-Za-z0-9_]*)%/';
+
+    /**
      * Locale used for ICU formatting when no target locale is known.
      */
     const FALLBACK_LOCALE = 'en';
@@ -96,9 +108,18 @@ class Interpolator
             return $text;
         }
 
-        if (strpos($text, '{') === false) {
+        // `%` as well as `{`: TOK-5 makes `%name%` an accepted spelling of
+        // `{name}`, and returning early on `{` alone shipped the raw `%name%`
+        // to the reader - a placeholder rendered as literal text on the page.
+        if (strpos($text, '{') === false && strpos($text, '%') === false) {
             return $text;
         }
+
+        // Normalise the escape form ONCE, here, rather than teaching every
+        // downstream path a second spelling. After this line ICU detection,
+        // argument recovery and simple substitution all see `{name}` and cannot
+        // disagree about which forms they support.
+        $text = $this->normalizePercentPlaceholders($text, $params);
 
         // No params is the COMMONEST call, and it is exactly the case that used
         // to return here - shipping raw ICU source to the page whenever a
@@ -707,6 +728,39 @@ class Interpolator
      * @param string|null $locale
      * @return string
      */
+    /**
+     * Rewrite `%name%` to `{name}` for keys the caller actually supplied.
+     *
+     * Only supplied keys are rewritten, and that is the safety property: text
+     * containing a percent span that is not a placeholder - "Save 20% on 5%
+     * APR", a CSS width, a printf-style template someone pasted - has no
+     * matching parameter, so it is left exactly as written. An unconditional
+     * rewrite would convert prose into placeholders and then leave `{...}`
+     * visible on the page when nothing filled it.
+     *
+     * @param string $text
+     * @param array $params
+     * @return string
+     */
+    protected function normalizePercentPlaceholders($text, array $params)
+    {
+        if (empty($params) || strpos($text, '%') === false) {
+            return $text;
+        }
+
+        $result = preg_replace_callback(
+            self::PERCENT_PLACEHOLDER_PATTERN,
+            function ($matches) use ($params) {
+                return array_key_exists($matches[1], $params)
+                    ? '{' . $matches[1] . '}'
+                    : $matches[0];
+            },
+            $text
+        );
+
+        return $result === null ? $text : $result;
+    }
+
     protected function substitute($text, array $params, $locale)
     {
         $self = $this;

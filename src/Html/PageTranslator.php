@@ -592,9 +592,9 @@ class PageTranslator
      */
     protected function getTextContent(DOMElement $element)
     {
-        $text = $element->textContent;
-        // Normalize whitespace
-        return trim(preg_replace('/\s+/', ' ', $text));
+        // TOK-2: the page path registers phrases too, so it must canonicalise
+        // identically to the block path or the same text yields two phrases.
+        return Whitespace::collapse($element->textContent);
     }
 
     /**
@@ -782,7 +782,7 @@ class PageTranslator
         // This handles cases like <p>Hello</p> -> <p>Hola</p>
         foreach ($element->childNodes as $child) {
             if ($child instanceof DOMText) {
-                $normalizedText = trim(preg_replace('/\s+/', ' ', $child->textContent));
+                $normalizedText = Whitespace::collapse($child->textContent);
                 if ($normalizedText === $original) {
                     // Preserve leading/trailing whitespace pattern
                     $leadingSpace = preg_match('/^\s/', $child->textContent) ? ' ' : '';
@@ -820,7 +820,8 @@ class PageTranslator
     {
         // Handle text nodes
         if ($node instanceof DOMText) {
-            $normalizedText = trim(preg_replace('/\s+/', ' ', $node->textContent));
+            // Lookup side - must match what getElementText() registered.
+            $normalizedText = Whitespace::collapse($node->textContent);
             if ($normalizedText !== '') {
                 $translated = isset($translations[$normalizedText]) ? $translations[$normalizedText] : null;
 

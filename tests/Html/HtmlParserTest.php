@@ -332,6 +332,148 @@ class HtmlParserTest extends TestCase
      * Same rule as the id fixtures: verify another SDK by EXECUTING it against
      * this file, never by re-deriving the expectation in the same language.
      */
+    /**
+     * The cross-SDK canonicalization vectors (TOK-1, TOK-2, TOK-4).
+     *
+     * Authored by langsys-js-typescript and adopted byte-identically
+     * (`6596faf:tests/fixtures/canonicalization-reference.json`, blob
+     * `e4c1f185974fbf2ebda6154f36b8ed7416f1d7fa`). Each row carries every
+     * lane's MEASURED output alongside the expectation, so the file records
+     * where the fleet disagreed rather than only where it should agree — this
+     * SDK was 13/19 when the file was written.
+     *
+     * Every row also carries codepoints. That is the load-bearing part: the
+     * three rules here turn on characters that are invisible in a terminal and
+     * in a diff. U+00A0 and U+0020 render identically, which is exactly how a
+     * divergence that re-keys content blocks survived in two SDKs at once.
+     * Tests must use escapes, never literals, for the same reason.
+     */
+    public function testCanonicalizationMatchesTheCrossSdkVectors()
+    {
+        $path = dirname(__DIR__) . '/fixtures/canonicalization-reference.json';
+
+        $this->assertFileExists($path);
+
+        $fixture = json_decode(file_get_contents($path), true);
+        $cases = $fixture['cases'];
+
+        $this->assertCount(19, $cases, 'the adopted file has 19 rows');
+
+        foreach ($cases as $case) {
+            $tokens = array_values($this->parser->extractPhrases($case['html']));
+
+            $this->assertSame(
+                $case['expected_tokens'],
+                $tokens,
+                $case['id'] . ' — ' . $case['why'] . ' — got ' . $this->describeCodepoints($tokens)
+            );
+
+            $this->assertSame(
+                $case['expected_custom_id'],
+                $this->parser->generateCustomId($case['category'], $tokens),
+                'id for ' . $case['id']
+            );
+        }
+    }
+
+    /**
+     * Render a token list as codepoints.
+     *
+     * A failure message showing "A long description" against "A long
+     * description" is worse than no message: the reader concludes the test is
+     * broken. These rules are only legible as codepoints.
+     */
+    private function describeCodepoints(array $tokens)
+    {
+        $out = [];
+
+        foreach ($tokens as $token) {
+            $points = [];
+            foreach (preg_split('//u', $token, -1, PREG_SPLIT_NO_EMPTY) as $char) {
+                $points[] = sprintf('U+%04X', mb_ord($char, 'UTF-8'));
+            }
+            $out[] = '[' . implode(' ', $points) . ']';
+        }
+
+        return implode(' ', $out);
+    }
+
+    /**
+     * TOK-2, stated as vectors rather than only as a fixture row.
+     *
+     * Written with \u{...} escapes on purpose. A literal non-breaking space in
+     * a test file is indistinguishable from a space in every editor, diff and
+     * code review - which is how this divergence lived in two SDKs at once. A
+     * test that cannot be read is not a test.
+     *
+     * @dataProvider unicodeWhitespaceProvider
+     */
+    public function testUnicodeWhitespaceCollapsesLikeAnyOtherWhitespace($html, $expected, $why)
+    {
+        $this->assertSame($expected, array_values($this->parser->extractPhrases($html)), $why);
+    }
+
+    public function unicodeWhitespaceProvider()
+    {
+        return [
+            // Internal.
+            'NBSP between words' => [
+                "<p>A\u{00A0}long   description</p>",
+                ['A long description'],
+                'U+00A0 must collapse like U+0020',
+            ],
+            'line separators' => [
+                "<p>line one\u{2028}line two\u{2029}para</p>",
+                ['line one line two para'],
+                'U+2028 and U+2029 are whitespace too',
+            ],
+            'narrow NBSP and ideographic space' => [
+                "<p>a\u{202F}b\u{3000}c</p>",
+                ['a b c'],
+                'U+202F and U+3000 are matched by \s under /u',
+            ],
+
+            // Leading and trailing. trim()'s default charlist does NOT strip
+            // these, so the collapse has to run first for them to go.
+            'NBSP at the edges' => [
+                "<p>\u{00A0}Buy now\u{00A0}</p>",
+                ['Buy now'],
+                'leading and trailing U+00A0 must be trimmed, which trim() alone will not do',
+            ],
+
+            // The count case. This is the one that re-keys blocks: a
+            // whitespace-only node is ONE token where U+00A0 survives and ZERO
+            // where it collapses, and a block id is a hash of its token list.
+            'whitespace-only node yields no token' => [
+                "<div><p>Buy now</p><p>\u{00A0}</p><p>Later</p></div>",
+                ['Buy now', 'Later'],
+                'a whitespace-only node must produce NO token, or every block containing one is re-keyed',
+            ],
+            'whitespace-only node, mixed' => [
+                "<div><p>Buy now</p><p> \u{00A0}\u{2028} </p><p>Later</p></div>",
+                ['Buy now', 'Later'],
+                'mixed ASCII and non-ASCII whitespace is still whitespace-only',
+            ],
+        ];
+    }
+
+    /**
+     * And the id actually moves with it - the reason TOK-2 is an identity rule
+     * and not a cosmetic one.
+     */
+    public function testAWhitespaceOnlyNodeDoesNotChangeABlockId()
+    {
+        $withEmptyNode = $this->parser->extractPhrases("<div><p>Buy now</p><p>\u{00A0}</p><p>Later</p></div>");
+        $withoutIt = $this->parser->extractPhrases('<div><p>Buy now</p><p>Later</p></div>');
+
+        $this->assertSame($withoutIt, $withEmptyNode);
+        $this->assertSame(
+            $this->parser->generateCustomId('UI', $withoutIt),
+            $this->parser->generateCustomId('UI', $withEmptyNode),
+            'a block must not be re-keyed by a node that renders as nothing'
+        );
+    }
+
     public function testTokenizerMatchesTheReferenceFixtures()
     {
         $path = dirname(__DIR__) . '/fixtures/tokenizer-reference.json';
@@ -1556,5 +1698,105 @@ class HtmlParserTest extends TestCase
         }
 
         return $out;
+    }
+
+    // =========================================================================
+    // MARK-1 / MARK-2 — identity stamping across SDK boundaries
+    // =========================================================================
+
+    /**
+     * MARK-2: a marker must be read under EITHER spelling.
+     *
+     * The TypeScript core writes `data-ls-*`; this SDK has always written
+     * `data-langsys-*`. A PHP page hosting a JS-rendered component is the
+     * ordinary case, and a reader that knows only its own spelling does not
+     * merely miss an attribute - it re-splits a block that already has an
+     * identity, registers it again under a different id, and strands whatever
+     * was filed under the first.
+     *
+     * Asserted on the predicates rather than through extractPhrases(): the
+     * phrase marker is deliberately NOT honoured on the content-block path (see
+     * walkNode), so driving it from there would test the wrong surface and, in
+     * an earlier draft of this test, did.
+     *
+     * @dataProvider phraseMarkerProvider
+     */
+    public function testPhraseMarkerIsReadUnderBothSpellings($attribute, $value, $expected)
+    {
+        $this->assertSame($expected, HtmlParser::isPhraseMarked($this->elementWith($attribute, $value)));
+    }
+
+    public function phraseMarkerProvider()
+    {
+        return [
+            'ls spelling, bare'        => ['data-ls-phrase', '', true],
+            'langsys spelling, bare'   => ['data-langsys-phrase', '', true],
+            'ls spelling, truthy'      => ['data-ls-phrase', 'yes', true],
+            // Off-values still opt out under both, so the second spelling added
+            // no way around the convention.
+            'ls spelling, false'       => ['data-ls-phrase', 'false', false],
+            'langsys spelling, false'  => ['data-langsys-phrase', 'FALSE', false],
+            'ls spelling, zero'        => ['data-ls-phrase', '0', false],
+            'langsys spelling, padded' => ['data-langsys-phrase', ' false ', false],
+        ];
+    }
+
+    /**
+     * And the marker actually keeps a block together on the path that honours
+     * it - the page path - under the JS spelling.
+     */
+    public function testJsSpellingKeepsABlockTogetherOnThePagePath()
+    {
+        $tokenizer = new \Langsys\SDK\Html\MarkupTokenizer();
+        $doc = new \DOMDocument();
+        $doc->loadHTML('<div data-ls-phrase>Buy <strong>now</strong></div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        $element = $doc->getElementsByTagName('div')->item(0);
+
+        $this->assertTrue(
+            HtmlParser::isPhraseMarked($element),
+            'the page path gates tokenization on this predicate'
+        );
+        $encoded = $tokenizer->encode($element);
+
+        // One phrase carrying a markup slot, not two phrases split at the tag
+        // boundary - which is what an unrecognised marker would have produced.
+        $this->assertTrue($tokenizer->hasTokens($encoded['text']), 'the marked run encodes as one tokenized phrase');
+        $this->assertSame('Buy {m0o}now{m0c}', $encoded['text']);
+        $this->assertCount(1, $encoded['slots']);
+    }
+
+    private function elementWith($attribute, $value)
+    {
+        $doc = new \DOMDocument();
+        $markup = $value === ''
+            ? '<div ' . $attribute . '></div>'
+            : '<div ' . $attribute . '="' . $value . '"></div>';
+        $doc->loadHTML($markup, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+
+        return $doc->getElementsByTagName('div')->item(0);
+    }
+
+    /**
+     * The content-block marker, both spellings, via the public predicate.
+     *
+     * @dataProvider contentBlockMarkerProvider
+     */
+    public function testContentBlockMarkerIsReadUnderBothSpellings($attribute, $value, $expected)
+    {
+        $doc = new \DOMDocument();
+        $doc->loadHTML('<div ' . $attribute . '="' . $value . '"></div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        $element = $doc->getElementsByTagName('div')->item(0);
+
+        $this->assertSame($expected, HtmlParser::isContentBlockMarked($element));
+    }
+
+    public function contentBlockMarkerProvider()
+    {
+        return [
+            'ls spelling on'       => ['data-ls-contentblock', 'abc123', true],
+            'langsys spelling on'  => ['data-langsys-contentblock', 'abc123', true],
+            'ls spelling off'      => ['data-ls-contentblock', 'false', false],
+            'langsys spelling off' => ['data-langsys-contentblock', '0', false],
+        ];
     }
 }

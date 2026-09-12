@@ -79,7 +79,9 @@ class HeadHandler
         // Extract title text
         $titles = $head->getElementsByTagName('title');
         if ($titles->length > 0) {
-            $titleText = trim($titles->item(0)->textContent);
+            // trim() alone left every internal run - and every U+00A0 - intact,
+            // because no collapse ever ran on this path at all (TOK-2).
+            $titleText = Whitespace::collapse($titles->item(0)->textContent);
             if ($titleText !== '') {
                 $phrases[] = $titleText;
             }
@@ -88,7 +90,11 @@ class HeadHandler
         // Extract meta tags
         $metas = $head->getElementsByTagName('meta');
         foreach ($metas as $meta) {
-            $content = $meta->getAttribute('content');
+            // Raw, previously: meta content was pushed with no trim and no
+            // collapse at all, so a description carrying a non-breaking space or
+            // wrapped across source lines registered exactly as authored - and
+            // the apply side below had to match it byte for byte to render.
+            $content = Whitespace::collapse($meta->getAttribute('content'));
             if ($content === '') {
                 continue;
             }
@@ -242,7 +248,11 @@ class HeadHandler
         $metas = $head->getElementsByTagName('meta');
 
         foreach ($metas as $meta) {
-            $content = $meta->getAttribute('content');
+            // Raw, previously: meta content was pushed with no trim and no
+            // collapse at all, so a description carrying a non-breaking space or
+            // wrapped across source lines registered exactly as authored - and
+            // the apply side below had to match it byte for byte to render.
+            $content = Whitespace::collapse($meta->getAttribute('content'));
             if ($content === '') {
                 continue;
             }

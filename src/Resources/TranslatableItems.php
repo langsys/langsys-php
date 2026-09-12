@@ -213,11 +213,10 @@ class TranslatableItems
      */
     protected function normalizeHtmlContent($html)
     {
-        // Trim leading/trailing whitespace
-        $html = trim($html);
-
-        // Collapse multiple whitespace (spaces, tabs, newlines) to single space
-        $html = preg_replace('/\s+/', ' ', $html);
+        // Collapse and trim exactly as the tokenizer does (TOK-2) - this text
+        // becomes a content block's stored HTML, and a mismatch here against
+        // HtmlParser is a mismatch between what we send and what we look up.
+        $html = \Langsys\SDK\Html\Whitespace::collapse($html);
 
         // Clean up space around tags
         $html = preg_replace('/>\s+</', '><', $html);

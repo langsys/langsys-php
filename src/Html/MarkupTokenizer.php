@@ -369,8 +369,6 @@ class MarkupTokenizer
      */
     protected function collapseWhitespace($text)
     {
-        $collapsed = preg_replace('/\s+/u', ' ', $text);
-
-        return trim($collapsed === null ? $text : $collapsed);
+        return Whitespace::collapse($text);
     }
 }

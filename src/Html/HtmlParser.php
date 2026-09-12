@@ -503,13 +503,40 @@ class HtmlParser
      */
     public static function isContentBlockMarked(DOMElement $element)
     {
-        if (!$element->hasAttribute('data-langsys-contentblock')) {
-            return false;
+        return self::markerIsTruthy($element, self::CONTENT_BLOCK_MARKERS);
+    }
+
+    /**
+     * Read a marker under either spelling (MARK-2).
+     *
+     * `data-ls-*` is what the TypeScript core writes; `data-langsys-*` is what
+     * this SDK has always written. A PHP page hosting a JS-rendered component
+     * is the ordinary case, not an exotic one, and a reader that knows only its
+     * own spelling walks into the other's markup, fails to see the marker, and
+     * re-splits a block that already has an identity - registering it a second
+     * time under a different id and stranding the translations filed under the
+     * first.
+     *
+     * Read accepts both; the first spelling present wins. What we WRITE is a
+     * separate decision (MARK-1) and is deliberately not widened here.
+     *
+     * @param DOMElement $element
+     * @param array $attributes
+     * @return bool
+     */
+    protected static function markerIsTruthy(DOMElement $element, array $attributes)
+    {
+        foreach ($attributes as $attribute) {
+            if (!$element->hasAttribute($attribute)) {
+                continue;
+            }
+
+            $value = strtolower(trim($element->getAttribute($attribute)));
+
+            return $value !== '0' && $value !== 'false';
         }
 
-        $value = strtolower(trim($element->getAttribute('data-langsys-contentblock')));
-
-        return $value !== '0' && $value !== 'false';
+        return false;
     }
 
     /**
@@ -530,13 +557,7 @@ class HtmlParser
      */
     public static function isPhraseMarked(DOMElement $element)
     {
-        if (!$element->hasAttribute('data-langsys-phrase')) {
-            return false;
-        }
-
-        $value = strtolower(trim($element->getAttribute('data-langsys-phrase')));
-
-        return $value !== '0' && $value !== 'false';
+        return self::markerIsTruthy($element, self::PHRASE_MARKERS);
     }
 
     /**
@@ -546,10 +567,52 @@ class HtmlParser
      * @param array &$phrases Array to collect phrases into
      * @return void
      */
+    /**
+     * Elements whose text content is code rather than prose (TOK-1).
+     *
+     * Exactly the four the spec names. PageTranslator::SKIP_ELEMENTS carries two
+     * more - svg and math - and that divergence is deliberate and reported, not
+     * an oversight: see walkNode().
+     */
+    const NON_PROSE_ELEMENTS = ['script', 'style', 'template', 'noscript'];
+
+    /**
+     * Both spellings of the content-block marker, canonical form first (MARK-2).
+     */
+    const CONTENT_BLOCK_MARKERS = ['data-ls-contentblock', 'data-langsys-contentblock'];
+
+    /**
+     * Both spellings of the keep-together phrase marker (MARK-2).
+     */
+    const PHRASE_MARKERS = ['data-ls-phrase', 'data-langsys-phrase'];
+
+    /**
+     * The spelling this SDK WRITES when stamping a rendered block (MARK-1).
+     */
+    const CONTENT_BLOCK_STAMP = 'data-ls-contentblock';
+
     protected function walkNode(DOMNode $node, array &$phrases)
     {
         // Skip elements excluded from translation entirely.
         if ($node instanceof DOMElement && self::isTranslationExcluded($node)) {
+            return;
+        }
+
+        // Skip elements whose text content is CODE, not prose (TOK-1).
+        //
+        // The page path has always skipped these (PageTranslator::SKIP_ELEMENTS);
+        // this path never did, so a content block containing a <script> or
+        // <style> harvested its SOURCE as phrases - registering minified CSS in
+        // the shared catalog, sending it for translation, and, because the id is
+        // a hash of the token list, re-keying the whole block whenever that
+        // source changed. An analytics payload carrying a nonce or a timestamp
+        // changes on every render.
+        //
+        // The two paths still differ on svg and math, which PageTranslator also
+        // skips and TOK-1 does not name. Measured and reported rather than
+        // unilaterally aligned: TOK-1 is a four-element list, and widening it
+        // here would put this SDK ahead of the spec instead of level with it.
+        if ($node instanceof DOMElement && in_array(strtolower($node->nodeName), self::NON_PROSE_ELEMENTS, true)) {
             return;
         }
 
@@ -668,8 +731,7 @@ class HtmlParser
      */
     protected function normalizeWhitespace($text)
     {
-        // Replace multiple whitespace (including newlines) with single space, then trim
-        return trim(preg_replace('/\s+/', ' ', $text));
+        return Whitespace::collapse($text);
     }
 
     /**
