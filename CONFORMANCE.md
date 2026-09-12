@@ -249,7 +249,7 @@ from the served bytes, on `main` (224dc8b) as well as here. `replaceTextContent(
 direct child text nodes only and then replaced the element's whole content with a string. It now
 finds the carrying text node at any depth and replaces it in place. Nav items, card links,
 buttons and table cells are all this shape. `tests/Html/PageTranslatorTest.php::testAPhraseWrappedInInlineMarkupKeepsItsMarkup`
-(5 vectors), `::testABreakInsideATranslatedElementSurvives`.
+(5 vectors), `::testABreakInsideATranslatedElementSurvives`. **Mutants, labelled by which one:** removing the CALL to `replaceDescendantText()` reddens 8 (`testAPhraseWrappedInInlineMarkupKeepsItsMarkup`, `::testABreakInsideATranslatedElementSurvives`, `::testASinglePhraseElementResolvesAPercentPlaceholder`, `::testPagePathPreservesNonBreakingPadding`); removing its RECURSION reddens 5, all `testAPhraseWrappedInInlineMarkupKeepsItsMarkup`. Both with zero crashes. An earlier report gave the 8 as the recursion mutant's figure — same conclusion, wrong label.
 
 **Bare text under a non-block ancestor is not registered — OPEN, pre-existing.** At body level
 `<a>Click to continue</a>` registers nothing, with or without an icon inside it, on `main` and
@@ -320,7 +320,7 @@ survives a tree difference that preserves document order. Measured:
 
 | Family | `<Phrase>` key | content-block `custom_id` |
 |---|---|---|
-| foster parenting | **splits** | **survives** — `c9a556e3…` on both trees; hoisting the stray element does not reorder anything |
+| foster parenting | **splits** | **survives** — `c9a556e3…` on both trees (category `UI`; the category is part of the hash, so the value is not reproducible without it — the fixture records it); hoisting the stray element does not reorder anything |
 | raw text | **splits** | **splits, and by ARITY** — 3 tokens against 2, which per CID-1 re-keys every block containing one |
 
 So the raw-text family is the more damaging, not foster parenting. I reported the opposite to

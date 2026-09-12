@@ -26,7 +26,7 @@
           "a <b>b</b>"
         ],
         "libxml2_block_id": "43ddeea82d4a0e2fc85c5f78215caf7f",
-        "js_family_block_id": null,
+        "js_family_block_id": "526f61b19c29148767952483d9f5538b",
         "splits_block_id": true,
         "note": "ARITY split: 3 tokens against 2. Per CID-1 an arity change re-keys EVERY block containing one."
       }
@@ -178,5 +178,6 @@
     }
   ],
   "two_identity_paths": "A tokenized <Phrase> key is a MARKER STRING, so it encodes nesting and is sensitive to any tree difference. A content block's custom_id is a flat ORDERED TOKEN ARRAY, so it survives a tree difference that preserves document order. Measured consequence: foster parenting splits the phrase key ONLY, while a raw-text body carrying markup splits BOTH - and the block half is an ARITY change, which per CID-1 re-keys every block containing one. The raw-text family is therefore the more damaging of the two, which is the opposite of this file's first reading.",
-  "provenance": "libxml2 columns are measured in this repo. JS-family PHRASE keys are langsys-js-server @ 8105faa, real Chromium 153 against parse5, 9/9. JS-family TOKEN ARRAYS for the foster rows are DERIVED by the TS lane from a hoisted tree, not measured in parse5 or Chromium - flagged by them rather than presented as measured, and to be confirmed by whoever holds parse5 before anyone relies on them."
+  "provenance": "libxml2 columns are measured in this repo. JS-family PHRASE keys are langsys-js-server @ 8105faa, real Chromium 153 against parse5, 9/9. JS-family TOKEN ARRAYS for the foster rows are DERIVED by the TS lane from a hoisted tree, not measured in parse5 or Chromium - flagged by them rather than presented as measured, and to be confirmed by whoever holds parse5 before anyone relies on them.",
+  "block_id_category": "UI. Every *_block_id in this file is HtmlParser::generateCustomId('UI', tokens). The category is PART OF THE HASH, so the ids are not reproducible without it - under the SDK's default '__uncategorized__' the same tokens give different values (e.g. foster-stray-element becomes b67f0bc9259c1341bcca9555db386076). Stated because an id a reader cannot recompute from this file is not evidence."
 }

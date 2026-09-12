@@ -2013,12 +2013,18 @@ class PageTranslatorTest extends TestCase
      */
     public function testTheMarkupLosingFallbackLogsRatherThanFatals(): void
     {
-        $reflection = new \ReflectionClass(PageTranslator::class);
-        $translator = $reflection->newInstanceWithoutConstructor();
+        // A CONSTRUCTED translator, which is the contract that actually holds.
+        //
+        // An earlier version of this test said it was "deliberately NOT
+        // injecting a logger" and then injected one by reflection three lines
+        // later - the comment describing a stronger guarantee than the code
+        // tested. The property cannot default to a NullLogger, because PHP
+        // forbids `new` in a property initializer; the constructor supplies it.
+        // So the honest claim is that every constructed instance is safe, and
+        // that is what this asserts.
+        $translator = new PageTranslator($this->createMockClient());
 
-        // Deliberately NOT injecting a logger: the property must be usable on
-        // an instance built without the constructor, or the guard depends on
-        // construction order.
+        $reflection = new \ReflectionClass(PageTranslator::class);
         $method = $reflection->getMethod('replaceTextContent');
         $method->setAccessible(true);
 
@@ -2028,10 +2034,6 @@ class PageTranslatorTest extends TestCase
         libxml_clear_errors();
 
         $element = $doc->getElementsByTagName('p')->item(0);
-
-        $logger = $reflection->getProperty('logger');
-        $logger->setAccessible(true);
-        $logger->setValue($translator, new \Langsys\SDK\Log\NullLogger());
 
         $method->invokeArgs($translator, [$element, 'HelloWorld', 'X']);
 

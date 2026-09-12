@@ -517,6 +517,16 @@ class MarkupTokenizerTest extends TestCase
      */
     public function testContentBlockIdsSurviveOnlyOrderPreservingTreeDifferences($case): void
     {
+        $fixture = json_decode(
+            file_get_contents(dirname(__DIR__) . '/fixtures/parse-model-reference.json'),
+            true
+        );
+
+        // The category is part of the hash, so it comes from the fixture rather
+        // than being hard-coded here - otherwise the ids in the file are not
+        // reproducible from the file, which is the whole point of recording them.
+        $category = explode('.', $fixture['block_id_category'])[0];
+
         $parser = new \Langsys\SDK\Html\HtmlParser();
         $tokens = array_values($parser->extractPhrases($case['html']));
         $block = $case['content_block'];
@@ -525,7 +535,7 @@ class MarkupTokenizerTest extends TestCase
             $this->assertSame($block['libxml2_tokens'], $tokens, $case['id'] . ' token array');
             $this->assertSame(
                 $block['libxml2_block_id'],
-                $parser->generateCustomId('UI', $tokens),
+                $parser->generateCustomId($category, $tokens),
                 $case['id'] . ' block id'
             );
         }
@@ -534,8 +544,16 @@ class MarkupTokenizerTest extends TestCase
             return;
         }
 
-        $jsId = $parser->generateCustomId('UI', $block['js_family_tokens']);
-        $ourId = $parser->generateCustomId('UI', $tokens);
+        $jsId = $parser->generateCustomId($category, $block['js_family_tokens']);
+        $ourId = $parser->generateCustomId($category, $tokens);
+
+        // Pin the recorded JS-family id too. It was in the file and read by
+        // nothing, which makes it decoration rather than a record.
+        $this->assertSame(
+            $block['js_family_block_id'],
+            $jsId,
+            $case['id'] . ': the recorded JS-family block id must be reproducible from this file'
+        );
 
         if ($block['splits_block_id']) {
             $this->assertNotSame($jsId, $ourId, $case['id'] . ': ' . $block['note']);

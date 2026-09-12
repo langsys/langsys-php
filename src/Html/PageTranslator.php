@@ -98,7 +98,12 @@ class PageTranslator
     protected $currentLocale = null;
 
     /**
-     * @var LoggerInterface Never null - see the constructor.
+     * @var LoggerInterface|null Defaulted in the CONSTRUCTOR, not here.
+     *
+     * PHP cannot `new` in a property initializer, so an instance built with
+     * newInstanceWithoutConstructor() genuinely has null here. That is a real
+     * limit, not a claim to round off: every constructed instance is safe, and
+     * only reflection can produce one that is not.
      */
     protected $logger;
 
@@ -124,7 +129,8 @@ class PageTranslator
         //
         // NullLogger rather than null, so the property is always callable even
         // when the client cannot supply one (a test double, a partially
-        // constructed client).
+        // constructed client). This is the CONSTRUCTOR's default - the property
+        // declaration above cannot carry it, since PHP forbids `new` there.
         $this->logger = (is_object($client) && method_exists($client, 'getLogger') && $client->getLogger() !== null)
             ? $client->getLogger()
             : new NullLogger();
