@@ -362,6 +362,12 @@ the identical string.
   inside a table splits a phrase with nothing visibly wrong on the page.
   Measured and recorded in `CONFORMANCE.md` rather than worked around; keeping
   table markup well-formed avoids it.
+- **Which of those two splits applies also depends on the libxml2 version PHP
+  was built with, and composer cannot pin that.** The splits above were measured
+  on libxml2 2.9.13. A newer libxml2 (2.14.6, measured through another SDK) reads
+  markup inside `<textarea>` and `<title>` the way the JavaScript SDKs do, so the
+  identity of content carrying markup inside those elements can change when a
+  server's libxml2 is upgraded, with no change to the SDK or to the page.
 
 ### Changed
 
