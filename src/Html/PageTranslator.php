@@ -37,12 +37,6 @@ class PageTranslator
         'figure', 'figcaption',
         // Interactive
         'details', 'summary', 'dialog',
-        // Graphics. SVG <text> is visible copy, so the subtree is extracted
-        // like any other smallest block. Listing `svg` rather than its children
-        // keeps the SVG-specific knowledge to one entry: the generic walk skips
-        // bare text under a non-block element, so removing `svg` from
-        // SKIP_ELEMENTS alone made it recursed-into and still silently dropped.
-        'svg',
     ];
 
     /**
@@ -51,15 +45,29 @@ class PageTranslator
     /**
      * Elements the page walk does not descend into.
      *
-     * `svg` was here and has been removed: SVG `<text>` is visible copy, so it
-     * is translated like any other text (TOK-1 names script/style/template/
-     * noscript/math and deliberately not svg). This was the TOP-LEVEL case
-     * only - a nested `<svg>` inside a translated subtree already leaked
-     * through both paths, so the two paths disagreed with each other about the
-     * same element depending on where it sat.
+     * `svg` is here, and the spec says SVG text should be translated - so this
+     * is a KNOWN, deliberate non-conformance on the page path, not an oversight.
+     *
+     * It was removed once and reverted. Removing it alone did nothing (the walk
+     * drops bare text under a non-block element), and making `svg` a block
+     * element instead broke the commonest markup on a page: `containsNestedBlocks()`
+     * then reported true for the icon's parent, so the walker recursed past it
+     * and skipped the parent's OWN text - `<p>Click <svg/> to continue</p>`
+     * registered nothing at all. Standalone SVG fared worse: extracted as a
+     * simple phrase, it went through the text-content fallback and every
+     * `<path>` in the graphic was replaced by the translated string.
+     *
+     * Doing this properly means translating the `<text>` node in place rather
+     * than treating `<svg>` as a container of prose. Until that exists, skipping
+     * is the honest behaviour: SVG labels stay in the base language, which is a
+     * missing translation rather than a deleted graphic or a lost paragraph.
+     *
+     * The CONTENT-BLOCK path does tokenize SVG text, and that is not a
+     * contradiction to fix by making them match - it is what the TS core does
+     * too, so the block path is already fleet-consistent.
      */
     const SKIP_ELEMENTS = [
-        'script', 'style', 'noscript', 'template', 'math',
+        'script', 'style', 'noscript', 'template', 'math', 'svg',
     ];
 
     /**

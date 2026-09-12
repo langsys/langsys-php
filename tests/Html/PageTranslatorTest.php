@@ -1550,37 +1550,128 @@ class PageTranslatorTest extends TestCase
     }
 
     /**
-     * SVG text is registered by the PAGE path too, not only the block path.
+     * CHARACTERISATION, not conformance: the page path does NOT translate SVG
+     * text, and the spec says it should.
      *
-     * The two paths used to disagree about `<svg>`: the block path tokenized
-     * it, the page path skipped it outright. Removing it from SKIP_ELEMENTS was
-     * not enough on its own - the generic walk drops bare text under a
-     * non-block element, so `<svg>` was recursed into and its `<text>` silently
-     * discarded. This test is what catches that half; without it, dropping
-     * `svg` from BLOCK_ELEMENTS leaves the whole suite green.
+     * This asserts the current behaviour so the gap is visible and so the day
+     * it closes, this test fails and has to be rewritten deliberately. It is
+     * not evidence for TOK-1 and the conformance row says so.
      *
-     * MathML stays untranslated, and the ordinary paragraph is the control that
-     * the page path registered anything at all.
+     * The attempt that made it conform is why the gap is still here: treating
+     * `<svg>` as a block broke every icon-bearing paragraph, heading and list
+     * item on the page path, and destroyed standalone graphics. The two tests
+     * below this one pin both of those. Doing it properly means translating the
+     * `<text>` node in place.
+     *
+     * The content-block path DOES tokenize SVG text, matching the TS core.
      */
-    public function testThePagePathRegistersSvgTextButNotMath(): void
+    public function testThePagePathDoesNotYetTranslateSvgText(): void
     {
-        $registered = $this->registeredPayloadFor(
+        $registered = [];
+        foreach ($this->registeredPayloadFor(
             '<html><body><svg><text>SvgLabel</text></svg>'
             . '<math><mi>MathLabel</mi></math><p>Ordinary</p></body></html>'
-        );
-
-        $phrases = [];
-        foreach ($registered as $item) {
+        ) as $item) {
             if (isset($item['phrase'])) {
-                $phrases[] = $item['phrase'];
+                $registered[] = $item['phrase'];
             }
             foreach (isset($item['phrases']) ? $item['phrases'] : [] as $nested) {
-                $phrases[] = $nested['phrase'];
+                $registered[] = $nested['phrase'];
             }
         }
 
-        $this->assertContains('Ordinary', $phrases, 'control: the page path must register something');
-        $this->assertContains('SvgLabel', $phrases, 'SVG text is visible copy and must be translated');
-        $this->assertNotContains('MathLabel', $phrases, 'MathML is notation, not prose');
+        $this->assertSame(
+            ['Ordinary'],
+            $registered,
+            'known gap: SVG text is skipped on the page path; MathML is correctly skipped'
+        );
+    }
+
+    /**
+     * But the CONTENT-BLOCK path does tokenize SVG text, and excludes MathML -
+     * so the gap above is the page path alone, not the SDK.
+     */
+    public function testTheBlockPathTokenizesSvgTextAndNotMath(): void
+    {
+        $parser = new HtmlParser();
+
+        $this->assertSame(
+            ['SvgLabel', 'Ordinary'],
+            array_values($parser->extractPhrases(
+                '<svg><text>SvgLabel</text></svg><math><mi>MathLabel</mi></math><p>Ordinary</p>'
+            ))
+        );
+    }
+
+    /**
+     * An inline `<svg>` icon must not cost the text around it.
+     *
+     * Icon-bearing paragraphs, headings, list items and links are among the
+     * commonest markup on a modern page. Treating `<svg>` as a block element
+     * made `containsNestedBlocks()` true for the parent, so the walker recursed
+     * into it and skipped the parent's own direct text nodes - and
+     * `<p>Click <svg/> to continue</p>` registered NOTHING at all.
+     *
+     * assertSame on the whole registered set, not assertContains: the defect
+     * was text going MISSING, which a containment assertion cannot see.
+     *
+     * @dataProvider inlineIconProvider
+     */
+    public function testTextAroundAnInlineSvgIconIsStillRegistered($html, array $expected, $why): void
+    {
+        $registered = [];
+        foreach ($this->registeredPayloadFor('<html><body>' . $html . '</body></html>') as $item) {
+            if (isset($item['phrase'])) {
+                $registered[] = $item['phrase'];
+            }
+            foreach (isset($item['phrases']) ? $item['phrases'] : [] as $nested) {
+                $registered[] = $nested['phrase'];
+            }
+        }
+
+        $this->assertSame($expected, $registered, $why);
+    }
+
+    public function inlineIconProvider(): array
+    {
+        return [
+            'icon after text in a paragraph' => [
+                '<p>Hello <svg><text>Label</text></svg></p>', ['Hello', 'Label'],
+                'the paragraph text must survive an icon beside it',
+            ],
+            'text either side of an icon' => [
+                '<p>Click <svg><path/></svg> to continue</p>', ['Click', 'to continue'],
+                'a decorative icon mid-sentence registered nothing at all',
+            ],
+            'icon leading a list item' => [
+                '<li><svg/> Item one</li>', ['Item one'],
+                'icon-led list items are ordinary markup',
+            ],
+            'icon leading a heading' => [
+                '<h1><svg/>Heading</h1>', ['Heading'],
+                'and icon-led headings',
+            ],
+        ];
+    }
+
+    /**
+     * And a standalone `<svg>` must survive being rendered.
+     *
+     * Extracting it as a simple phrase routed it through the text-content
+     * fallback, which replaces the element's entire contents with a string - so
+     * translating the label deleted every `<path>` in the graphic. Whatever we
+     * do about translating SVG text, destroying the artwork is not it.
+     */
+    public function testAStandaloneSvgSurvivesRendering(): void
+    {
+        $svg = '<svg viewBox="0 0 10 10"><path d="M0 0L1 1"/><text x="1">Label</text></svg>';
+
+        $rendered = $this->translatePageWithCatalog(
+            '<html><body>' . $svg . '</body></html>',
+            ['Label' => 'X:Label']
+        );
+
+        $this->assertStringContainsString('<path', $rendered, 'the graphic must not be destroyed');
+        $this->assertStringContainsString('<text', $rendered, 'nor its text element flattened away');
     }
 }
