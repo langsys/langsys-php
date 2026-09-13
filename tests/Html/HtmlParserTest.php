@@ -336,14 +336,15 @@ class HtmlParserTest extends TestCase
      * The cross-SDK canonicalization vectors (TOK-1, TOK-2, TOK-4).
      *
      * Authored by langsys-js-typescript and adopted byte-identically
-     * (`4eac870:tests/fixtures/canonicalization-reference.json`, blob
-     * `1ae7bc2900c073085ae3ebbf1f81cd37c81d553b`). Each row carries every
+     * (`a18e4a3:tests/fixtures/canonicalization-reference.json`, blob
+     * `5e9866c1579578ed2f0d4069deb4e1fe8330fb39`). Each row carries every
      * lane's MEASURED output alongside the expectation, so the file records
      * where the fleet disagreed rather than only where it should agree — this
      * SDK was 13/19 when the file was first adopted at `6596faf` (blob
      * `e4c1f185...`, 19 rows). Re-vendored at `4eac870` (26 rows) for the 8.0.1
      * re-row: no existing row's expectation changed, and the seven added rows
-     * are the 8.0.1 behaviours.
+     * are the 8.0.1 behaviours. Re-vendored again at `a18e4a3` for provenance
+     * only: every row is identical, and `spec_blob` now names `5c5c0723`.
      *
      * Every row also carries codepoints. That is the load-bearing part: the
      * three rules here turn on characters that are invisible in a terminal and
@@ -2058,7 +2059,7 @@ class HtmlParserTest extends TestCase
     {
         $vendored = [
             // canonicalization-reference.json needs no exemption any more: re-vendored
-            // at langsys-js-typescript 4eac870 (blob 1ae7bc29), which is escaped at source.
+            // at langsys-js-typescript a18e4a3 (blob 5e9866c1), which is escaped at source.
             // legacy-custom-id-reference.json, langsys-python
             'dc5556466dc54fe82e81ac9fdbf4549b2b76e7ce' => 'adopted byte-identically from langsys-python',
         ];

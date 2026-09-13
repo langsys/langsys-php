@@ -167,8 +167,9 @@ content block's `custom_id` is a hash of its phrase list in order — so a disag
 cosmetic, it re-keys blocks and strands their translations.
 
 Measured against `tests/fixtures/canonicalization-reference.json`, authored by
-langsys-js-typescript and adopted byte-identically (`4eac870:tests/fixtures/canonicalization-reference.json`,
-blob `1ae7bc2900c073085ae3ebbf1f81cd37c81d553b`, 26 rows — re-vendored for the 8.0.1 re-row; first
+langsys-js-typescript and adopted byte-identically (`a18e4a3:tests/fixtures/canonicalization-reference.json`,
+blob `5e9866c1579578ed2f0d4069deb4e1fe8330fb39`, 26 rows — re-vendored at `a18e4a3` for provenance only: every
+row is identical to the `4eac870` copy the 8.0.1 re-row used, and its `spec_blob` now names `5c5c0723`; first
 adopted at `6596faf`, blob `e4c1f185…`, 19 rows; no existing row's expectation changed, and all 26
 pass). **This SDK was 13 of 19 when the file was
 written**; the six misses are the two causes below.
@@ -554,6 +555,8 @@ done <<'EOF'
 0	CONFORMANCE.md	| Rule | Status | Evidence |
 0	CONFORMANCE.md	| n/a (profile: server) |
 0	CONFORMANCE.md	No SDK behaviour here reaches
+0	CONFORMANCE.md	1ae7bc29
+0	tests/fixtures/README.md	1ae7bc29
 EOF
 exit $fail
 ```
