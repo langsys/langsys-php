@@ -588,6 +588,16 @@ class InterpolatorTest extends TestCase
 
         $this->assertNotEmpty($cases);
 
+        // Every row once supplied a params object, which is how three SDKs shipped a
+        // no-params short-circuit that returned the raw pattern with every fixture
+        // run green. Both shapes must stay in the file.
+        $this->assertNotEmpty(array_filter($cases, function ($case) {
+            return !array_key_exists('params', $case);
+        }), 'the fixture must keep a row with no params at all');
+        $this->assertNotEmpty(array_filter($cases, function ($case) {
+            return array_key_exists('params', $case) && $case['params'] === [];
+        }), 'the fixture must keep a row with an empty params map');
+
         foreach ($cases as $case) {
             // requires_intl is MEASURED at generation time by running each case
             // with and without the extension, not guessed from the template -
@@ -599,7 +609,10 @@ class InterpolatorTest extends TestCase
 
             $this->assertSame(
                 $case['expected'],
-                $this->interpolator->interpolate($case['template'], $case['params'], $case['locale']),
+                // A row without params maps to the default []: passing a locale
+                // positionally means this API cannot omit the argument itself.
+                // ClientInterpolationTest drives the genuinely omitted form.
+                $this->interpolator->interpolate($case['template'], array_key_exists('params', $case) ? $case['params'] : [], $case['locale']),
                 $case['description'] . ' — ' . $case['template']
             );
         }

@@ -304,4 +304,38 @@ class ClientInterpolationTest extends TestCase
         $this->assertStringNotContainsString('Sarah', $second);
         $this->assertStringContainsString('{name}', $second);
     }
+
+    /**
+     * The shared interpolation fixture, driven through the public route.
+     *
+     * InterpolatorTest runs these rows against the interpolator directly, which
+     * cannot see a short-circuit in front of it: Client::interpolate() once
+     * returned early on empty params and shipped raw MessageFormat source with
+     * every interpolator test green. A row without params calls translate() with
+     * the argument genuinely omitted.
+     */
+    public function testInterpolationFixtureHoldsThroughTranslate()
+    {
+        $cases = json_decode(file_get_contents(dirname(__DIR__) . '/fixtures/interpolation-reference.json'), true);
+        $this->assertNotEmpty($cases);
+
+        $ran = 0;
+        foreach ($cases as $case) {
+            if (!empty($case['requires_intl']) && !extension_loaded('intl')) {
+                continue;
+            }
+
+            $client = $this->makeClient(['UI' => ['Fixture phrase' => $case['template']]]);
+            $client->setLocale($case['locale']);
+
+            $rendered = array_key_exists('params', $case)
+                ? $client->translate('Fixture phrase', $case['locale'], 'UI', null, $case['params'])
+                : $client->translate('Fixture phrase', $case['locale'], 'UI');
+
+            $this->assertSame($case['expected'], $rendered, $case['description'] . ' — ' . $case['template']);
+            $ran++;
+        }
+
+        $this->assertGreaterThan(0, $ran, 'at least one row must run through the client');
+    }
 }

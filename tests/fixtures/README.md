@@ -181,9 +181,18 @@ an argument explicitly `null`, and a genuine `0`. That last pair matters most �
 `null` to zero makes a data-fetch failure indistinguishable from an empty cart in
 the page, in a screenshot, and in a support ticket.
 
+Four cases call with **no params at all**: a select and a plural, each once with the
+`params` key omitted and once with an empty map. Every earlier case supplied a params
+object, and that is how three SDKs shipped a no-params short-circuit returning the raw
+pattern while every fixture run stayed green. Where a case omits `params`, a harness
+must call with the argument genuinely omitted, not with an empty map. Their
+`requires_intl` was measured on this SDK's own no-intl path (`hasIntl()` forced false,
+because the extension here loads even under `php -n`), controlled against the existing
+cases: all 15 marked independent matched without it, and all 4 marked dependent differed.
+
 Each case carries `requires_intl`, **measured** by generating the file twice —
 once with the extension and once without — rather than inferred from the
-template. Only 4 of 19 cases actually depend on it, and they are not the ones you
+template. Only 4 of 23 cases actually depend on it, and they are not the ones you
 would guess: the ICU missing-argument recoveries are intl-independent, while a
 plain `{id}` placeholder is not, because it needs CLDR number formatting.
 
