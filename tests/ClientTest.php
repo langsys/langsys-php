@@ -729,6 +729,32 @@ class ClientTest extends TestCase
         $this->assertFalse($client->canWrite());
     }
 
+    /**
+     * The catalog half of the reset. A long-lived worker (Octane, a queue
+     * worker) reuses one Client across units of work, so a reset that kept the
+     * memory catalog would serve the previous unit's translations until the
+     * process died. Ported from the Laravel binding's
+     * RequestScopeTest::testTheNextUnitOfWorkReadsTheCatalogAfresh, which was the
+     * only test anywhere that turned red when the clearing line was deleted.
+     */
+    public function testResetRequestStateMakesTheNextUnitReadTheCatalogAfresh()
+    {
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', [
+            'data' => ['key_type' => 'write', 'write_enabled' => true],
+        ]);
+        $mockHttp->setResponse('GET', 'translations', ['data' => ['UI' => ['Save' => 'Guardar']]]);
+
+        $client = $this->createClientWithMockHttp($mockHttp);
+        $client->setLocale('es-es');
+        $this->assertSame('Guardar', $client->translate('Save', null, 'UI'), 'Control: this unit must have read the seeded catalog.');
+
+        $mockHttp->setResponse('GET', 'translations', ['data' => ['UI' => ['Save' => 'Salvar']]]);
+        $client->resetRequestState();
+
+        $this->assertSame('Salvar', $client->translate('Save', null, 'UI'), "The next unit served the previous unit's catalog.");
+    }
+
     // =========================================================================
     // An empty category must not become a second, unreachable namespace
     // =========================================================================
