@@ -302,21 +302,54 @@ class HttpClient
     protected function raiseForStatus($data, $httpCode)
     {
         if ($httpCode === 401) {
-            $message = isset($data['error']) ? $data['error'] : 'Unauthorized';
-            throw new AuthenticationException($message, $data);
+            throw new AuthenticationException($this->errorMessage($data, 'Unauthorized'), $data);
         }
 
         if ($httpCode === 422) {
-            $message = isset($data['error']) ? $data['error'] : 'Validation failed';
-            $errors = isset($data['errors']) ? $data['errors'] : [];
-            throw new ValidationException($message, $errors, $data);
+            $errors = [];
+
+            if (is_array($data) && isset($data['errors']) && is_array($data['errors'])) {
+                $errors = $data['errors'];
+            } elseif (is_array($data) && isset($data['error']) && is_array($data['error']) && isset($data['error']['errors']) && is_array($data['error']['errors'])) {
+                $errors = $data['error']['errors'];
+            }
+
+            throw new ValidationException($this->errorMessage($data, 'Validation failed'), $errors, $data);
         }
 
         if ($httpCode >= 400) {
-            $message = isset($data['error']) ? $data['error'] : 'API error';
-            throw new ApiException($message, $httpCode, $data);
+            throw new ApiException($this->errorMessage($data, 'API error'), $httpCode, $data);
         }
 
         return $data;
+    }
+
+    /**
+     * The human-readable message of an error body.
+     *
+     * The langsys error envelope carries `error` as an object with its own
+     * `message` (MSG-1); older bodies carry `error` as the text itself. Reading
+     * `error` as text alone handed an array to the exception on the newer shape,
+     * which is a TypeError instead of the API error it was reporting.
+     *
+     * @param mixed $data
+     * @param string $default
+     * @return string
+     */
+    protected function errorMessage($data, $default)
+    {
+        if (!is_array($data) || !isset($data['error'])) {
+            return $default;
+        }
+
+        if (is_string($data['error'])) {
+            return $data['error'];
+        }
+
+        if (is_array($data['error']) && isset($data['error']['message']) && is_string($data['error']['message'])) {
+            return $data['error']['message'];
+        }
+
+        return $default;
     }
 }

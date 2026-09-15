@@ -16,6 +16,7 @@ use Langsys\SDK\Log\Logger;
 use Langsys\SDK\Log\LoggerInterface;
 use Langsys\SDK\Log\LogViewer;
 use Langsys\SDK\Log\NullLogger;
+use Langsys\SDK\Messages\ServerMessage;
 use Langsys\SDK\Resources\Translations;
 use Langsys\SDK\Resources\TranslatableItems;
 use Langsys\SDK\Resources\Utilities;
@@ -803,6 +804,152 @@ class Client
         $this->queuePhraseForRegistration($phrase, $category);
 
         return $this->interpolate($phrase, $params, $locale);
+    }
+
+    /**
+     * Render a server message entry (MSG-5, MSG-6).
+     *
+     * The entry's TEMPLATE is looked up under the messages category and the
+     * translation is filled from the entry's params, so a count param renders
+     * through the catalog's ICU like any other phrase. With no translation - a
+     * miss, a template registered but not yet translated, a failed lookup, no
+     * locale - the entry's own message comes back verbatim. The server already
+     * filled it; filling the template again here would format its numbers for
+     * this locale and disagree with what the server sent. The message is never
+     * used as a lookup key: it is filled, possibly localised, text.
+     *
+     * A miss queues the template for registration, as any rendered phrase does.
+     *
+     * @param ServerMessage|array $entry An entry, or its wire form
+     * @param string|null $locale
+     * @return string
+     */
+    public function translateMessage($entry, $locale = null)
+    {
+        if (is_array($entry)) {
+            $parsed = ServerMessage::fromArray($entry);
+
+            if ($parsed === null) {
+                return (isset($entry['message']) && is_string($entry['message'])) ? $entry['message'] : '';
+            }
+
+            $entry = $parsed;
+        }
+
+        if (!$entry instanceof ServerMessage) {
+            return '';
+        }
+
+        if ($locale === null) {
+            $locale = $this->messageLocale();
+
+            if ($locale === null) {
+                return $entry->getMessage();
+            }
+        }
+
+        $category = $this->normalizeCategory($this->config->getMessagesCategory());
+        $found = $this->lookupMessageTemplate($entry->getTemplate(), $category, $locale);
+
+        if ($found === null) {
+            return $entry->getMessage();
+        }
+
+        list($listed, $translation) = $found;
+
+        if (!$listed) {
+            $this->queuePhraseForRegistration($entry->getTemplate(), $category);
+
+            return $entry->getMessage();
+        }
+
+        if ($translation === null) {
+            return $entry->getMessage();
+        }
+
+        return $this->interpolate($translation, $entry->getParams(), $locale);
+    }
+
+    /**
+     * Note that the server is sending an entry (MSG-8).
+     *
+     * A template the catalog does not list under the messages category is queued
+     * on the existing registration path: it is sent after the response, once, and
+     * only if this request's key may write. Nothing is sent here. When the catalog
+     * cannot be read, or there is no locale to read it in, nothing is queued -
+     * a miss cannot be told from a hit, and registering on a guess would turn an
+     * outage into a write on every failing request.
+     *
+     * @param ServerMessage $message
+     * @return ServerMessage The same entry, so a caller can emit it inline
+     */
+    public function emitMessage(ServerMessage $message)
+    {
+        $locale = $this->messageLocale();
+
+        if ($locale === null) {
+            return $message;
+        }
+
+        $category = $this->normalizeCategory($this->config->getMessagesCategory());
+        $found = $this->lookupMessageTemplate($message->getTemplate(), $category, $locale);
+
+        if ($found !== null && !$found[0]) {
+            $this->queuePhraseForRegistration($message->getTemplate(), $category);
+        }
+
+        return $message;
+    }
+
+    /**
+     * The locale a server message is read in, or null. Resolving it can reach the
+     * network (the project's base locale), and a render path must not throw.
+     *
+     * @return string|null
+     */
+    protected function messageLocale()
+    {
+        try {
+            return $this->getLocale();
+        } catch (\Throwable $e) {
+            $this->logger->error('Could not resolve a locale for a server message', ['error' => $e->getMessage()]);
+
+            return null;
+        }
+    }
+
+    /**
+     * Whether the catalog lists a template, and its translation.
+     *
+     * @param string $template
+     * @param string $category
+     * @param string $locale
+     * @return array|null [bool $listed, string|null $translation], or null when the catalog could not be read
+     */
+    protected function lookupMessageTemplate($template, $category, $locale)
+    {
+        try {
+            $translations = $this->getTranslations($locale);
+        } catch (\Throwable $e) {
+            $this->logger->error('Server message lookup failed - using the message the server sent', [
+                'template' => $template,
+                'category' => $category,
+                'locale' => $locale,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+
+        $categoryTranslations = (isset($translations[$category]) && is_array($translations[$category])) ? $translations[$category] : [];
+
+        if (!array_key_exists($template, $categoryTranslations)) {
+            return [false, null];
+        }
+
+        $value = $categoryTranslations[$template];
+
+        return [true, (is_string($value) && $value !== '') ? $value : null];
     }
 
     /**

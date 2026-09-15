@@ -128,6 +128,19 @@ its id or re-registers it.
 
 ### Added
 
+- **Server messages.** Validation errors and system messages can now be registered
+  and translated ahead of time, the way the backend's own error templates are (spec
+  8.1.0, Server messages). `Langsys\SDK\Messages` fills `{name}` markers exactly as
+  the backend does, reads message entries from any response shape, and checks each
+  template for what would make it untranslatable: a brace that is not a marker, a
+  framework placeholder left unfilled, a label carried in a marker.
+  `vendor/bin/langsys-messages` lists every template an app declares, exits non-zero
+  naming each message it cannot list, and with `--register` registers only what the
+  catalog lacks. `Client::translateMessage()` renders an entry in the request locale
+  and falls back to the message the server sent; `Client::emitMessage()` registers a
+  template the catalog lacks after the response. Templates live under one category,
+  `Errors` by default (`messages_category`, `LANGSYS_MESSAGES_CATEGORY`).
+
 - **Pipe-form lookup fallback for content blocks.** Content registered before the
   JSON-form id change is filed under `md5(implode('|', [category, ...phrases]))`
   and resolves to nothing under the current id — so it would be re-registered,
@@ -158,6 +171,10 @@ its id or re-registers it.
 
 ### Fixed
 
+- **An API error in the langsys error envelope raised a TypeError instead of the
+  error.** When the API sent `error` as an object (code, message, template), the
+  client passed the whole object as the exception message. The exception now carries
+  the object's message and exposes `getErrorCode()` and `getServerMessages()`.
 - **A null catalog value no longer reaches the caller.** A registered but
   untranslated phrase comes back present with a `null` value; the lookup guarded
   only against `''`, so `null` passed through `interpolate()`'s empty-params

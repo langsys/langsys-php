@@ -1,0 +1,61 @@
+#!/usr/bin/env php
+<?php
+
+/**
+ * List every server message template an app can send, fail on any it cannot
+ * list, and register them with --register (MSG-7).
+ *
+ *   vendor/bin/langsys-messages [--config=langsys-messages.php] [--register] [-v]
+ *
+ * The config file returns ['sources' => [MessageSource, ...], 'client' => Client|Closure].
+ */
+
+$loaded = false;
+
+foreach ([__DIR__ . '/../vendor/autoload.php', __DIR__ . '/../../../autoload.php'] as $autoload) {
+    if (is_file($autoload)) {
+        require $autoload;
+        $loaded = true;
+        break;
+    }
+}
+
+if (!$loaded) {
+    fwrite(STDERR, "Cannot find Composer's autoloader: run composer install first.\n");
+    exit(1);
+}
+
+$options = getopt('v', ['config:', 'register', 'verbose', 'help']);
+
+if (isset($options['help'])) {
+    fwrite(STDOUT, "Usage: langsys-messages [--config=langsys-messages.php] [--register] [-v]\n");
+    exit(0);
+}
+
+$configPath = isset($options['config']) ? $options['config'] : getcwd() . '/langsys-messages.php';
+
+if (!is_file($configPath)) {
+    fwrite(STDERR, "No message configuration at $configPath: create it, returning ['sources' => [...], 'client' => ...].\n");
+    exit(1);
+}
+
+$config = require $configPath;
+
+if (!is_array($config) || !isset($config['sources']) || !is_array($config['sources'])) {
+    fwrite(STDERR, "$configPath must return an array whose 'sources' is a list of message sources.\n");
+    exit(1);
+}
+
+$client = isset($config['client']) ? $config['client'] : null;
+
+if ($client instanceof Closure) {
+    $client = $client();
+}
+
+exit(\Langsys\SDK\Messages\MessageCatalogCommand::run(
+    $config['sources'],
+    $client,
+    ['register' => isset($options['register']), 'verbose' => isset($options['verbose']) || isset($options['v'])],
+    STDOUT,
+    STDERR
+));

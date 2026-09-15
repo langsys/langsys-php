@@ -11,6 +11,9 @@
         "ext-json": "*",
         "ext-intl": "*"
     },
+    "bin": [
+        "bin/langsys-messages"
+    ],
     "suggest": {
         "ext-redis": "For Redis cache support"
     },

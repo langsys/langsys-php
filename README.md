@@ -75,6 +75,7 @@ Set these environment variables to configure the SDK:
 | `LANGSYS_BASE_URL` | No | Auto-detect | Base URL for resolving relative URLs in content blocks |
 | `LANGSYS_LOG_PATH` | No | - | Path to log file (logging disabled if not set) |
 | `LANGSYS_LOG_LEVEL` | No | `info` | Minimum log level: `debug`, `info`, `warning`, `error` |
+| `LANGSYS_MESSAGES_CATEGORY` | No | `Errors` | Category server message templates are registered and looked up under |
 
 ### Constructor Options
 
@@ -93,6 +94,7 @@ $client = new Client(
         'base_url' => 'https://example.com',  // For resolving relative URLs
         'log_path' => '/var/log/langsys.log', // Enable logging
         'log_level' => 'info',                // Minimum level to log
+        'messages_category' => 'Errors',      // Category for server message templates
     ]
 );
 ```
@@ -1044,6 +1046,70 @@ The log viewer includes:
 - Statistics cards showing counts by log level
 - Expandable context for each entry with close button
 
+## Server Messages
+
+Validation errors and other messages your server sends can be translated like any
+phrase. Each message travels as an entry with a fixed shape: `code` for your logic,
+`template` for translation, `params` for its values, and `message` already filled
+in. A translator sees one whole sentence, so gender and number come out right.
+
+### Build entries
+
+```php
+use Langsys\SDK\Messages\ServerMessage;
+
+$entry = ServerMessage::make('too_short', 'The password must be at least {min} characters.', ['min' => 12], 'password');
+
+$entry->getMessage(); // "The password must be at least 12 characters."
+$entry->toArray();    // field, code, message, template, params
+```
+
+Write everything translatable into the template, the field's label included. Use a
+`{name}` marker only for a value that isn't translatable: a number, a date, what the
+user typed.
+
+### Render entries
+
+```php
+use Langsys\SDK\Messages\MessageSet;
+
+$messages = MessageSet::fromResponse($responseBody); // finds entries wherever they sit
+
+foreach ($messages->forField('password') as $entry) {
+    echo $client->translateMessage($entry); // translated, or the server's message until it is
+}
+```
+
+`translateMessage()` looks the template up under the `Errors` category and never uses
+the filled message as a key. When your server sends an entry, pass it through
+`$client->emitMessage($entry)`: a template the catalog doesn't have yet is registered
+after the response.
+
+### Register every template ahead of time
+
+A message doesn't exist until something fails, so no page shows it for discovery. List
+them from your code instead:
+
+```php
+// langsys-messages.php
+use Langsys\SDK\Client;
+use Langsys\SDK\Messages\ErrorClassSource;
+
+return [
+    'sources' => [new ErrorClassSource([App\Errors\QuotaExceeded::class])],
+    'client' => function () { return new Client(); },
+];
+```
+
+```bash
+vendor/bin/langsys-messages             # lists templates; exits 1 naming each one it can't list
+vendor/bin/langsys-messages --register  # registers the ones the catalog doesn't have yet
+```
+
+An error class declares `CODE` and `MESSAGE` constants and a public property for each
+marker. Run the command in CI so a message that can't be registered ahead of time
+fails the build.
+
 ## Error Handling
 
 The SDK throws specific exceptions for different error types:
@@ -1064,6 +1130,12 @@ try {
     // 422 - Invalid request data
     echo "Validation failed: " . $e->getMessage();
     print_r($e->getErrors());
+
+    // The error's code and its message entries, when the API sends them
+    echo $e->getErrorCode();
+    foreach ($e->getServerMessages()->forField('name') as $entry) {
+        echo $client->translateMessage($entry);
+    }
 } catch (ApiException $e) {
     // Other API errors (4xx, 5xx)
     echo "API error: " . $e->getMessage();

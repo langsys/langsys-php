@@ -18,6 +18,13 @@ class Config
     const DEFAULT_CACHE_TTL = 3600;
 
     /**
+     * The category server message templates are registered and looked up under
+     * (MSG-6). It has to match on the server that registers them and on every
+     * client that renders them, or every lookup misses and falls back.
+     */
+    const DEFAULT_MESSAGES_CATEGORY = 'Errors';
+
+    /**
      * @var string
      */
     protected $apiKey;
@@ -63,6 +70,11 @@ class Config
     protected $logLevel;
 
     /**
+     * @var string Category for server message templates
+     */
+    protected $messagesCategory;
+
+    /**
      * Create a new Config instance.
      *
      * @param array $options
@@ -104,6 +116,10 @@ class Config
         $this->logLevel = isset($options['log_level'])
             ? $options['log_level']
             : $this->getEnv('LANGSYS_LOG_LEVEL', 'info');
+
+        $this->messagesCategory = isset($options['messages_category'])
+            ? (string) $options['messages_category']
+            : (string) $this->getEnv('LANGSYS_MESSAGES_CATEGORY', self::DEFAULT_MESSAGES_CATEGORY);
     }
 
     /**
@@ -269,6 +285,16 @@ class Config
     public function getLogLevel()
     {
         return $this->logLevel;
+    }
+
+    /**
+     * Get the category server message templates live under.
+     *
+     * @return string
+     */
+    public function getMessagesCategory()
+    {
+        return $this->messagesCategory;
     }
 
     /**

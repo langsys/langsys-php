@@ -35,4 +35,31 @@ class LangsysException extends Exception
     {
         return $this->responseData;
     }
+
+    /**
+     * The error's code, when the response carried the langsys error envelope
+     * (`error.code`). Branch on this, never on the message text (MSG-2).
+     *
+     * @return string|null
+     */
+    public function getErrorCode()
+    {
+        $data = $this->responseData;
+
+        if (is_array($data) && isset($data['error']) && is_array($data['error']) && isset($data['error']['code']) && is_string($data['error']['code'])) {
+            return $data['error']['code'];
+        }
+
+        return null;
+    }
+
+    /**
+     * The server message entries the response carried, wherever they sat (MSG-1).
+     *
+     * @return \Langsys\SDK\Messages\MessageSet
+     */
+    public function getServerMessages()
+    {
+        return \Langsys\SDK\Messages\MessageSet::fromException($this);
+    }
 }
