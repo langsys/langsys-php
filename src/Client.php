@@ -13,6 +13,7 @@ use Langsys\SDK\Html\HtmlParser;
 use Langsys\SDK\Html\PageTranslator;
 use Langsys\SDK\Http\HttpClient;
 use Langsys\SDK\Locale\LocaleDetector;
+use Langsys\SDK\Locale\RequestLocale;
 use Langsys\SDK\Log\Logger;
 use Langsys\SDK\Log\LoggerInterface;
 use Langsys\SDK\Log\LogViewer;
@@ -134,6 +135,20 @@ class Client
     protected $nextSendAt = 0.0;
 
     /**
+     * Where the app keeps the request's locale (RequestLocale::DEFAULTS).
+     *
+     * @var array
+     */
+    protected $requestLocaleOptions = [];
+
+    /**
+     * This request's resolved locale, when none was set (SRV-6).
+     *
+     * @var array|null
+     */
+    protected $requestLocale = null;
+
+    /**
      * Whether an unusable write capability has been reported (OBS-1).
      *
      * @var bool
@@ -223,6 +238,10 @@ class Client
         // runtime too, or those users hit an obscure failure inside the ICU code
         // with nothing pointing at the cause. Host frameworks that surface the
         // SDK logger themselves can silence the error_log leg.
+        if (isset($options['request_locale']) && is_array($options['request_locale'])) {
+            $this->requestLocaleOptions = $options['request_locale'];
+        }
+
         if (array_key_exists('warn_runtime_requirements', $options)) {
             $this->warnRuntimeRequirements = (bool) $options['warn_runtime_requirements'];
         }
@@ -649,6 +668,7 @@ class Client
         $this->pendingContentBlocks = [];
 
         $this->writeEnabled = null;
+        $this->requestLocale = null;
         $this->translationsMemoryCache = [];
 
         return $this;
@@ -1480,9 +1500,8 @@ class Client
     /**
      * Get the current target locale.
      *
-     * If no locale has been set, attempts to auto-detect from browser
-     * HTTP_ACCEPT_LANGUAGE header. Falls back to project's base_locale if
-     * browser detection fails.
+     * The locale set with setLocale(), or else this request's locale as
+     * resolveRequestLocale() chooses it, once per request.
      *
      * @return string|null The locale, or null if unable to determine
      */
@@ -1492,23 +1511,82 @@ class Client
             return $this->locale;
         }
 
-        // Try to detect from browser
-        $detected = LocaleDetector::fromBrowser();
-        if ($detected !== null) {
-            return $detected;
+        if ($this->requestLocale === null) {
+            $this->requestLocale = $this->resolveRequestLocale();
         }
 
-        // Fall back to project's base locale
+        return $this->requestLocale['locale'];
+    }
+
+    /**
+     * Choose this request's locale (SRV-6): the URL, then a cookie or session
+     * value, then Accept-Language negotiated against the project's locales,
+     * else the base locale. Every candidate is validated against the project's
+     * base and target locales, and an unsupported one falls through. Sends the
+     * Vary header the choice requires, and never writes a cookie.
+     *
+     * @param array|null $request path, host, query, cookies, session,
+     *                            accept_language; read from PHP's superglobals when null
+     * @param array|null $options Overrides the `request_locale` option
+     * @return array{locale: string|null, source: string, vary: string|null}
+     */
+    public function resolveRequestLocale(array $request = null, array $options = null)
+    {
         try {
             $project = $this->getProject();
-            if (isset($project['base_locale'])) {
-                return $project['base_locale'];
-            }
         } catch (\Throwable $e) {
-            // Ignore - return null
+            $this->logger->error('Could not read the project\'s locales to choose the request locale', ['error' => $e->getMessage()]);
+
+            return ['locale' => null, 'source' => 'none', 'vary' => null];
         }
 
-        return null;
+        $base = isset($project['base_locale']) ? $project['base_locale'] : null;
+        $served = array_merge($base === null ? [] : [$base], isset($project['target_locales']) && is_array($project['target_locales']) ? $project['target_locales'] : []);
+
+        $result = RequestLocale::resolve(
+            $served,
+            $base,
+            $request !== null ? $request : $this->currentRequest(),
+            $options !== null ? $options : $this->requestLocaleOptions
+        );
+
+        if ($result['vary'] !== null) {
+            $this->sendVaryHeader($result['vary']);
+        }
+
+        return $result;
+    }
+
+    /**
+     * The request as RequestLocale reads it, from PHP's superglobals.
+     *
+     * @return array
+     */
+    protected function currentRequest()
+    {
+        $uri = isset($_SERVER['REQUEST_URI']) ? (string) $_SERVER['REQUEST_URI'] : '';
+
+        return [
+            'path' => (string) parse_url($uri, PHP_URL_PATH),
+            'host' => isset($_SERVER['HTTP_HOST']) ? (string) $_SERVER['HTTP_HOST'] : null,
+            'query' => $_GET,
+            'cookies' => $_COOKIE,
+            'session' => (session_status() === PHP_SESSION_ACTIVE && isset($_SESSION) && is_array($_SESSION)) ? $_SESSION : [],
+            'accept_language' => isset($_SERVER['HTTP_ACCEPT_LANGUAGE']) ? (string) $_SERVER['HTTP_ACCEPT_LANGUAGE'] : null,
+        ];
+    }
+
+    /**
+     * Add a Vary header, keeping any the app already sent.
+     *
+     * @param string $value
+     * @return void
+     */
+    protected function sendVaryHeader($value)
+    {
+        if (!headers_sent()) {
+            header('Vary: ' . $value, false);
+        }
     }
 
     /**

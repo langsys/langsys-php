@@ -200,6 +200,16 @@ its id or re-registers it.
 
 ### Fixed
 
+- **The request locale is chosen from the URL, then a cookie, then the browser,
+  and is always one the project serves.** With no locale set, `getLocale()` reads
+  a `?locale=` parameter, the first path segment or the subdomain, then a
+  `locale` cookie or session value, then `Accept-Language` negotiated against the
+  project's base and target locales, and otherwise serves the base locale. An
+  unsupported candidate is skipped; before, an `Accept-Language` the project did
+  not serve became the locale and every lookup failed. The response carries
+  `Vary: Cookie` or `Vary: Accept-Language` when those decided. The names and an
+  app resolver are set with the `request_locale` option, and
+  `resolveRequestLocale()` exposes the decision.
 - **An outage of the translations API is not paid for on every request.** A
   failed catalog fetch is remembered per locale for 3 seconds, doubling on each
   consecutive failure up to 5 minutes, and cleared by the first success. Inside

@@ -148,14 +148,35 @@ echo $client->translatePage($html, 'homepage');
 
 ### Locale Detection
 
-The SDK can auto-detect the visitor's locale from the browser:
+With no locale set, `getLocale()` chooses the request's locale once per request,
+from the first usable source in this order:
+
+1. **The URL**: a `?locale=` query parameter, the first path segment (`/fr/pricing`)
+   or the subdomain (`fr.example.com`).
+2. **A cookie or session value** named `locale`.
+3. **`Accept-Language`**, negotiated against the project's locales.
+4. Otherwise the project's base locale.
+
+Every candidate is checked against the locales the project serves (its base and
+target locales); an unsupported one is skipped, never served. `fr` or `fr-be`
+matches a project serving `fr-fr`. The response gets the `Vary` header the choice
+depended on: `Cookie` or `Accept-Language`, and none when the URL decided, so a CDN
+never serves one visitor's language to the next. The SDK never writes a cookie.
 
 ```php
 // Explicit locale
 $client->setLocale('fr-ca');
 
-// Or let it auto-detect from HTTP_ACCEPT_LANGUAGE
-$locale = $client->getLocale(); // Returns detected locale or project's base_locale
+// Or let the request decide
+$locale = $client->getLocale();
+
+// Where your app keeps the value: parameter and cookie names, or your own resolver
+// for the URL and cookie steps (its answer is checked like any other)
+$client = new Client($key, $project, ['request_locale' => [
+    'query_param' => 'lang',
+    'cookie' => 'site_lang',
+    // 'resolver' => fn (array $request) => ['locale' => $request['query']['l'] ?? null, 'from' => 'url'],
+]]);
 
 // Chained usage
 echo (new Client())
