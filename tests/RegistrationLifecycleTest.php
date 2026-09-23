@@ -33,6 +33,7 @@ class RegistrationLifecycleTest extends TestCase
         $this->http = new class extends MockHttpClient {
             public $failPosts = false;
             public $failAuthorize = false;
+            public $failCatalog = false;
 
             public function get($endpoint, array $params = [])
             {
@@ -40,6 +41,10 @@ class RegistrationLifecycleTest extends TestCase
 
                 if ($this->failAuthorize && strpos($endpoint, 'authorize-project/') === 0) {
                     throw new LangsysException('The authorization call failed');
+                }
+
+                if ($this->failCatalog && $endpoint === 'translations') {
+                    throw new LangsysException('The catalog fetch failed');
                 }
 
                 return $response;
@@ -223,6 +228,42 @@ class RegistrationLifecycleTest extends TestCase
         $healthy = $this->client(['UI' => []], ['key_type' => 'write', 'write_enabled' => true], 'project-b');
         $healthy->translate('Save', null, 'UI');
         $this->assertTrue($healthy->flushPendingRegistrations()['success']);
+    }
+
+    // CACHE-2
+
+    private function catalogFetches(): int
+    {
+        return count(array_filter($this->http->getRequests(), function ($request) {
+            return $request['method'] === 'GET' && $request['endpoint'] === 'translations';
+        }));
+    }
+
+    /**
+     * The first successful fetch resets the read-side clock, so the next
+     * failure opens a 3s window again rather than continuing the doubling.
+     */
+    public function testASuccessfulCatalogFetchResetsTheFailureWindow(): void
+    {
+        $client = $this->client(['UI' => ['Save' => 'Guardar']]);
+        $this->http->failCatalog = true;
+
+        $client->translate('Save', null, 'UI');
+        $client->now += 3;
+        $client->translate('Save', null, 'UI');
+        $client->now += 6;
+
+        $this->http->failCatalog = false;
+        $this->assertSame('Guardar', $client->translate('Save', null, 'UI'));
+
+        $client->resetRequestState();
+        $this->http->failCatalog = true;
+        $client->translate('Save', null, 'UI');
+        $fetches = $this->catalogFetches();
+
+        $client->now += 3;
+        $client->translate('Save', null, 'UI');
+        $this->assertSame($fetches + 1, $this->catalogFetches(), 'the window after a success starts at 3s again');
     }
 
     // REG-11

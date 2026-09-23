@@ -1728,7 +1728,8 @@ class ClientTest extends TestCase
     }
 
     /**
-     * A failed fetch must be asked ONCE per request, not once per phrase.
+     * A failed fetch is not asked again inside its window, per phrase or per
+     * request.
      *
      * Nothing about a failure is cacheable - writing a value for it is exactly
      * how one bad response blanks a project for a TTL - but the first fix
@@ -1739,7 +1740,7 @@ class ClientTest extends TestCase
      *
      * @dataProvider failingTransportProvider
      */
-    public function testAFailedCatalogFetchIsAskedOncePerRequest($configure)
+    public function testAFailedCatalogFetchIsNotAskedAgainInsideItsWindow($configure)
     {
         $cache = new FileCache(sys_get_temp_dir() . '/langsys-test-' . uniqid());
 
@@ -1771,8 +1772,8 @@ class ClientTest extends TestCase
             'and memoizing the failure must still write nothing'
         );
 
-        // The memo belongs to the request, not the process: a long-lived worker
-        // must retry once the next request begins.
+        // The window belongs to the Client, not the request: a long-lived
+        // worker's next request inside it does not wait on the failing call.
         $client->resetRequestState();
         $client->translate('Hello', null, 'greetings');
 
@@ -1783,7 +1784,7 @@ class ClientTest extends TestCase
             }
         }
 
-        $this->assertSame(2, $fetches, 'resetRequestState() must clear the memo');
+        $this->assertSame(1, $fetches, 'resetRequestState() keeps the failure window');
 
         $cache->clear();
     }
@@ -1798,7 +1799,7 @@ class ClientTest extends TestCase
      * exposed this is the reason the seam list is derived by grepping the file
      * each time rather than carried forward.
      */
-    public function testAFailedCatalogFetchIsAskedOncePerRequestForAnErrorToo()
+    public function testAFailedCatalogFetchIsNotAskedAgainInsideItsWindowForAnErrorToo()
     {
         $counting = new class extends \Langsys\SDK\Http\HttpClient {
             public $calls = 0;
@@ -1856,7 +1857,7 @@ class ClientTest extends TestCase
         $client->resetRequestState();
         $client->translate('Hello', null, 'greetings');
 
-        $this->assertSame(2, $counting->calls, 'and forgotten when the request ends');
+        $this->assertSame(1, $counting->calls, 'and the window outlives the request');
     }
 
     public function failingTransportProvider()

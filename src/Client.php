@@ -161,11 +161,15 @@ class Client
      * the same broken dependency, turning a degraded page into a slow one and
      * adding load to a service already in trouble.
      *
-     * Deliberately per-REQUEST, not per-process, and cleared by
-     * resetRequestState() alongside the rest: under a long-lived runtime a
-     * failure latched for the life of the worker would outlast the incident.
+     * Held for a bounded window per locale (CACHE-2): 3s after the first
+     * failure, doubling on each consecutive one to five minutes, cleared by the
+     * first success - REG-8's clock on the read side. It belongs to this object,
+     * not the request, so resetRequestState() keeps it: under a long-lived
+     * runtime every request during an outage would otherwise wait on the failing
+     * call again, and the window, not the request, is what ends the latch. It is
+     * never written to the shared cache.
      *
-     * @var array<string, true>
+     * @var array<string, array{failures: int, until: float}>
      */
     protected $translationFetchFailures = [];
 
@@ -646,7 +650,6 @@ class Client
 
         $this->writeEnabled = null;
         $this->translationsMemoryCache = [];
-        $this->translationFetchFailures = [];
 
         return $this;
     }
@@ -758,13 +761,14 @@ class Client
             }
         }
 
-        // Already failed this request? Fail the same way again without asking
-        // the API a second time. Re-raised rather than answered with [], because
-        // an empty catalog is a VALUE and callers would cache it; the whole
-        // point is that a failure produces no value at all.
-        if (isset($this->translationFetchFailures[$memoryKey])) {
+        // Inside a failed fetch's window? Fail the same way again without
+        // asking the API. Re-raised rather than answered with [], because an
+        // empty catalog is a VALUE and callers would cache it; the whole point
+        // is that a failure produces no value at all.
+        if (isset($this->translationFetchFailures[$memoryKey])
+            && $this->currentTime() < $this->translationFetchFailures[$memoryKey]['until']) {
             throw new LangsysException(sprintf(
-                'Translations fetch for %s already failed during this request',
+                'Translations fetch for %s failed recently; retrying after its backoff window',
                 $locale
             ));
         }
@@ -775,9 +779,17 @@ class Client
         try {
             $translations = $this->translations->getTranslationMap($locale);
         } catch (\Throwable $e) {
-            $this->translationFetchFailures[$memoryKey] = true;
+            $failures = isset($this->translationFetchFailures[$memoryKey])
+                ? $this->translationFetchFailures[$memoryKey]['failures'] + 1
+                : 1;
+            $this->translationFetchFailures[$memoryKey] = [
+                'failures' => $failures,
+                'until' => $this->currentTime() + $this->backoffDelay($failures),
+            ];
             throw $e;
         }
+
+        unset($this->translationFetchFailures[$memoryKey]);
 
         // Store in both caches
         if ($useCache) {
@@ -2377,8 +2389,19 @@ class Client
     protected function noteSendFailure()
     {
         $this->sendFailures++;
-        $delay = min(self::SEND_BACKOFF_INITIAL * pow(2, $this->sendFailures - 1), self::SEND_BACKOFF_CEILING);
-        $this->nextSendAt = $this->currentTime() + $delay;
+        $this->nextSendAt = $this->currentTime() + $this->backoffDelay($this->sendFailures);
+    }
+
+    /**
+     * The wait after the Nth consecutive failure: 3s, doubling, to five
+     * minutes. Shared by the send side (REG-8) and the catalog read (CACHE-2).
+     *
+     * @param int $failures
+     * @return float Seconds
+     */
+    protected function backoffDelay($failures)
+    {
+        return (float) min(self::SEND_BACKOFF_INITIAL * pow(2, $failures - 1), self::SEND_BACKOFF_CEILING);
     }
 
     /**

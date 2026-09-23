@@ -200,6 +200,12 @@ its id or re-registers it.
 
 ### Fixed
 
+- **An outage of the translations API is not paid for on every request.** A
+  failed catalog fetch is remembered per locale for 3 seconds, doubling on each
+  consecutive failure up to 5 minutes, and cleared by the first success. Inside
+  that window pages render their source text without calling the API. The window
+  belongs to the `Client`, so on a long-lived worker it spans requests.
+  `resetRequestState()` no longer clears it.
 - **A failing registration endpoint is no longer asked again on every flush.**
   After a failed send the items stay queued and the next flush waits 3 seconds,
   doubling up to 5 minutes; the first success resets the wait. A failed
