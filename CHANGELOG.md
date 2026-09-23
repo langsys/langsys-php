@@ -200,6 +200,12 @@ its id or re-registers it.
 
 ### Fixed
 
+- **A server message that puts translatable text in a marker is reported.**
+  When a message is translated or emitted and a marker's value is itself a
+  phrase in the project's catalog, such as a status the app also translates,
+  one warning names the template, the marker and the value: that text is never
+  translated with the sentence. Numbers and values the catalog does not hold are
+  not reported.
 - **A rendered content block carries its id, and a stamped id is honoured.**
   `translatePage()` now stamps each rendered block host with
   `data-ls-contentblock="<id>"`, as `translateContentBlock()` does, and a

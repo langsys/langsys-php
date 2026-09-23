@@ -19,6 +19,7 @@ use Langsys\SDK\Log\ErrorLogLogger;
 use Langsys\SDK\Log\LoggerInterface;
 use Langsys\SDK\Log\LogViewer;
 use Langsys\SDK\Log\NullLogger;
+use Langsys\SDK\Messages\MessageTemplate;
 use Langsys\SDK\Messages\ServerMessage;
 use Langsys\SDK\Migration\LegacyKeys;
 use Langsys\SDK\Resources\Translations;
@@ -148,6 +149,13 @@ class Client
      * @var array|null
      */
     protected $requestLocale = null;
+
+    /**
+     * Template-and-marker pairs already reported as carrying translatable text.
+     *
+     * @var array<string, true>
+     */
+    protected $reportedMarkerValues = [];
 
     /**
      * Whether an unusable write capability has been reported (OBS-1).
@@ -1061,6 +1069,8 @@ class Client
             return $entry->getMessage();
         }
 
+        $this->noteTranslatableMarkerValues($entry, $locale);
+
         list($listed, $translation) = $found;
 
         if (!$listed) {
@@ -1104,7 +1114,61 @@ class Client
             $this->queuePhraseForRegistration($message->getTemplate(), $category);
         }
 
+        if ($found !== null) {
+            $this->noteTranslatableMarkerValues($message, $locale);
+        }
+
         return $message;
+    }
+
+    /**
+     * MSG-3 / MSG-11: a marker carries only a value that is not translatable.
+     * A template cannot show what its markers will hold, but a render can: a
+     * marker whose value is itself a phrase in the project's catalog is carrying
+     * translatable text, which never reaches the translator and cannot inflect
+     * the sentence around it. Warned once per template and marker, naming both
+     * and the value. A translatable value the catalog has never seen is not
+     * detectable here; keeping it out of markers is the template author's.
+     *
+     * @param ServerMessage $message
+     * @param string $locale
+     * @return void
+     */
+    protected function noteTranslatableMarkerValues(ServerMessage $message, $locale)
+    {
+        $params = $message->getParams();
+
+        foreach (MessageTemplate::markers($message->getTemplate()) as $marker) {
+            $key = $message->getTemplate() . "\0" . $marker;
+
+            if (isset($this->reportedMarkerValues[$key]) || !isset($params[$marker]) || !is_string($params[$marker])) {
+                continue;
+            }
+
+            $value = Canonical::phrase($params[$marker]);
+
+            if ($value === '' || is_numeric($value)) {
+                continue;
+            }
+
+            try {
+                $translations = $this->getTranslations($locale);
+            } catch (\Throwable $e) {
+                return;
+            }
+
+            foreach ($translations as $items) {
+                if (is_array($items) && array_key_exists($value, $items) && !is_array($items[$value])) {
+                    $this->reportedMarkerValues[$key] = true;
+                    $this->logger->warning('A server message carries translatable text in a marker: the value is a phrase in the catalog, so it is never translated with the sentence. Write it into the template and list one template per value.', [
+                        'template' => $message->getTemplate(),
+                        'marker' => $marker,
+                        'value' => $params[$marker],
+                    ]);
+                    break;
+                }
+            }
+        }
     }
 
     /**

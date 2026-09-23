@@ -161,4 +161,17 @@ class MessageCatalogTest extends TestCase
         $this->assertStringContainsString('App\\Errors\\DoesNotExist: is not a loadable class', $problems);
         $this->assertCount(4, $catalog->problems());
     }
+
+    /**
+     * A double-brace framework placeholder left in the text is refused - by the
+     * brace check alone, since `name` is not a label marker.
+     */
+    public function testADoubleBracePlaceholderIsRefused()
+    {
+        $catalog = new MessageCatalog();
+
+        $this->assertFalse($catalog->add('Welcome back, {{name}}.', 'WelcomeMail'));
+        $this->assertSame([], $catalog->templates());
+        $this->assertStringContainsString('brace that is not a {name} marker', $catalog->problems()[0]);
+    }
 }
