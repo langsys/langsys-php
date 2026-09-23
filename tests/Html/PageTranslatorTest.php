@@ -1596,10 +1596,9 @@ class PageTranslatorTest extends TestCase
             . '<math><mi>MathLabel</mi></math><p>Ordinary</p></body></html>'
         );
 
-        // Sorted, not in document order: a standalone <svg> registers as a
-        // content block and the paragraph as a phrase, and the two queues flush
-        // as separate batches - so cross-queue order is an artefact of the
-        // flush, not a property worth pinning. Order WITHIN a block is a real
+        // Sorted, not in document order: phrases and content blocks flush as
+        // separate batches, so cross-queue order is an artefact of the flush,
+        // not a property worth pinning. Order WITHIN a block is a real
         // property and is asserted in testAnInlineIconKeepsDocumentOrder.
         sort($registered);
 
@@ -2088,5 +2087,130 @@ class PageTranslatorTest extends TestCase
         );
 
         $this->assertContains('Hello {name}', $registered, 'the element\'s own attribute must canonicalise placeholders');
+    }
+
+    // =========================================================================
+    // TOK-6: what a unit registers as
+    // =========================================================================
+
+    /**
+     * Each unit's registration, in the wire's terms: a phrase's text, or a
+     * block's token list. Phrases and blocks flush as separate batches, so the
+     * shapes are compared per unit, not across queues.
+     */
+    private function registeredShapes($html): array
+    {
+        $shapes = [];
+        foreach ($this->registeredPayloadFor($html) as $item) {
+            if (isset($item['phrase'])) {
+                $shapes[] = ['phrase' => $item['phrase']];
+            }
+            if (isset($item['phrases'])) {
+                $shapes[] = ['block' => array_map(function ($nested) {
+                    return $nested['phrase'];
+                }, $item['phrases'])];
+            }
+        }
+
+        return $shapes;
+    }
+
+    /**
+     * @dataProvider unitShapeProvider
+     */
+    public function testAUnitIsAPhraseOnlyWhenItsOneTokenIsItsOneTextNode($body, array $expected): void
+    {
+        $this->assertSame($expected, $this->registeredShapes('<html><body>' . $body . '</body></html>'));
+    }
+
+    public function unitShapeProvider(): array
+    {
+        return [
+            'a text-only leaf is a phrase' => ['<p>Hello</p>', [['phrase' => 'Hello']]],
+            'a titled leaf is a block, title first' => ['<p title="Tooltip">Hello</p>', [['block' => ['Tooltip', 'Hello']]]],
+            'a top-level img is a block' => ['<img alt="Logo">', [['block' => ['Logo']]]],
+            'a top-level input is a block' => ['<input placeholder="Email">', [['block' => ['Email']]]],
+            'svg text alone is a phrase' => ['<p><svg><text>Label</text><path/></svg></p>', [['phrase' => 'Label']]],
+            'a standalone svg with one text is a phrase' => ['<svg><path/><text>Label</text></svg>', [['phrase' => 'Label']]],
+            'a confirming button is a block' => ['<button data-confirm="Are you sure?">Go</button>', [['block' => ['Are you sure?', 'Go']]]],
+            'a top-level inline element is a unit' => ['<span>Hi</span>', [['phrase' => 'Hi']]],
+            'a top-level titled link is a block' => ['<a href="/x" title="Home page">Home</a>', [['block' => ['Home page', 'Home']]]],
+            'control: two text nodes are a block' => ['<p>Hello <b>bold</b></p>', [['block' => ['Hello', 'bold']]]],
+            'inline markup around one text node stays a phrase' => ['<p><strong>Bold</strong></p>', [['phrase' => 'Bold']]],
+        ];
+    }
+
+    /**
+     * The units TOK-6 adds render translated, and the drawing and the element
+     * survive: a host's own attribute, a top-level void element, a button.
+     *
+     * @dataProvider newUnitApplyProvider
+     */
+    public function testNewUnitsRenderTranslated($body, array $expected): void
+    {
+        $html = '<html><body>' . $body . '</body></html>';
+        $rendered = $this->translatePageWithCatalog($html, $this->catalogFor($html));
+
+        foreach ($expected as $fragment) {
+            $this->assertStringContainsString($fragment, $rendered);
+        }
+    }
+
+    public function newUnitApplyProvider(): array
+    {
+        return [
+            'titled leaf' => ['<p title="Tooltip">Hello</p>', ['title="X:Tooltip"', '>X:Hello</p>']],
+            'top-level img' => ['<img alt="Logo">', ['alt="X:Logo"']],
+            'confirming button' => ['<button data-confirm="Are you sure?">Go</button>', ['data-confirm="X:Are you sure?"', '>X:Go</button>']],
+            'top-level span' => ['<span>Hi</span>', ['<span>X:Hi</span>']],
+        ];
+    }
+
+    /**
+     * TOK-3 on the page path: every row of the shared canonicalization fixture,
+     * run through translatePage(), registers exactly the fixture's tokens, and a
+     * row that is one block registers the fixture's id.
+     */
+    public function testThePagePathMatchesTheCanonicalizationFixture(): void
+    {
+        $fixture = json_decode(file_get_contents(dirname(__DIR__) . '/fixtures/canonicalization-reference.json'), true);
+        $this->assertCount(26, $fixture['cases']);
+
+        foreach ($fixture['cases'] as $case) {
+            $this->setTranslations([]);
+            $this->mockHttp->setResponse('POST', 'translatable-items', ['status' => true]);
+
+            $client = $this->createMockClient();
+            $client->setLocale('es-es');
+            $client->translatePage('<html><body>' . $case['html'] . '</body></html>', $case['category']);
+
+            $this->mockHttp->clearRequests();
+            $client->flushPendingRegistrations();
+
+            $tokens = [];
+            $blocks = [];
+            foreach ($this->mockHttp->getRequests() as $request) {
+                foreach (isset($request['data']['translatable_items']) ? $request['data']['translatable_items'] : [] as $item) {
+                    if (isset($item['phrase'])) {
+                        $tokens[] = $item['phrase'];
+                    }
+                    if (isset($item['phrases'])) {
+                        $blocks[] = $item['custom_id'];
+                        foreach ($item['phrases'] as $nested) {
+                            $tokens[] = $nested['phrase'];
+                        }
+                    }
+                }
+            }
+
+            $expected = $case['expected_tokens'];
+            sort($expected);
+            sort($tokens);
+            $this->assertSame($expected, $tokens, $case['id'] . ': registered tokens');
+
+            if (count($blocks) === 1 && count($case['expected_tokens']) === count($tokens) && count($tokens) > 1) {
+                $this->assertSame($case['expected_custom_id'], $blocks[0], $case['id'] . ': block id');
+            }
+        }
     }
 }

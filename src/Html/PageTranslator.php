@@ -44,21 +44,12 @@ class PageTranslator
     ];
 
     /**
-     * Elements to skip entirely (never translate contents).
-     */
-    /**
-     * Elements the page walk does not descend into.
+     * Elements the page walk does not descend into (TOK-1).
      *
-     * `svg` is deliberately NOT here. SVG `<text>` is visible copy, so it is
-     * tokenized and translated like any other text - see the svg branch in
-     * walkForExtraction(), and `containsGraphic()` for the apply side.
-     *
-     * It WAS here, and an earlier attempt to remove it promoted `svg` to a
-     * block element, which broke every icon-bearing paragraph on the page:
-     * containsNestedBlocks() then reported true for the icon's parent, so the
-     * walker recursed past it and skipped the parent's own text. `svg` stays
-     * out of BLOCK_ELEMENTS for that reason - it is handled as a leaf where it
-     * is found, not promoted to a container.
+     * `svg` is deliberately NOT here: SVG `<text>` is visible copy. It is not a
+     * block element either, so an icon inside a paragraph never makes the
+     * walker recurse past the paragraph's own text; an `<svg>` is part of the
+     * unit that holds it, or a unit of its own.
      */
     const SKIP_ELEMENTS = [
         'script', 'style', 'noscript', 'template', 'math',
@@ -466,106 +457,67 @@ class PageTranslator
                 continue;
             }
 
-            // A standalone <svg>: its <text> nodes are prose, but the element
-            // around them is a GRAPHIC. Handled here as a leaf rather than by
-            // recursing - the generic walk only descends into elements and
-            // would drop the bare text under <text> entirely, which is why
-            // simply removing `svg` from SKIP_ELEMENTS changed nothing.
-            //
-            // Registered as a content block, never as a simple phrase, because
-            // the simple-phrase apply path replaces the element's whole
-            // textContent and would delete every <path> in the drawing.
-            if ($tagName === 'svg') {
-                $extractedPhrases = $this->htmlParser->extractPhrases($this->getInnerHtml($child));
-
-                if (!empty($extractedPhrases)) {
-                    $itemCategory = $effectiveCategory !== null ? $effectiveCategory : '__uncategorized__';
-                    $contentBlocks[] = [
-                        'customId' => $this->htmlParser->generateCustomId($itemCategory, $extractedPhrases),
-                        'phrases' => $extractedPhrases,
-                        'element' => $child,
-                        'html' => $this->getInnerHtml($child),
-                        'category' => $itemCategory,
-                    ];
-                }
-
+            // A container of blocks is walked; anything else is a unit
+            // (TOK-6), including a void or inline element directly under a
+            // container - an `<img alt>` or `<a title>` under `<body>`.
+            if ($this->containsNestedBlocks($child)) {
+                $this->walkForExtraction($child, $phrases, $contentBlocks, $effectiveCategory);
                 continue;
             }
 
-            // Is this a block element?
-            if (in_array($tagName, self::BLOCK_ELEMENTS, true)) {
-                if ($this->containsNestedBlocks($child)) {
-                    // Container with nested blocks - recurse with effective category
-                    $this->walkForExtraction($child, $phrases, $contentBlocks, $effectiveCategory);
-                } else {
-                    // Smallest block element - determine if it's a phrase or content block
-                    // by counting how many phrases HtmlParser would extract
-                    $innerHtml = $this->getInnerHtml($child);
-                    $extractedPhrases = $this->htmlParser->extractPhrases($innerHtml);
-                    $textContent = $this->getTextContent($child);
-
-                    if (empty($extractedPhrases)) {
-                        // No translatable content
-                        continue;
-                    }
-
-                    // Determine the category for this item
-                    $itemCategory = $effectiveCategory !== null ? $effectiveCategory : '__uncategorized__';
-
-                    // If exactly 1 phrase and it matches the text content,
-                    // treat as simple phrase (even with inline formatting like <strong>)
-                    // `&& !containsGraphic()`: the simple-phrase branch applies
-                    // its translation by replacing the element's textContent,
-                    // which is fine for inline formatting and fatal for a
-                    // drawing. `<p><svg><path/><text>Label</text></svg></p>`
-                    // rendered as `<p>Etiqueta</p>` - the whole graphic gone.
-                    // A subtree containing an <svg> always takes the content
-                    // block branch, whose apply walks text nodes in place.
-                    if (count($extractedPhrases) === 1
-                        && $extractedPhrases[0] === $textContent
-                        && !$this->containsGraphic($child)) {
-                        $phrases[] = [
-                            'text' => $textContent,
-                            'element' => $child,
-                            'category' => $itemCategory,
-                        ];
-                    } else {
-                        // Multiple phrases or phrases from attributes -> content block
-                        $customId = $this->htmlParser->generateCustomId($itemCategory, $extractedPhrases);
-                        $contentBlocks[] = [
-                            'customId' => $customId,
-                            'phrases' => $extractedPhrases,
-                            'element' => $child,
-                            'html' => $innerHtml,
-                            'category' => $itemCategory,
-                        ];
-                    }
-                }
-            } else {
-                // Non-block element - recurse into it with effective category
-                $this->walkForExtraction($child, $phrases, $contentBlocks, $effectiveCategory);
-            }
+            $this->extractUnit($child, $phrases, $contentBlocks, $effectiveCategory);
         }
     }
 
     /**
-     * Whether this subtree contains a drawing whose elements must survive.
+     * Register one unit of the page walk (TOK-6).
      *
-     * Used to keep a subtree out of the simple-phrase branch, which translates
-     * by assigning to textContent and so replaces every child element with a
-     * string. Inline formatting (`<strong>`, `<em>`) survives that because it
-     * carries no meaning beyond the text; a `<path>` does not.
+     * Its tokens are its own translatable attributes first, in TOK-3 order,
+     * then its content. It registers as a phrase only when it has one token and
+     * that token is its one text node, which is the only shape the phrase apply
+     * can write back into: the text node is replaced in place, so an svg
+     * drawing or inline markup around it survives. Anything else - several
+     * tokens, or a single token held in an attribute - is a content block.
      *
      * @param DOMElement $element
-     * @return bool
+     * @param array &$phrases
+     * @param array &$contentBlocks
+     * @param string|null $effectiveCategory
+     * @return void
      */
-    protected function containsGraphic(DOMElement $element)
+    protected function extractUnit(DOMElement $element, array &$phrases, array &$contentBlocks, $effectiveCategory)
     {
-        if (strtolower($element->nodeName) === 'svg') {
-            return true;
+        $unit = $this->htmlParser->unitTokens($element);
+
+        if (empty($unit['tokens'])) {
+            return;
         }
 
-        return $element->getElementsByTagName('svg')->length > 0;
+        $itemCategory = $effectiveCategory !== null ? $effectiveCategory : '__uncategorized__';
+
+        if (count($unit['tokens']) === 1 && $unit['textNodes'] === 1) {
+            $phrases[] = [
+                'text' => $unit['tokens'][0],
+                'element' => $element,
+                'category' => $itemCategory,
+            ];
+
+            return;
+        }
+
+        // The registered content must re-tokenize to the block's tokens, so a
+        // unit whose own attributes carry tokens registers with its tag.
+        $html = $this->htmlParser->ownTokens($element) === []
+            ? $this->getInnerHtml($element)
+            : $element->ownerDocument->saveHTML($element);
+
+        $contentBlocks[] = [
+            'customId' => $this->htmlParser->generateCustomId($itemCategory, $unit['tokens']),
+            'phrases' => $unit['tokens'],
+            'element' => $element,
+            'html' => $html,
+            'category' => $itemCategory,
+        ];
     }
 
     /**

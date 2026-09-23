@@ -628,7 +628,52 @@ class HtmlParser
         return false;
     }
 
-    protected function walkNode(DOMNode $node, array &$phrases)
+    /**
+     * Tokenize one unit of a page walk (TOK-6): the element's own translatable
+     * attributes first, in TOK-3 order, then its content in document order.
+     *
+     * Walks the live node rather than a re-parsed copy, so the tokens are the
+     * ones the apply side will find. `textNodes` counts the non-whitespace
+     * text nodes that produced a token: a unit is a phrase only when it has
+     * one token and that token is its one text node.
+     *
+     * @param DOMElement $element
+     * @return array{tokens: string[], textNodes: int}
+     */
+    public function unitTokens(DOMElement $element)
+    {
+        $tokens = [];
+        $textNodes = 0;
+
+        $this->walkNode($element, $tokens, $textNodes);
+
+        return ['tokens' => $tokens, 'textNodes' => $textNodes];
+    }
+
+    /**
+     * The tokens an element carries on itself - its translatable attributes and
+     * a button's value - without its content.
+     *
+     * @param DOMElement $element
+     * @return string[]
+     */
+    public function ownTokens(DOMElement $element)
+    {
+        $tokens = [];
+
+        $this->extractAttributePhrases($element, $tokens);
+        $this->extractButtonValue($element, $tokens);
+
+        return $tokens;
+    }
+
+    /**
+     * @param DOMNode $node
+     * @param array &$phrases
+     * @param int|null &$textNodes Counts the text nodes that produced a token, when given
+     * @return void
+     */
+    protected function walkNode(DOMNode $node, array &$phrases, &$textNodes = null)
     {
         // Skip elements excluded from translation entirely.
         if ($node instanceof DOMElement && self::isTranslationExcluded($node)) {
@@ -646,12 +691,8 @@ class HtmlParser
         // changes on every render.
         //
         // TOK-1's list is script/style/template/noscript/math. `svg` is NOT on
-        // it - SVG <text> is visible copy - so this path tokenizes SVG text,
-        // matching the TS core. PageTranslator still SKIPS svg, which is a
-        // known non-conformance on that path, not a disagreement to resolve
-        // here: making it conform by treating <svg> as a block broke every
-        // icon-bearing paragraph on the page and destroyed standalone graphics.
-        // See PageTranslator::SKIP_ELEMENTS.
+        // it - SVG <text> is visible copy - so every path tokenizes SVG text,
+        // matching the TS core.
         if ($node instanceof DOMElement && in_array(strtolower($node->nodeName), self::NON_PROSE_ELEMENTS, true)) {
             return;
         }
@@ -661,6 +702,10 @@ class HtmlParser
             $text = $this->normalizeWhitespace($node->textContent);
             if ($text !== '') {
                 $phrases[] = $text;
+
+                if ($textNodes !== null) {
+                    $textNodes++;
+                }
             }
             return;
         }
@@ -691,7 +736,7 @@ class HtmlParser
         // Recurse into child nodes
         if ($node->hasChildNodes()) {
             foreach ($node->childNodes as $child) {
-                $this->walkNode($child, $phrases);
+                $this->walkNode($child, $phrases, $textNodes);
             }
         }
     }

@@ -194,6 +194,13 @@ its id or re-registers it.
 
 ### Fixed
 
+- **`translatePage()` registers every element the other SDKs register, in the
+  same shape.** An `<img alt>`, `<input placeholder>`, `<button data-confirm>`
+  or any inline element outside a paragraph is now registered and translated;
+  a paragraph's own `title` (or any listed attribute) is registered with its
+  text, as the block `[Tooltip, Hello]`; and a paragraph whose only text sits
+  in an svg `<text>` is a phrase, translated in place so the drawing survives.
+  A page carrying these shapes registers new items on its next render.
 - **A page translation holding ICU rendered as raw pattern text when no params
   were passed.** `translatePage()` returned early on empty params, so a translated
   `{gender, select, …}` reached the page, the `<title>` and attribute values as
