@@ -45,7 +45,7 @@ class PageInterpolationWithoutParamsTest extends TestCase
         $client->setLocale('es-es');
 
         $this->assertSame(
-            '<p>Bienvenide <b>Amigo</b></p>',
+            '<p data-ls-contentblock="' . $id . '">Bienvenide <b>Amigo</b></p>',
             self::body($client->translatePage('<html><body><p>Welcome <b>Friend</b></p></body></html>'))
         );
     }

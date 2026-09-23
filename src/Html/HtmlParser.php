@@ -605,6 +605,69 @@ class HtmlParser
      */
     const CONTENT_BLOCK_STAMP = 'data-ls-contentblock';
 
+    /** Content-block marker values that declare a block (MARK-3), trimmed, case-insensitive. */
+    const DECLARATION_VALUES = ['', 'true', '1', 'yes'];
+
+    /** Content-block marker values that opt out (MARK-3). */
+    const OPT_OUT_VALUES = ['false', '0'];
+
+    /**
+     * What an element's content-block marker says (MARK-3): a declaration
+     * (register one block, deriving its id), an opt-out (walk it as ordinary
+     * markup), or an identity (the custom_id a renderer stamped, recognised
+     * rather than re-derived). Null when it carries no marker.
+     *
+     * @param DOMElement $element
+     * @return array{attribute: string, kind: string, id: string|null}|null
+     */
+    public static function contentBlockMarker(DOMElement $element)
+    {
+        foreach (self::CONTENT_BLOCK_MARKERS as $attribute) {
+            if (!$element->hasAttribute($attribute)) {
+                continue;
+            }
+
+            $raw = trim($element->getAttribute($attribute));
+            $value = strtolower($raw);
+
+            if (in_array($value, self::OPT_OUT_VALUES, true)) {
+                return ['attribute' => $attribute, 'kind' => 'opt-out', 'id' => null];
+            }
+
+            if (in_array($value, self::DECLARATION_VALUES, true)) {
+                return ['attribute' => $attribute, 'kind' => 'declaration', 'id' => null];
+            }
+
+            return ['attribute' => $attribute, 'kind' => 'identity', 'id' => $raw];
+        }
+
+        return null;
+    }
+
+    /**
+     * Stamp a rendered block host with the id it was rendered from (MARK-1).
+     * A declaration becomes that id; an identity - another writer's claim -
+     * and an opt-out are never overwritten.
+     *
+     * @param DOMElement $host
+     * @param string $customId
+     * @return void
+     */
+    public static function stampIdentity(DOMElement $host, $customId)
+    {
+        if ($customId === null || $customId === '') {
+            return;
+        }
+
+        $marker = self::contentBlockMarker($host);
+
+        if ($marker === null) {
+            $host->setAttribute(self::CONTENT_BLOCK_STAMP, $customId);
+        } elseif ($marker['kind'] === 'declaration') {
+            $host->setAttribute($marker['attribute'], $customId);
+        }
+    }
+
     /**
      * Both spellings of the resolved marker, canonical form first (GATE-10).
      * Writers emit the first.

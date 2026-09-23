@@ -1691,8 +1691,10 @@ class Client
      *                       block; a declaration outranks the TOK-6 shape
      * @return string
      */
-    protected function translateBlockUnit($html, $category, array $params, $declared)
+    protected function translateBlockUnit($html, $category, array $params, $declared, &$resolvedId = null)
     {
+        $resolvedId = null;
+
         $locale = $this->getLocale();
         if ($locale === null) {
             // Can't translate without locale, but placeholders still resolve.
@@ -1766,12 +1768,16 @@ class Client
             // reader would otherwise re-derive and re-register. Routed through
             // applyBlockTranslations even with no params, which the early
             // return used to skip.
+            $resolvedId = $customId;
+
             return $this->applyBlockTranslations($html, [], $parser, $params, $locale, $customId);
         }
 
         // Apply translations to HTML. A legacy-resolved block reaches here
         // WITHOUT having been queued: queuing is exactly what would create a
         // second block under the new id and strand these translations.
+        $resolvedId = $customId;
+
         return $this->applyBlockTranslations($html, $blockTranslations, $parser, $params, $locale, $customId);
     }
 
@@ -1958,15 +1964,7 @@ class Client
             return;
         }
 
-        $host = $elements[0];
-
-        foreach (HtmlParser::CONTENT_BLOCK_MARKERS as $existing) {
-            if ($host->hasAttribute($existing)) {
-                return;
-            }
-        }
-
-        $host->setAttribute(HtmlParser::CONTENT_BLOCK_STAMP, $customId);
+        HtmlParser::stampIdentity($elements[0], $customId);
     }
 
     /**
@@ -2035,10 +2033,61 @@ class Client
                 $inner .= $host->ownerDocument->saveHTML($child);
             }
 
-            $rendered = $this->translateBlockUnit($inner, $hostCategory, $params, true);
+            $marker = HtmlParser::contentBlockMarker($host);
+
+            if ($marker !== null && $marker['kind'] === 'identity') {
+                // MARK-3: a stamped id is this host's custom_id. It renders from
+                // the catalog entry under that id, or stays source, and
+                // registers nothing - the renderer that stamped it registered it.
+                $this->replaceChildrenWithHtml($host, $this->renderStampedBlock($inner, $marker['id'], $hostCategory, $params));
+                $this->renderNestedHosts($host, $hostCategory, $params);
+                continue;
+            }
+
+            $rendered = $this->translateBlockUnit($inner, $hostCategory, $params, true, $resolvedId);
             $this->replaceChildrenWithHtml($host, $rendered);
+            HtmlParser::stampIdentity($host, $resolvedId);
             $this->renderNestedHosts($host, $hostCategory, $params);
         }
+    }
+
+    /**
+     * Render a stamped block's content from the catalog entry filed under its
+     * stamped id, without registering anything; source text when the catalog
+     * holds no such entry or cannot be read.
+     *
+     * @param string $html
+     * @param string $customId
+     * @param string|null $category
+     * @param array $params
+     * @return string
+     */
+    protected function renderStampedBlock($html, $customId, $category, array $params)
+    {
+        $locale = $this->getLocale();
+        $category = $this->normalizeCategory($category);
+        $blockTranslations = [];
+
+        if ($locale !== null) {
+            try {
+                $translations = $this->getTranslations($locale);
+                if (isset($translations[$category][$customId]) && is_array($translations[$category][$customId])) {
+                    $blockTranslations = $translations[$category][$customId];
+                }
+            } catch (\Throwable $e) {
+                $this->logger->error('Content block lookup failed - returning source HTML', [
+                    'custom_id' => $customId,
+                    'category' => $category,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        if ($blockTranslations === [] && $params === []) {
+            return $html;
+        }
+
+        return $this->applyBlockTranslations($html, $blockTranslations, new HtmlParser($this->translatableItems->getTranslatableAttributes()), $params, $locale);
     }
 
     /**

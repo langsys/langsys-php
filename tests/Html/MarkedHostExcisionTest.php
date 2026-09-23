@@ -95,6 +95,20 @@ class MarkedHostExcisionTest extends TestCase
         $this->assertSame([
             'phrases' => ['Buy {m0o}now{m0c}'],
             'blocks' => [['Inner one', 'two'], ['Outer intro', 'outer outro']],
+        ], $this->registered($path, sprintf(self::UNIT, '')));
+    }
+
+    /**
+     * A nested stamped host is excised too, and, being an identity (MARK-3),
+     * registers nothing of its own.
+     *
+     * @dataProvider pathProvider
+     */
+    public function testANestedStampedHostIsExcisedAndRegistersNothing($path): void
+    {
+        $this->assertSame([
+            'phrases' => ['Buy {m0o}now{m0c}'],
+            'blocks' => [['Outer intro', 'outer outro']],
         ], $this->registered($path, sprintf(self::UNIT, '9f2c')));
     }
 
@@ -176,7 +190,7 @@ class MarkedHostExcisionTest extends TestCase
         ]]);
         $rendered = $this->render($client, $path, $html);
 
-        $this->assertStringContainsString('Ahorra <span data-ls-contentblock>diez <b>por ciento</b></span> hoy', $rendered);
+        $this->assertStringContainsString('Ahorra <span data-ls-contentblock="' . $parser->generateCustomId('UI', ['ten', 'percent']) . '">diez <b>por ciento</b></span> hoy', $rendered);
         $this->assertFalse($client->hasPendingRegistrations());
     }
 

@@ -200,6 +200,13 @@ its id or re-registers it.
 
 ### Fixed
 
+- **A rendered content block carries its id, and a stamped id is honoured.**
+  `translatePage()` now stamps each rendered block host with
+  `data-ls-contentblock="<id>"`, as `translateContentBlock()` does, and a
+  declaration marker (no value, `""`, `true`, `1` or `yes`) is set to the id when
+  rendered. A content-block marker holding any other value is read as that
+  block's id: the element renders from the catalog entry under it and registers
+  nothing; before, such a value declared a new block under a derived id.
 - **Warnings and errors are logged even with no log file configured.** Without
   a `log_path`, or with one whose directory cannot be written, they go to PHP's
   error log with a `[langsys]` prefix; nothing below warning is written there.

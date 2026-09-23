@@ -681,14 +681,19 @@ class PageTranslator
         }
 
         $itemCategory = $effectiveCategory !== null ? $effectiveCategory : '__uncategorized__';
-        $customId = $this->htmlParser->generateCustomId($itemCategory, $extractedPhrases);
+
+        // MARK-3: a stamped id is the host's custom_id, recognised rather than
+        // re-derived; the host renders from it and is never registered.
+        $marker = HtmlParser::contentBlockMarker($element);
+        $stamped = $marker !== null && $marker['kind'] === 'identity';
 
         $contentBlocks[] = [
-            'customId' => $customId,
+            'customId' => $stamped ? $marker['id'] : $this->htmlParser->generateCustomId($itemCategory, $extractedPhrases),
             'phrases' => $extractedPhrases,
             'element' => $element,
             'html' => $innerHtml,
             'category' => $itemCategory,
+            'stamped' => $stamped,
         ];
     }
 
@@ -817,9 +822,11 @@ class PageTranslator
 
             $customId = $block['customId'];
             $categoryTranslations = isset($translations[$cat]) ? $translations[$cat] : [];
-            $blockTranslations = $this->client->resolveContentBlockTranslations(
-                $categoryTranslations, $cat, $block['phrases'], $customId, $this->htmlParser
-            );
+            $blockTranslations = !empty($block['stamped'])
+                ? (isset($categoryTranslations[$customId]) && is_array($categoryTranslations[$customId]) ? $categoryTranslations[$customId] : null)
+                : $this->client->resolveContentBlockTranslations(
+                    $categoryTranslations, $cat, $block['phrases'], $customId, $this->htmlParser
+                );
 
             if (!is_array($blockTranslations) || empty($blockTranslations)) {
                 // No translations for this content block, but placeholders in the
@@ -827,11 +834,12 @@ class PageTranslator
                 if (!empty($this->params)) {
                     $this->applyContentBlockTranslations($block['element'], []);
                 }
-                continue;
+            } else {
+                $this->applyContentBlockTranslations($block['element'], $blockTranslations);
             }
 
-            // Apply translations within the content block
-            $this->applyContentBlockTranslations($block['element'], $blockTranslations);
+            // MARK-1: the rendered host carries the id it was rendered from.
+            HtmlParser::stampIdentity($block['element'], $customId);
         }
 
         // Then phrases, innermost first: a phrase host nested in another
@@ -1405,6 +1413,11 @@ class PageTranslator
         foreach ($contentBlocks as $block) {
             $customId = $block['customId'];
             $cat = isset($block['category']) ? $block['category'] : '__uncategorized__';
+
+            // A stamped host was registered by the renderer that stamped it.
+            if (!empty($block['stamped'])) {
+                continue;
+            }
 
             // Check if already registered locally
             $catRegistered = isset($registeredItems[$cat]) ? $registeredItems[$cat] : ['phrases' => [], 'contentBlocks' => []];

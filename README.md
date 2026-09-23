@@ -377,7 +377,18 @@ By default, `translatePage()` decomposes nested content into individual phrases 
 </section>
 ```
 
-**Truthy values:** `"true"`, `"1"`, `"yes"`, or any non-empty string (but not `"false"`, `"0"`, or `""`)
+**What the value means** (either spelling, `data-langsys-contentblock` or `data-ls-contentblock`;
+trimmed, case-insensitive):
+
+- **No value, `""`, `"true"`, `"1"` or `"yes"`** declares a block. The SDK registers the element
+  as one content block and, when it renders it, sets the attribute to the block's id.
+- **`"false"` or `"0"`** opts out: the element is walked as ordinary markup.
+- **Any other value** is a block id that a renderer already stamped. The element renders from
+  the catalog entry under that id, or stays in the source language if the catalog holds none,
+  and nothing is registered for it.
+
+Every rendered block host carries `data-ls-contentblock="<id>"`, the id it was rendered from, so
+the block can be identified from the page in a browser inspector.
 
 **Use cases:**
 - Complex widgets that should be translated as a unit
