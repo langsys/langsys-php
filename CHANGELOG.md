@@ -128,6 +128,12 @@ its id or re-registers it.
 
 ### Added
 
+- **Catalog snapshots.** `vendor/bin/langsys-snapshot` (and `Snapshot::export()`)
+  saves the catalog for chosen locales and categories to a file, and
+  `Snapshot::load()` reads it back for setups that shouldn't call the API while
+  rendering. A snapshot refreshes by exporting again; one edited by hand is refused
+  on load.
+
 - **Migrating from key-based translation files.** With the new `migration`
   option naming an app's source-language files (JSON or PHP arrays, with an optional
   fallback tier and package namespaces), `translate()` resolves its argument as a

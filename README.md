@@ -1172,6 +1172,31 @@ List what can't be migrated as it stands by adding
 in your `langsys-messages.php`: it names each value it can't convert and each key
 defined in more than one of your files.
 
+## Catalog Snapshots
+
+A snapshot is your catalog for chosen languages and categories, saved to a file, for
+setups that shouldn't call the API while rendering: a mobile bundle, a first paint,
+an offline or air-gapped deploy.
+
+```bash
+vendor/bin/langsys-snapshot --locale=es-es --locale=fr-fr --category=UI --category=Errors --out=catalog.snapshot.json
+```
+
+The command reads `LANGSYS_API_KEY` and `LANGSYS_PROJECT_ID`, or a `--config` file
+returning `['client' => ...]`. It keeps exactly what the API returns for the
+categories you name.
+
+```php
+use Langsys\SDK\Snapshot\Snapshot;
+
+$snapshot = Snapshot::load('catalog.snapshot.json');
+$spanish = $snapshot->catalog('es-es'); // category => entries, as the API returns them
+```
+
+A snapshot is a cache, never a source. **To refresh one, export it again.** Don't edit
+it: every snapshot carries a checksum of its contents, and `Snapshot::load()` refuses
+one that has changed since it was exported.
+
 ## Error Handling
 
 The SDK throws specific exceptions for different error types:

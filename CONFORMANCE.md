@@ -167,9 +167,9 @@ naming the path proven and the path asserted. An answer-dependent row is `implem
 | MIG-7 | implemented | n/a (pure) | The mode names JSON and PHP-array files in two tiers, and package namespaces with the same two tiers. Nested keys resolve by path, a flat JSON key is tried as written first, and a PHP file's basename is its group. Within the app's own `files` the first configured file answers a key and a key defined in more than one is reported; `fallback_files` (a framework's or package's bundled strings) answer only what `files` do not, and a key in both tiers is an override, never a duplicate (`tests/Migration/LegacyKeysTest.php`, `tests/Migration/LegacyKeysListingTest.php`). **Mutation** (full suite per mutant, in a git worktree, each file restored byte for byte): the fallback tier never consulted reddens `::testAFallbackTierAnswersWhatTheAppDoesNotAndAnOverrideIsNotADuplicate`; the last configured file winning reddens `::testTheFirstConfiguredFileWinsAndADuplicateIsReported`; a duplicate unreported reddens `::testAnUnrecognisedValueAndADuplicateKeyFailTheBuildByName`, `::testTheFirstConfiguredFileWinsAndADuplicateIsReported`; an override reported as a duplicate reddens `::testAFallbackTierAnswersWhatTheAppDoesNotAndAnOverrideIsNotADuplicate`, `::testAnOverrideOfAFallbackKeyIsNotAProblem`; a flat JSON key not tried first reddens `::testAFlatJsonKeyIsTriedAsWrittenFirst`; a namespace's fallback tier never consulted reddens `::testAPackageKeyResolvesThroughItsNamespaceInTwoTiers`; the listing omitting duplicates reddens `::testAnUnrecognisedValueAndADuplicateKeyFailTheBuildByName`. |
 | MIG-8 | n/a (architecture: a framework-agnostic core has no `__()`; live in a binding's migrate-mode `__()` hook, which calls `translate()` in the mode) | - | The contract `__()` shares is the core's: in the mode, `translate()` resolves the key, converts the value and registers it, and `Client::resolveLegacyKey()` exposes the resolved phrase, category, key and file to a binding (`tests/Migration/ClientMigrationTest.php::testResolveLegacyKeyExposesTheEntryForABinding`). A hook that calls `translate()` in the mode yields the same phrase, id and category as a direct call by construction; the Laravel binding owns the hook. |
 | MIG-9 | not implemented | - | This SDK has no import. **Waits on:** the `translations` map on `POST /api/translatable-items`, which the spec notes lands with the 907 merge. |
-| SNAP-1 | not implemented | - | This SDK has no export command. |
-| SNAP-2 | n/a (profile: browser) | - | Profile `browser, binding`, so no obligation on a server core. |
-| SNAP-3 | not implemented | - | This SDK has no snapshot, so there is no documented refresh path and nothing that reads one. |
+| SNAP-1 | implemented | contract | `Snapshot::export()` and `vendor/bin/langsys-snapshot` read `GET /translations/data` for each chosen locale and keep only the chosen categories, with no export endpoint. Proven against the contract fixture (tree `542f57f5`): for two locales and two categories, the snapshot holds exactly the entries the API serves for those categories — block maps and untranslated `null` entries as served — and nothing for the categories left out (`tests/Contract/SnapshotContractTest.php::testTheSnapshotCarriesExactlyWhatTheApiReturnsForTheChosenCategories`); nothing from the response envelope is carried, the write decision included (`::testNothingOutsideTheCatalogIsCarried`); the command writes a snapshot that loads, and refuses to write one with no category (`::testTheCommandWritesASnapshotThatLoads`). A snapshot names at least one locale and one category (`tests/Snapshot/SnapshotTest.php::testASnapshotNamesAtLeastOneLocaleAndOneCategory`). **Mutation** (full suite per mutant, in a git worktree, each file restored byte for byte): every category exported reddens `::testTheCommandWritesASnapshotThatLoads`, `::testTheSnapshotCarriesExactlyWhatTheApiReturnsForTheChosenCategories`; the response envelope carried reddens `::testNothingOutsideTheCatalogIsCarried`; an export with no category reddens `::testASnapshotNamesAtLeastOneLocaleAndOneCategory`, `::testTheCommandWritesASnapshotThatLoads`; with no locale, `::testASnapshotNamesAtLeastOneLocaleAndOneCategory`. |
+| SNAP-2 | n/a (profile: browser) | - | Profile `browser, binding`, so no obligation on a server core. A binding that seeds a client from a snapshot reads it through `Snapshot::load()` and `Snapshot::catalog($locale)`, which give the catalog for a locale in the shape the API returns. |
+| SNAP-3 | implemented | n/a (pure) | A snapshot is a cache, never edited and never authoritative. It carries a checksum of its contents, and `Snapshot::load()` refuses one that no longer matches with an error saying to export it again, so a hand-edited snapshot is caught rather than served (`tests/Snapshot/SnapshotTest.php::testASnapshotChangedByHandIsRefused`); a document that is not a snapshot, or has an unknown version, is refused too (`::testSomethingThatIsNotASnapshotIsRefused`). The documented refresh path is a new export (README, *Catalog Snapshots*). Nothing in this SDK reads a snapshot in place of the catalog: rendering always reads the catalog, and the snapshot is only exported and loaded. **Mutation** (full suite per mutant, in a git worktree, each file restored byte for byte): the checksum never verified reddens `::testASnapshotChangedByHandIsRefused`; a checksum that does not cover the catalog reddens `::testASnapshotChangedByHandIsRefused`. |
 | BIND-1 | n/a (profile: binding) | - | These govern framework bindings that wrap a core — adaptations of shape and timing that must not change meaning. This repo is a core, not a binding, so none of them has a site here |
 | BIND-2 | n/a (profile: binding) | - | These govern framework bindings that wrap a core — adaptations of shape and timing that must not change meaning. This repo is a core, not a binding, so none of them has a site here |
 | BIND-3 | n/a (profile: binding) | - | These govern framework bindings that wrap a core — adaptations of shape and timing that must not change meaning. This repo is a core, not a binding, so none of them has a site here |
@@ -229,11 +229,11 @@ and an `implemented` row with no recorded mutation (CONF-3).
 rule ids at blob 24354e2d          112
 one row each                       112
 missing / duplicated               0 / 0
-implemented                        51
+implemented                        53
 provisional                        0
 delegated                          0
 partial                            12
-not implemented                    10
+not implemented                    8
 held (strip ruling)                0
 waived                             0
 n/a                                39
@@ -249,7 +249,7 @@ GREEN                              no
 #     && git rev-parse "$T:docs/sdk-spec.mdx" \
 #     && git show "$T:docs/sdk-spec.mdx" > /tmp/spec.mdx
 #
-# Last run 2026-09-23T18:29:10Z against blob 24354e2d (langsys2 @ 2ddea638): exit 0.
+# Last run 2026-09-23T18:34:59Z against blob 24354e2d (langsys2 @ 2ddea638): exit 0.
 #
 # python3 - <<'EOF'   (from the repo root; spec at /tmp/spec.mdx)
 import re, sys, collections
@@ -620,6 +620,8 @@ done <<'EOF'
 0	tests/fixtures/README.md	5e9866c1
 0	CONFORMANCE.md	the writer test under its former name
 0	CONFORMANCE.md	This SDK has no legacy-key mode
+0	CONFORMANCE.md	This SDK has no export command
+0	CONFORMANCE.md	This SDK has no snapshot
 EOF
 exit $fail
 ```

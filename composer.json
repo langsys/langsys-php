@@ -12,7 +12,8 @@
         "ext-intl": "*"
     },
     "bin": [
-        "bin/langsys-messages"
+        "bin/langsys-messages",
+        "bin/langsys-snapshot"
     ],
     "suggest": {
         "ext-redis": "For Redis cache support"

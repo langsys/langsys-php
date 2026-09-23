@@ -1,0 +1,69 @@
+#!/usr/bin/env php
+<?php
+
+/**
+ * Export a catalog snapshot (SNAP-1): the chosen categories of each locale's
+ * catalog, read from the API and written to a file the app loads instead of
+ * calling the API. A snapshot is a cache - refresh it by exporting again.
+ *
+ *   vendor/bin/langsys-snapshot --locale=es-es [--locale=fr-fr] --category=UI [--category=Errors] --out=snapshot.json [--config=langsys-snapshot.php]
+ *
+ * The config file returns ['client' => Client|Closure]; without one, a client is
+ * built from LANGSYS_API_KEY and LANGSYS_PROJECT_ID.
+ */
+
+$loaded = false;
+
+foreach ([__DIR__ . '/../vendor/autoload.php', __DIR__ . '/../../../autoload.php'] as $autoload) {
+    if (is_file($autoload)) {
+        require $autoload;
+        $loaded = true;
+        break;
+    }
+}
+
+if (!$loaded) {
+    fwrite(STDERR, "Cannot find Composer's autoloader: run composer install first.\n");
+    exit(1);
+}
+
+$options = getopt('', ['config:', 'locale:', 'category:', 'out:', 'help']);
+
+if (isset($options['help'])) {
+    fwrite(STDOUT, "Usage: langsys-snapshot --locale=es-es --category=UI --out=snapshot.json [--config=langsys-snapshot.php]\n");
+    exit(0);
+}
+
+$locales = isset($options['locale']) ? (array) $options['locale'] : [];
+$categories = isset($options['category']) ? (array) $options['category'] : [];
+
+if (empty($options['out'])) {
+    fwrite(STDERR, "Name the file to write with --out.\n");
+    exit(1);
+}
+
+try {
+    $client = null;
+
+    if (isset($options['config'])) {
+        $config = require $options['config'];
+        $client = (is_array($config) && isset($config['client'])) ? $config['client'] : null;
+        $client = $client instanceof Closure ? $client() : $client;
+    } else {
+        $client = new \Langsys\SDK\Client();
+    }
+
+    if (!$client instanceof \Langsys\SDK\Client) {
+        fwrite(STDERR, "The configuration gave no Langsys client.\n");
+        exit(1);
+    }
+
+    $snapshot = \Langsys\SDK\Snapshot\Snapshot::export($client, $locales, $categories);
+    $snapshot->writeTo($options['out']);
+} catch (\Throwable $e) {
+    fwrite(STDERR, 'Snapshot not written: ' . $e->getMessage() . "\n");
+    exit(1);
+}
+
+fwrite(STDOUT, 'Wrote ' . $options['out'] . ': ' . count($snapshot->locales()) . ' locales, ' . count($snapshot->categories()) . " categories\n");
+exit(0);
