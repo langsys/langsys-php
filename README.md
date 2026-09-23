@@ -544,6 +544,31 @@ exactly the content that needed it. This only applies when a JS tokenizer walks
 server-rendered nodes; a JS app rendering its own components from the catalog
 never sees this SDK's DOM.
 
+#### Translated pages are marked as resolved
+
+A page rendered in a language other than your project's base language is output,
+not source. `translatePage()` says so on the root element:
+
+```html
+<html lang="es-es" data-ls-resolved="es-es">
+```
+
+Anything that walks that page later — a Langsys JS SDK hydrating it, or a middleware
+translating the response again — registers none of its text, so Spanish never enters
+the catalog as a source phrase. The page still translates and keeps its content-block
+ids. A page rendered in the base language is source and carries no marker, so it stays
+discoverable. A marker you put on the root yourself, in either spelling
+(`data-ls-resolved` or `data-langsys-resolved`), is left as it is.
+
+**A client-side app mounted inside a translated page** renders source text of its own,
+which should still be discovered. Opt its mount point back out:
+
+```html
+<div id="app" data-ls-resolved="false"></div>
+```
+
+The nearest marked ancestor decides, and only `false` or `0` opt out.
+
 #### Plurals (ICU MessageFormat)
 
 Full ICU is supported, so plural categories are correct per language — Russian's

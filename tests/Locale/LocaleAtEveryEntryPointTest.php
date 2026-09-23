@@ -56,7 +56,7 @@ class LocaleAtEveryEntryPointTest extends TestCase
 
         $page = (new PageTranslator($client))->translate('<html><body><p>Save</p></body></html>', 'es-ES');
 
-        $this->assertStringContainsString('<html lang="es-es">', $page);
+        $this->assertMatchesRegularExpression('#<html[^>]* lang="es-es"#', $page);
         $this->assertStringContainsString('<p>Guardar</p>', $page);
         $this->assertSame(['es-es'], $this->catalogLocalesRequested());
     }

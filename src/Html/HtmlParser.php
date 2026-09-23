@@ -591,6 +591,43 @@ class HtmlParser
      */
     const CONTENT_BLOCK_STAMP = 'data-ls-contentblock';
 
+    /**
+     * Both spellings of the resolved marker, canonical form first (GATE-10).
+     * Writers emit the first.
+     */
+    const RESOLVED_MARKERS = ['data-ls-resolved', 'data-langsys-resolved'];
+
+    /**
+     * Whether a node sits in a resolved subtree: text a server already output in
+     * a resolved locale, which is never source and is never registered.
+     *
+     * The nearest element carrying the marker decides, so the node itself and
+     * then each ancestor is read in turn. That is load-bearing: text a server
+     * prints inline has no element of its own, so the only place a producer can
+     * state the fact is an ancestor it owns, usually the document root. Presence
+     * is intent and only `false` or `0` opts a subtree back out - the same rule
+     * as every other marker here.
+     *
+     * @param \DOMNode|null $node
+     * @return bool
+     */
+    public static function isResolvedScope($node)
+    {
+        for (; $node !== null; $node = $node->parentNode) {
+            if (!$node instanceof DOMElement) {
+                continue;
+            }
+
+            foreach (self::RESOLVED_MARKERS as $attribute) {
+                if ($node->hasAttribute($attribute)) {
+                    return self::markerIsTruthy($node, self::RESOLVED_MARKERS);
+                }
+            }
+        }
+
+        return false;
+    }
+
     protected function walkNode(DOMNode $node, array &$phrases)
     {
         // Skip elements excluded from translation entirely.

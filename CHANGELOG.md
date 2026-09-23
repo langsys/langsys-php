@@ -128,6 +128,13 @@ its id or re-registers it.
 
 ### Added
 
+- **Translated pages are marked as resolved.** `translatePage()` writes
+  `data-ls-resolved="<locale>"` on the root of a page rendered in a non-base locale,
+  and the page path registers nothing inside a subtree carrying the marker (either
+  spelling; `false` or `0` opts a subtree back out). A translated page walked again,
+  by a JS SDK or a response middleware, no longer registers its translated text as
+  source. A base-locale render is not marked.
+
 - **Server messages.** Validation errors and system messages can now be registered
   and translated ahead of time, the way the backend's own error templates are (spec
   8.1.0, Server messages). `Langsys\SDK\Messages` fills `{name}` markers exactly as

@@ -227,21 +227,24 @@ class PageTranslator
         }
 
         // Identify new items (not in translations AND not already registered)
-        // Head phrases use default category, body phrases use their own category
-        $newHeadPhrases = $this->findNewPhrasesWithCategory(
+        // Head phrases use default category, body phrases use their own category.
+        // A unit in a resolved subtree is translated like any other but is never a
+        // registration candidate: its text is output, not source (GATE-10).
+        $heads = $doc->getElementsByTagName('head');
+        $newHeadPhrases = ($heads->length > 0 && HtmlParser::isResolvedScope($heads->item(0))) ? [] : $this->findNewPhrasesWithCategory(
             $this->addCategoryToPhrases($headPhrases, $defaultCategory),
             $translations,
             $registeredItems
         );
         $newBodyPhrases = $this->findNewPhrasesWithCategory(
-            $bodyPhrases,
+            $this->outsideResolvedScope($bodyPhrases),
             $translations,
             $registeredItems
         );
         $newPhrases = array_merge($newHeadPhrases, $newBodyPhrases);
 
         $newContentBlocks = $this->findNewContentBlocksWithCategory(
-            $contentBlocks,
+            $this->outsideResolvedScope($contentBlocks),
             $translations,
             $registeredItems
         );
@@ -270,8 +273,72 @@ class PageTranslator
         // Apply body translations
         $this->applyBodyTranslations($doc, $bodyPhrases, $contentBlocks, $translations, $defaultCategory);
 
+        $this->markResolvedRoot($doc, $locale);
+
         // Return translated HTML
         return $this->saveHtml($doc);
+    }
+
+    /**
+     * The units whose text is source: those outside any resolved subtree.
+     *
+     * @param array $units Collected phrases or content blocks
+     * @return array
+     */
+    protected function outsideResolvedScope(array $units)
+    {
+        return array_values(array_filter($units, function ($unit) {
+            $scope = isset($unit['scope']) ? $unit['scope'] : (isset($unit['element']) ? $unit['element'] : null);
+
+            return !($scope instanceof \DOMNode && HtmlParser::isResolvedScope($scope));
+        }));
+    }
+
+    /**
+     * Mark the document root as resolved when this render is in a locale other
+     * than the project's base locale (GATE-10, producing).
+     *
+     * The page this returns is then output, not source: a later walk - a JS SDK
+     * hydrating it, a middleware translating the response again - registers
+     * none of it. A base-locale render is source and is left unmarked so it stays
+     * discoverable, and when the base locale is unknown nothing is marked, since
+     * the render cannot be shown to be anything but source. A marker already on
+     * the root, in either spelling, is the page author's and is kept.
+     *
+     * @param DOMDocument $doc
+     * @param string $locale
+     * @return void
+     */
+    protected function markResolvedRoot(DOMDocument $doc, $locale)
+    {
+        $htmls = $doc->getElementsByTagName('html');
+        $root = $htmls->length > 0 ? $htmls->item(0) : $doc->documentElement;
+
+        if (!$root instanceof DOMElement) {
+            return;
+        }
+
+        foreach (HtmlParser::RESOLVED_MARKERS as $attribute) {
+            if ($root->hasAttribute($attribute)) {
+                return;
+            }
+        }
+
+        try {
+            $project = $this->client->getProject();
+        } catch (\Throwable $e) {
+            return;
+        }
+
+        $base = (is_array($project) && isset($project['base_locale']) && is_string($project['base_locale']))
+            ? LocaleDetector::normalize($project['base_locale'])
+            : null;
+
+        if ($base === null || $base === '' || $base === $locale) {
+            return;
+        }
+
+        $root->setAttribute(HtmlParser::RESOLVED_MARKERS[0], $locale);
     }
 
     /**
@@ -540,6 +607,7 @@ class PageTranslator
             $phrases[] = [
                 'text' => $attributePhrase,
                 'element' => null,
+                'scope' => $element,
                 'category' => $category,
                 'attributeOnly' => true,
             ];
