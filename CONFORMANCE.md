@@ -1,12 +1,12 @@
 # Conformance — langsys/php-sdk
 
-Spec version implemented: **spec blob `f8ff6e1e`** (`langsys2` @ `70320628`, spec 8.1.0,
-**committed, unpublished and not yet reviewed**; derived 2026-09-15T04:34:06Z via
-`git rev-parse 70320628d1d96c0dcc375abcb4a3246981f5dc54:docs/sdk-spec.mdx`)
+Spec version implemented: **spec blob `e2524fd6`** (`langsys2` @ `68d9da48`, spec 8.2.0,
+**committed and unpublished**; derived 2026-09-23T17:11:28Z via
+`git rev-parse 68d9da4826745396320af6e8ae0a1960b2b93ae6:docs/sdk-spec.mdx`)
 
 | Field | Value |
 |---|---|
-| **Spec revision read** | langsys2 70320628d1d96c0dcc375abcb4a3246981f5dc54, docs/sdk-spec.mdx blob f8ff6e1e46668120cb6ceb662414574275bb4a1c |
+| **Spec revision read** | langsys2 68d9da4826745396320af6e8ae0a1960b2b93ae6, docs/sdk-spec.mdx blob e2524fd69716d3c01fdf90197aef7dc0d5aa3792 |
 | **Profiles** | all, server |
 
 **Coverage: every one of the spec's rule ids is accounted for exactly once**, binding or not —
@@ -14,10 +14,10 @@ rules that do not bind this SDK are rowed `n/a` with the profile named, rather t
 The counts, the binding total and the grade tally live in the computed summary at the foot of
 this file and only there, because a number written twice is a number that disagrees with itself.
 
-**Rebased from blob `5c5c0723` (spec 8.0.1) to `f8ff6e1e` (spec 8.1.0).** 8.1.0 adds the Server messages
-family, MSG-1 to MSG-12, and changes nothing else: every one of the 79 earlier rules has the same
-title, Profiles line and body in both blobs, measured by diffing each rule, so their rows carry over
-unchanged and still cite `5c5c0723` where a ruling first landed there.
+**Which blob a row cites.** The rows are graded against blob `e2524fd6`. Every rule through the
+Server messages family reads the same at `e2524fd6` as at `f8ff6e1e` and, before that family,
+at `5c5c0723`: the same title, Profiles line and body, measured by diffing rule by rule. A row
+that cites `5c5c0723` names the blob where its ruling first appears.
 
 **Rebased from blob `042dedb5` (spec v8) to `5c5c0723` (spec 8.0.1).** 8.0.1 is a correction to
 v8, not a new release: it pins the whitespace set to JavaScript's, translates SVG label text, and
@@ -53,7 +53,7 @@ interpolation, cache keys, what the served bytes contain), cross-implementation 
 and meta-rules are tier `n/a (pure)`: a contract fixture adds nothing to them, so they are graded
 on whether breaking the behaviour turns a named test red on **every path** the rule runs on.
 
-**Grades, and what green means here.** One table, one rule id per row, all 91. Each row carries one
+**Grades, and what green means here.** One table, one rule id per row, all 105. Each row carries one
 **Status** — `implemented`, `provisional`, `delegated` (bindings only), `partial`, `not implemented`,
 `held (strip ruling)`, `waived` (only with the operator's recorded agreement), `n/a (profile: <p>)`
 (only where the rule's own Profiles line excludes every profile this SDK claims), or
@@ -82,6 +82,8 @@ clause naming CONF-1's `contract` fixture. CONF-1 itself is `not implemented`: i
 | GATE-6 | provisional | mock | `tests/ClientTest.php::testFlushReportsDroppedWhenTheRequestMayNotWrite` — the register half returns before the network when the request may not write. Report-half n/a: this SDK has no hint lane (HINT-2) **Waits on:** CONF-1's `contract` fixture. |
 | GATE-7 | provisional | mock | Every path that can detect unregistered content feeds the register lane: `Client::translate()` (`queuePhraseForRegistration`), `Client::translateContentBlock()` (`queueContentBlockForRegistration`), and `PageTranslator` (both, via the client). Verified fresh against this tip — a path that fed neither existed on an earlier branch (`lookupContent()`) and does not exist on this line. Report lane is n/a (HINT-2), so "exactly one" is satisfied by there being one to feed. Carried by `tests/ClientTest.php::testTranslateQueuesNewPhrase`, `::testTranslateContentBlockQueuesNewBlock` and `tests/Html/PageTranslatorTest.php::testDiscoveredItemsAreNotRecordedAsRegisteredWhenOnlyQueued` — one per path, so removing any path's feed reddens a named test rather than only this prose **Waits on:** CONF-1's `contract` fixture. |
 | GATE-8 | provisional | mock | Four constraints, measured. **c1** — the fallback fires ONLY for the plain arm: `tests/ClientTest.php::testFallsBackToKeyTypeWhenTheApiOmitsWriteEnabled` plus `::testFallsBackToKeyTypeForAReadKeyWhenTheApiOmitsWriteEnabled`; measured across `write`/`read`/`ip_write`/`attested_session` with the flag absent, only `write` yields true. **c2** — nothing is latched at init, and `resetRequestState()` clears per request. **Noted deviation, stated as a bound rather than as a reassurance:** `read`/`write` are answered from a cached `key_type`, so the SDK can be wrong for up to one cache TTL about anything that changes a plain key's write capability — a server that starts emitting `write_enabled`, or a key whose type is changed server-side. It is not wrong today, because for the plain arms `key_type` and `write_enabled` cannot disagree; it becomes wrong the moment they can. Sending a write grant is exactly that change — and since the spec now forbids a server SDK from sending one, the condition holds by conformance rather than by luck. The TRIPWIRE in `tests/Http/HttpClientTest.php` is what turns that from a comment into a failing test. **c3** — vacuous here: no hint lane exists, so the two absences cannot diverge. **c4** — not an SDK obligation **Waits on:** CONF-1's `contract` fixture. |
+| GATE-9 | n/a (profile: browser) | - | Profile `browser`, so no obligation on a server core. The field it names, `discovery_base_locale_only`, is not on the wire yet. |
+| GATE-10 | n/a (profile: browser) | - | Profile `browser, binding`, so no obligation on a server core. Its server-side counterpart that does bind this SDK, a marked host's text never being registered, is MARK-2's and is graded there. `translatePage()` writes no `data-ls-resolved` marker and no reader here honours one. |
 | CAT-1 | provisional | mock | `::testTranslateDoesNotQueuePhraseWithNullCatalogValue` — present-with-null is a known phrase, not a miss. `translate()` uses `array_key_exists`, not `isset` **Waits on:** CONF-1's `contract` fixture. |
 | CAT-2 | provisional | mock | `::testTranslateReturnsSourcePhraseWhenCatalogValueIsNull`, `::testTranslateInterpolatesSourcePhraseWhenCatalogValueIsNull` — the display half falls back to source text rather than rendering the null **Waits on:** CONF-1's `contract` fixture. |
 | CAT-3 | provisional | mock | `tests/ClientTest.php::testContentBlockResolvesUnderItsLegacyPipeFormId` and `::testLegacyIdResolvingToDifferentContentIsRejected` — resolution requires an array-valued entry before treating a block as known, so `custom_id: null` is never mistaken for a registered block **Waits on:** CONF-1's `contract` fixture. |
@@ -124,7 +126,7 @@ clause naming CONF-1's `contract` fixture. CONF-1 itself is `not implemented`: i
 | TOK-4 | partial | n/a (pure) | **Mutation, this regrade** (full suite per mutant, file restored byte-for-byte after each, on the `src/` of `5400248`): on the block path, trimming attribute values instead of collapsing them reddens `::testABlockAttributeWrappedAcrossLinesIsTranslated`, `::testCanonicalizationMatchesTheCrossSdkVectors`, `::testPlaceholdersAreCanonicalisedAtCapture`. **Page-path gap, measured:** `attr-multiline` and `attr-nbsp` register nothing through `translatePage`, for TOK-3's two causes; the registration shape is routed, so behaviour is unchanged pending the ruling. *Earlier record:* Satisfied by the same helper — `extractAttributePhrases()` routes every attribute value through `normalizeWhitespace()`. Proven by the fixture's `attr-nbsp` row, which is `nbsp-in-text`'s twin: the same content in an attribute must produce the same id |
 | TOK-5 | implemented | n/a (pure) | **Mutation, this regrade** (full suite per mutant, file restored byte-for-byte after each, on the `src/` of `5400248`): dropping the capture-side canonicalisation in `Canonical::phrase()` reddens 9 — on the page path `::testABlockTextNodeResolvesAPercentPlaceholder`, `::testASinglePhraseElementResolvesAPercentPlaceholder` (both through `translatePage`), on the block path `::testABlockAuthoredWithPercentPlaceholdersResolves` (through `translateContentBlock`), and in the parser `::testPlaceholdersAreCanonicalisedAtCapture`, `::testBothPlaceholderSpellingsProduceOneBlockId`, `::testCapturedPlaceholderPhrasesAreFoundOnLookup`, `::testCanonicalizationMatchesTheCrossSdkVectors`; dropping the render-side normalisation reddens `::testPercentPlaceholdersAreAccepted`. **Proven on:** page path, block path, parser, render. *Earlier record:* `tests/Format/InterpolatorTest.php::testPercentPlaceholdersAreAccepted` (8 vectors). **`%name%` previously reached the reader verbatim** — a placeholder rendered as literal text on the page. Normalised to `{name}` once, before ICU detection, so no downstream path learns a second spelling. Rewritten **only for keys the caller supplied**, which is the safety property: `Save 20% on 5% APR` and `width: 100%` have no matching parameter and are returned untouched. **Ruling (spec 8.0.1, blob `5c5c0723`): `%name%` normalises to `{name}` at CAPTURE too**, not only at render. The stored phrase previously carried whatever the author wrote, so `Hello %name%` and `Hello {name}` were two phrases with two ids and the JS core stored only the brace form — measured `bb74011a…` here against `1e4b462c…` there, which now agree. Both sides go through `Html\Canonical::phrase()`, one function, because applying this at capture and not at lookup would have recreated the exact register/lookup break the whitespace work had to be fixed for twice. At capture there is no parameter list to gate on, so the narrow pattern is the only guard: `Save 20% on 5% APR` and `width: 100%` are untouched; the knowingly-accepted residual is prose where two signs bracket a bare word. `tests/Html/HtmlParserTest.php::testPlaceholdersAreCanonicalisedAtCapture` (6 vectors), `::testBothPlaceholderSpellingsProduceOneBlockId`, `::testCapturedPlaceholderPhrasesAreFoundOnLookup`. Mutation: removing the render-side normalisation reddens 2 cases; removing the capture-side one reddens 5 |
 | MARK-1 | partial | n/a (pure) | **Mutation, this regrade** (full suite per mutant, file restored byte-for-byte after each, on the `src/` of `5400248`): on the block path, stamping a single element despite text siblings reddens `::testABlockWithTextSiblingsIsNotStamped`, `::testRealTextStillBlocksStamping`. **Page-path gap, measured:** `translatePage` renders a resolved block without its identity — `<p>Hello <b>World</b> again</p>` against a catalog holding its id comes back translated with no `data-ls-contentblock`, where `translateContentBlock` stamps the same markup. Also short of the spec's test on the block path: `::testARenderedBlockIsStampedWithItsResolvedId` derives the expected id from a hand-written token list, not by running the tokenizer over the rendered subtree. *Earlier record:* `tests/ClientTest.php::testARenderedBlockIsStampedWithItsResolvedId`, `::testAMultiRootBlockIsNotStamped`, `::testAnExistingStampIsNeverOverwritten` (both spellings), `::testABlockIsNotStampedWhenTheLookupFailed`. Stamped only where the fragment has exactly one element root: claiming a block's id for one of several siblings would make that sibling read as the block the next time anything parsed the page. Not stamped when the lookup failed — that would publish an identity claim built on an outage. An existing marker is another writer's claim and is never overwritten. **Corrected after review:** the guard counted ELEMENT children only, so `Buy <strong>now</strong>` stamped the `<strong>` with the whole fragment's id while that element's own subtree derives a different one — a false identity claim in the served bytes, which any later reader believes. The fragment must now be a single node entire (`::testABlockWithTextSiblingsIsNotStamped`, 3 vectors, with `::testASingleElementFragmentStillStamps` as the control) |
-| MARK-2 | partial | n/a (pure) | **Mutation, this regrade** (full suite per mutant, file restored byte-for-byte after each, on the `src/` of `5400248`): reading the phrase marker only as `data-langsys-phrase` reddens 9, including the page-path `::testAJsRenderedHostIsNotReSplitOnThePagePath` and the parser's `::testPhraseMarkerIsReadUnderBothSpellings`, so the **leaf host is proven on both paths**. **Declared-block host not proven on the page path:** reading the block marker only as `data-langsys-contentblock` makes `translatePage` split `<div data-ls-contentblock><p>Alpha</p><p>Beta</p></div>` into two phrases where it registers one block unmutated, and the only tests that redden are the block-path `::testAnExistingStampIsNeverOverwritten` and the parser's `::testContentBlockMarkerIsReadUnderBothSpellings`. That is the leaf-versus-declared-block split the spec records for Ruby. The declaration semantics of a bare content-block attribute are routed to the operator. *Earlier record:* `tests/Html/HtmlParserTest.php::testPhraseMarkerIsReadUnderBothSpellings` (7 vectors including off-values), `::testContentBlockMarkerIsReadUnderBothSpellings` (4), `::testJsSpellingKeepsABlockTogetherOnThePagePath`. Read accepts `data-ls-*` and `data-langsys-*`; what this SDK WRITES stays one spelling. End to end on the page path: `tests/ClientTest.php::testAJsRenderedHostIsNotReSplitOnThePagePath`, with `::testTheSameHostWithoutAMarkerIsSplit` as the control that the page path registers anything at all. **Two limits, stated because the row would otherwise overclaim:** (1) the CONTENT-BLOCK path honours neither spelling — a marked run inside a block still splits, deliberately, since that path has no tokenized branch to render a tokenized entry; (2) the page path reads these markers as BOOLEANS only, so a host carrying `data-ls-contentblock="<id>"` is not translated *from that id* — PHP re-derives the id from the content and uses that. Mutation: dropping the JS spelling reddens 5 cases |
+| MARK-2 | partial | n/a (pure) | **Mutation, this regrade** (full suite per mutant, file restored byte-for-byte after each, on the `src/` of `5400248`): reading the phrase marker only as `data-langsys-phrase` reddens 9, including the page-path `::testAJsRenderedHostIsNotReSplitOnThePagePath` and the parser's `::testPhraseMarkerIsReadUnderBothSpellings`, so the **leaf host is proven on both paths**. **Declared-block host not proven on the page path:** reading the block marker only as `data-langsys-contentblock` makes `translatePage` split `<div data-ls-contentblock><p>Alpha</p><p>Beta</p></div>` into two phrases where it registers one block unmutated, and the only tests that redden are the block-path `::testAnExistingStampIsNeverOverwritten` and the parser's `::testContentBlockMarkerIsReadUnderBothSpellings`. That is the leaf-versus-declared-block split the spec records for Ruby. The declaration semantics of a bare content-block attribute are routed to the operator. *Earlier record:* `tests/Html/HtmlParserTest.php::testPhraseMarkerIsReadUnderBothSpellings` (7 vectors including off-values), `::testContentBlockMarkerIsReadUnderBothSpellings` (4), `::testJsSpellingKeepsABlockTogetherOnThePagePath`. Read accepts `data-ls-*` and `data-langsys-*`; what this SDK WRITES stays one spelling. End to end on the page path: `tests/ClientTest.php::testAJsRenderedHostIsNotReSplitOnThePagePath`, with `::testTheSameHostWithoutAMarkerIsSplit` as the control that the page path registers anything at all. **Two limits, stated because the row would otherwise overclaim:** (1) the CONTENT-BLOCK path honours neither spelling — a marked run inside a block still splits, deliberately, since that path has no tokenized branch to render a tokenized entry; (2) the page path reads these markers as BOOLEANS only, so a host carrying `data-ls-contentblock="<id>"` is not translated *from that id* — PHP re-derives the id from the content and uses that. Mutation: dropping the JS spelling reddens 5 cases **Leaf host on the register lane, measured at `8ccaddf`:** the spec's test asks that a JS-rendered `data-ls-phrase` host be recognised *and that no new phrase be registered for its text*. The page path does the first and not the second: `<p data-ls-phrase>Buy <strong>now</strong></p>` against an empty catalog registers phrase `Buy {m0o}now{m0c}`, and a host holding text the TypeScript core already resolved, `<p data-ls-phrase>Hola mundo</p>`, registers `Hola mundo` as source. `tests/ClientTest.php::testAJsRenderedHostIsNotReSplitOnThePagePath` asserts only that the host is not split, which is why it passes. |
 | SSR-1 | n/a (profile: browser) | - | JS-only strategies |
 | SSR-2 | n/a (profile: browser) | - | JS-only strategies |
 | SSR-3 | n/a (profile: browser) | - | JS-only strategies |
@@ -145,6 +147,18 @@ clause naming CONF-1's `contract` fixture. CONF-1 itself is `not implemented`: i
 | MSG-10 | n/a (architecture: a framework-agnostic core has no label facility; live in a framework binding's message sources) | - | A binding's `MessageSource` reports a validated field with no label through `MessageCatalog::problem()`, which names the source, the field and the fix (`tests/Messages/MessageCatalogTest.php::testAProblemNamesTheSourceTheFieldTheIssueAndTheFix`). |
 | MSG-11 | partial | n/a (pure) | A label carried in a marker is reported and not listed, while a number in a marker is the accepted case (`tests/Messages/MessageCatalogTest.php::testALabelCarriedInAMarkerIsAProblem`). A count that governs agreement renders through the catalog's ICU from its count param (`tests/Messages/ClientMessagesTest.php::testAPluralTranslationRendersThroughIcuFromACountParam`). **Mutation** (full suite per mutant, run in a git worktree holding this change, each file restored byte for byte): a label carried in a marker is listed reddens `::testALabelCarriedInAMarkerIsAProblem`; a translation is filled without ICU reddens `::testAPluralTranslationRendersThroughIcuFromACountParam`. **Not proven:** a translatable value under another marker name, for the reason MSG-3 gives. The residue this rule names, a proper noun that governs agreement, is recorded rather than worked around: nothing here fills a gender select (open question #827). |
 | MSG-12 | n/a (architecture: a framework-agnostic core has no session or redirect; live in a binding that flashes the entries across the redirect) | - | The entries survive the serialisation that hand-off needs: `MessageSet::toArray()` and `MessageSet::fromArray()` (`tests/Messages/MessageSetTest.php::testASetSurvivesASessionRoundTrip`). The Laravel binding owns the session flash and the Inertia prop. |
+| MIG-1 | not implemented | - | This SDK has no legacy-key mode. |
+| MIG-2 | not implemented | - | This SDK has no legacy-key mode. |
+| MIG-3 | not implemented | - | This SDK has no legacy-key mode. |
+| MIG-4 | not implemented | - | This SDK has no legacy-key mode, so nothing converts legacy placeholders or plurals. |
+| MIG-5 | not implemented | - | This SDK has no legacy-key mode. |
+| MIG-6 | not implemented | - | This SDK has no legacy-key mode. |
+| MIG-7 | not implemented | - | This SDK has no legacy-key mode, so it reads no source-language file. |
+| MIG-8 | not implemented | - | This SDK has no legacy-key contract for a server entry point to call. |
+| MIG-9 | not implemented | - | This SDK has no import. **Waits on:** the `translations` map on `POST /api/translatable-items`, which the spec notes lands with the 907 merge. |
+| SNAP-1 | not implemented | - | This SDK has no export command. |
+| SNAP-2 | n/a (profile: browser) | - | Profile `browser, binding`, so no obligation on a server core. |
+| SNAP-3 | not implemented | - | This SDK has no snapshot, so there is no documented refresh path and nothing that reads one. |
 | BIND-1 | n/a (profile: binding) | - | These govern framework bindings that wrap a core — adaptations of shape and timing that must not change meaning. This repo is a core, not a binding, so none of them has a site here |
 | BIND-2 | n/a (profile: binding) | - | These govern framework bindings that wrap a core — adaptations of shape and timing that must not change meaning. This repo is a core, not a binding, so none of them has a site here |
 | BIND-3 | n/a (profile: binding) | - | These govern framework bindings that wrap a core — adaptations of shape and timing that must not change meaning. This repo is a core, not a binding, so none of them has a site here |
@@ -200,17 +214,17 @@ architecture `n/a` that does not say what would make it live; a status its tier 
 and an `implemented` row with no recorded mutation (CONF-3).
 
 ```
-rule ids at blob f8ff6e1e          91
-one row each                       91
+rule ids at blob e2524fd6          105
+one row each                       105
 missing / duplicated               0 / 0
 implemented                        15
 provisional                        22
 delegated                          0
 partial                            14
-not implemented                    5
+not implemented                    16
 held (strip ruling)                0
 waived                             0
-n/a                                35
+n/a                                38
 GREEN                              no
 ```
 
@@ -218,12 +232,12 @@ GREEN                              no
 # Re-derive the blob and the tally together. The target is a COMMIT, not a branch: it is committed
 # and deliberately unpublished, and a branch can move under a file that cites it.
 #
-#   T=70320628d1d96c0dcc375abcb4a3246981f5dc54
+#   T=68d9da4826745396320af6e8ae0a1960b2b93ae6
 #   cd ~/Documents/dev/langsys2 && git fetch -q origin \
 #     && git rev-parse "$T:docs/sdk-spec.mdx" \
 #     && git show "$T:docs/sdk-spec.mdx" > /tmp/spec.mdx
 #
-# Last run 2026-09-15T04:34:06Z against blob f8ff6e1e (langsys2 @ 70320628): exit 0.
+# Last run 2026-09-23T17:11:28Z against blob e2524fd6 (langsys2 @ 68d9da48): exit 0.
 #
 # python3 - <<'EOF'   (from the repo root; spec at /tmp/spec.mdx)
 import re, sys, collections
@@ -575,6 +589,8 @@ done <<'EOF'
 0	CONFORMANCE.md	1ae7bc29
 0	tests/fixtures/README.md	1ae7bc29
 0	CONFORMANCE.md	all 79.
+0	CONFORMANCE.md	all 91.
+0	CONFORMANCE.md	Rebased from blob `5c5c0723` (spec 8.0.1) to `f8ff6e1e`
 EOF
 exit $fail
 ```
