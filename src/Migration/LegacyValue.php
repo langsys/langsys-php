@@ -22,6 +22,9 @@ namespace Langsys\SDK\Migration;
  * format does not recognise is returned exactly as written, with `recognised`
  * false and the reason in `issue`, so it is registered verbatim and reported
  * rather than silently mangled.
+ *
+ * A literal miss - a call whose argument is not a key (MIG-2) - converts by
+ * the entry point that received it rather than by a file; see fromCall().
  */
 final class LegacyValue
 {
@@ -59,6 +62,65 @@ final class LegacyValue
         return self::unrecognised($value, $format === 'i18next'
             ? 'holds a "|", which i18next does not read as a plural'
             : 'holds a "|" in a file with no plural format declared; declare the file\'s format to convert it');
+    }
+
+    /**
+     * Convert the text a Laravel call passed when it is not a key (MIG-2), by
+     * that entry point's own behaviour, so a legacy call and a Langsys call for
+     * the same sentence register one phrase:
+     *
+     * - `__`: only the `:key` placeholders whose key is passed become `{key}`,
+     *   substituted as Laravel substitutes them, longest key first. Any other
+     *   `:word` and any `|` print as written through `__()`, so they stay.
+     * - `trans_choice`: the same, plus the `laravel` plural table, since that is
+     *   where Laravel reads `|` as a plural. `count` is the number passed, as
+     *   Laravel adds it to the replacements.
+     *
+     * `:Name` and `:NAME` for a passed key upper-case its value in Laravel,
+     * which `{name}` cannot express, so such text is returned as written with
+     * `recognised` false. `params` is what to render the phrase with.
+     *
+     * @param string $text
+     * @param array $params The replacements the call passed
+     * @param string $entryPoint `__` or `trans_choice`
+     * @param int|float|null $count trans_choice's number
+     * @return array{text: string, params: array, recognised: bool, issue: string|null}
+     */
+    public static function fromCall($text, array $params = [], $entryPoint = '__', $count = null)
+    {
+        if ($entryPoint !== '__' && $entryPoint !== 'trans_choice') {
+            throw new \InvalidArgumentException('Unknown entry point "' . $entryPoint . '"; expected __ or trans_choice');
+        }
+
+        $text = (string) $text;
+
+        if ($entryPoint === 'trans_choice') {
+            $params['count'] = $count;
+        }
+
+        $keys = array_values(array_filter(array_keys($params), 'is_string'));
+
+        foreach ($keys as $key) {
+            foreach ([ucfirst($key), strtoupper($key)] as $cased) {
+                if ($cased !== $key && strpos($text, ':' . $cased) !== false) {
+                    return self::unrecognised($text, 'uses a case-transforming placeholder (:Name or :NAME), which ICU cannot express') + ['params' => $params];
+                }
+            }
+
+            if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $key) && strpos($text, ':' . $key) !== false) {
+                return self::unrecognised($text, 'passes a replacement named "' . $key . '", which is not a valid ICU argument name') + ['params' => $params];
+            }
+        }
+
+        $convert = function ($segment) use ($keys) {
+            return self::passedPlaceholders($segment, $keys);
+        };
+
+        $converted = $entryPoint === 'trans_choice' && strpos($text, '|') !== false
+            ? self::convertLaravelPipes($text, $convert)
+            : ['text' => $convert($text), 'recognised' => true, 'issue' => null];
+
+        return $converted + ['params' => $params];
     }
 
     /**
@@ -100,13 +162,13 @@ final class LegacyValue
      * @param string $value
      * @return array
      */
-    private static function convertLaravelPipes($value)
+    private static function convertLaravelPipes($value, callable $convert = null)
     {
         $segments = array_map('trim', explode('|', $value));
 
         foreach ($segments as $segment) {
             if (preg_match('/^(\{\d+\}|\[\d+,(\d+|\*)\])/', $segment)) {
-                return self::convertRanges($value, $segments);
+                return self::convertRanges($value, $segments, $convert);
             }
         }
 
@@ -114,7 +176,7 @@ final class LegacyValue
         // categories - only when both forms carry `:count`, since `apple|apples`
         // cannot be told from text that happens to hold a pipe.
         if (count($segments) === 2 && self::hasCount($segments[0]) && self::hasCount($segments[1])) {
-            return ['text' => self::plural([['one', $segments[0]], ['other', $segments[1]]]), 'recognised' => true, 'issue' => null];
+            return ['text' => self::plural([['one', $segments[0]], ['other', $segments[1]]], $convert), 'recognised' => true, 'issue' => null];
         }
 
         return self::unrecognised($value, 'holds a "|" that Laravel does not read as a plural');
@@ -154,7 +216,7 @@ final class LegacyValue
      * @param string[] $segments
      * @return array
      */
-    private static function convertRanges($value, array $segments)
+    private static function convertRanges($value, array $segments, callable $convert = null)
     {
         $exact = [];
         $other = null;
@@ -192,19 +254,21 @@ final class LegacyValue
 
         $branches[] = ['other', $other[1]];
 
-        return ['text' => self::plural($branches), 'recognised' => true, 'issue' => null];
+        return ['text' => self::plural($branches, $convert), 'recognised' => true, 'issue' => null];
     }
 
     /**
      * @param array<int, array{0: string, 1: string}> $branches
+     * @param callable|null $convert Placeholder conversion; every `:word` when null
      * @return string
      */
-    private static function plural(array $branches)
+    private static function plural(array $branches, callable $convert = null)
     {
         $parts = [];
 
         foreach ($branches as list($selector, $text)) {
-            $parts[] = $selector . ' {' . self::countMarker(self::placeholders($text)) . '}';
+            $text = $convert === null ? self::placeholders($text) : $convert($text);
+            $parts[] = $selector . ' {' . self::countMarker($text) . '}';
         }
 
         return '{count, plural, ' . implode(' ', $parts) . '}';
@@ -219,6 +283,25 @@ final class LegacyValue
         $text = preg_replace('/\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/', '{$1}', $text);
 
         return preg_replace('/(?<![\w:]):([a-z][a-z0-9_]*)/', '{$1}', $text);
+    }
+
+    /**
+     * Laravel's own substitution for the keys a call passed: `:key` becomes
+     * `{key}` wherever it appears, longest key first, as strtr() matches.
+     *
+     * @param string $text
+     * @param string[] $keys
+     * @return string
+     */
+    private static function passedPlaceholders($text, array $keys)
+    {
+        $map = [];
+
+        foreach ($keys as $key) {
+            $map[':' . $key] = '{' . $key . '}';
+        }
+
+        return $map === [] ? $text : strtr($text, $map);
     }
 
     /**

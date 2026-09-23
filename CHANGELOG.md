@@ -128,6 +128,12 @@ its id or re-registers it.
 
 ### Added
 
+- **`LegacyValue::fromCall()` converts the text a Laravel call passes when it is
+  not a key.** For `__()` only the placeholders the call passes become `{name}`,
+  substituted as Laravel substitutes them; `trans_choice()` also converts
+  Laravel's plural forms, with the number as `count`. `:Name` and `:NAME` are
+  returned as written and flagged. A binding's `__()` hook uses it so a legacy
+  call and a Langsys call for the same sentence register one phrase.
 - **Catalog snapshots.** `vendor/bin/langsys-snapshot` (and `Snapshot::export()`)
   saves the catalog for chosen locales and categories to a file, and
   `Snapshot::load()` reads it back for setups that shouldn't call the API while

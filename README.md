@@ -1167,7 +1167,15 @@ echo $client->translate('checkout.submit'); // looks up "Place order" in your fi
   nothing else changing.
 - **The key's namespace becomes the category.** `checkout.submit` registers under
   `checkout`, or under the category you pass.
-- **Anything that isn't a key is text.** `translate('Pay now')` works as always.
+- **Anything that isn't a key is text.** `translate('Pay now')` works as always, and
+  registers exactly as written: `translate()` takes Langsys syntax.
+- **A framework's own call converts its own syntax.** Text that reaches Laravel's
+  `__()` or `trans_choice()` without being a key is written in Laravel's syntax, and
+  `LegacyValue::fromCall($text, $replace, '__')` (or `'trans_choice'` with the
+  number) turns it into the Langsys phrase and the params to render it with, the way
+  Laravel reads it: only the placeholders the call passes convert, a `|` is a plural
+  only through `trans_choice()`, and `:Name`/`:NAME` stay as written with a warning.
+  So `__('Hello :name', ['name' => $n])` and `translate('Hello {name}')` are one phrase.
 - **Placeholders are converted in every file.** `:name`, `{{name}}` and `{name}` all
   become `{name}`.
 - **Plurals are converted by the file's format**: `laravel`, `vue-i18n`, `i18next` or
