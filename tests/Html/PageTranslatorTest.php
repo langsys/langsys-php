@@ -2226,4 +2226,23 @@ class PageTranslatorTest extends TestCase
         $this->assertSame('content_block', $items[0]['type']);
         $this->assertSame([['phrase' => 'Hello']], $items[0]['phrases']);
     }
+
+    /**
+     * CID-4 on the page path: a declared block whose legacy id holds different
+     * content is a miss - not rendered from, and registered under its own id.
+     */
+    public function testALegacyIdHoldingDifferentContentIsAMissOnThePagePath(): void
+    {
+        $legacyId = md5(implode('|', ['Marketing', 'Hello there', 'Bye']));
+        $this->setTranslations(['Marketing' => [$legacyId => ['Some entirely other phrase' => 'Otra frase']]]);
+        $this->mockHttp->setResponse('POST', 'translatable-items', ['status' => true]);
+
+        $client = $this->createMockClient();
+        $client->setLocale('es-es');
+        $rendered = $client->translatePage('<html><body><div data-langsys-contentblock><p>Hello there</p><p>Bye</p></div></body></html>', 'Marketing');
+
+        $this->assertStringNotContainsString('Otra frase', $rendered);
+        $this->assertStringContainsString('Hello there', $rendered);
+        $this->assertTrue($client->hasPendingRegistrations(), 'a rejected match is a genuine miss');
+    }
 }

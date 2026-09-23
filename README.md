@@ -73,7 +73,7 @@ Set these environment variables to configure the SDK:
 | `LANGSYS_CACHE_PATH` | No | System temp dir | Directory for file cache |
 | `LANGSYS_CACHE_TTL` | No | `3600` | Cache TTL in seconds |
 | `LANGSYS_BASE_URL` | No | Auto-detect | Base URL for resolving relative URLs in content blocks |
-| `LANGSYS_LOG_PATH` | No | - | Path to log file (logging disabled if not set) |
+| `LANGSYS_LOG_PATH` | No | - | Path to log file (without it, warnings and errors go to PHP's error log) |
 | `LANGSYS_LOG_LEVEL` | No | `info` | Minimum log level: `debug`, `info`, `warning`, `error` |
 | `LANGSYS_MESSAGES_CATEGORY` | No | `Errors` | Category server message templates are registered and looked up under |
 
@@ -981,7 +981,7 @@ $client = new Client('key', 'project', ['cache_clear' => true]);
 
 ## Logging
 
-The SDK includes optional file-based logging in JSON Lines format. Logging is disabled by default and only enabled when a valid writable file path is configured.
+The SDK logs to a file in JSON Lines format when a writable file path is configured. Without one, warnings and errors still go to PHP's error log, prefixed `[langsys]`, so a failed registration or an unreachable API is never recorded nowhere; nothing below warning is written there. Pass `'error_log' => false` to turn that off.
 
 ### Enable Logging
 
@@ -1004,7 +1004,7 @@ $client = new Client();
 |-------|-------------|
 | `debug` | Detailed debugging info (cache hits/misses, request details) |
 | `info` | General operational events (API requests completed, authorization) |
-| `warning` | Non-critical issues (read-only key can't register phrases) |
+| `warning` | Non-critical issues (a key whose type writes but that the server refuses, a translation that fails to format) |
 | `error` | Errors (API request failures, exceptions) |
 
 ### What Gets Logged

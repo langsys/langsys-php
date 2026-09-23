@@ -5,6 +5,11 @@
          colors="true"
          verbose="true"
          stopOnFailure="false">
+    <php>
+        <!-- A Client with no logger configured writes warnings and errors to
+             PHP's error log (REG-10). Tests that assert on it set their own. -->
+        <ini name="error_log" value="/dev/null"/>
+    </php>
     <testsuites>
         <testsuite name="Langsys SDK Test Suite">
             <directory suffix="Test.php">tests</directory>

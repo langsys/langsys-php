@@ -200,6 +200,11 @@ its id or re-registers it.
 
 ### Fixed
 
+- **Warnings and errors are logged even with no log file configured.** Without
+  a `log_path`, or with one whose directory cannot be written, they go to PHP's
+  error log with a `[langsys]` prefix; nothing below warning is written there.
+  Pass `'error_log' => false` to turn it off. A flush skipped because the key may
+  not write is now logged at debug, since it happens by design on every request.
 - **A marked element inside other content is translated on its own.** An
   element carrying a phrase or content-block marker inside a paragraph, a block
   or another marked element no longer adds its words to what surrounds it, on

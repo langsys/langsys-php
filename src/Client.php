@@ -15,6 +15,7 @@ use Langsys\SDK\Http\HttpClient;
 use Langsys\SDK\Locale\LocaleDetector;
 use Langsys\SDK\Locale\RequestLocale;
 use Langsys\SDK\Log\Logger;
+use Langsys\SDK\Log\ErrorLogLogger;
 use Langsys\SDK\Log\LoggerInterface;
 use Langsys\SDK\Log\LogViewer;
 use Langsys\SDK\Log\NullLogger;
@@ -362,9 +363,15 @@ class Client
             return $options['logger'];
         }
 
+        // With no log file, warnings and errors still go somewhere (REG-10):
+        // PHP's error log, unless the app turns that off.
+        $fallback = (isset($options['error_log']) && $options['error_log'] === false)
+            ? new NullLogger()
+            : new ErrorLogLogger();
+
         // Check if logging is enabled
         if (!$this->config->isLoggingEnabled()) {
-            return new NullLogger();
+            return $fallback;
         }
 
         $logPath = $this->config->getLogPath();
@@ -373,10 +380,10 @@ class Client
         // Validate that the directory is writable
         $dir = dirname($logPath);
         if (!is_dir($dir) && !@mkdir($dir, 0755, true)) {
-            return new NullLogger();
+            return $fallback;
         }
         if (!is_writable($dir)) {
-            return new NullLogger();
+            return $fallback;
         }
 
         return new Logger($logPath, $logLevel);
@@ -2629,7 +2636,11 @@ class Client
         try {
             if (!$this->canWrite()) {
                 $pendingCount = count($this->pendingPhrases) + count($this->pendingContentBlocks);
-                $this->logger->warning('Flush skipped - this request may not write', [
+                // Debug, not warning: a key that may not write never sends, by
+                // design, and would otherwise log on every request with misses.
+                // A write-type key refused by the server is reported once
+                // (OBS-1).
+                $this->logger->debug('Flush skipped - this request may not write', [
                     'pending_phrases' => count($this->pendingPhrases),
                     'pending_content_blocks' => count($this->pendingContentBlocks),
                 ]);
