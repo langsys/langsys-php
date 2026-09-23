@@ -87,7 +87,9 @@ class MarkupTokenizer
             return true;
         }
 
-        return HtmlParser::isTranslationExcluded($element);
+        // A nested marked host is its own unit (MARK-4): kept whole, and its
+        // words are not this phrase's.
+        return HtmlParser::isTranslationExcluded($element) || HtmlParser::isMarkedHost($element);
     }
 
     /**

@@ -1638,6 +1638,10 @@ class Client
      * phrase, applies them, and returns the translated HTML. If the content block
      * doesn't exist in translations, it's queued for registration.
      *
+     * A marked host inside the fragment - a phrase marker, or a content-block
+     * marker that is not an opt-out - is excised from the fragment's phrases
+     * and translated as a unit of its own (MARK-4).
+     *
      * @param string $html HTML content block
      * @param string $category Category for the content block (default: '__uncategorized__')
      * @param array $params Placeholder values applied to text nodes and translatable attributes
@@ -1649,6 +1653,39 @@ class Client
             return $html;
         }
 
+        // Which hosts are nested is read from the fragment as written: the
+        // render stamps a single host with the block's id, and that stamp is
+        // this unit's identity, not a nested declaration.
+        $source = strpos($html, 'data-ls-') === false && strpos($html, 'data-langsys-') === false ? null : $this->fragmentDocument($html);
+        $sourceRoot = $source === null ? null : $source->getElementsByTagName('div')->item(0);
+
+        $rendered = $this->translateBlockUnit($html, $category, $params, false);
+
+        if ($sourceRoot === null || $this->outermostMarkedHosts($sourceRoot) === []) {
+            return $rendered;
+        }
+
+        $elements = array_values(array_filter(iterator_to_array($sourceRoot->childNodes), function ($node) {
+            return $node instanceof \DOMElement;
+        }));
+        $singleUnmarkedHost = count($elements) === 1 && !HtmlParser::isMarkedHost($elements[0]);
+
+        return $this->renderNestedHostsIn($rendered, $category, $params, $singleUnmarkedHost);
+    }
+
+    /**
+     * Translate one fragment as one unit, leaving any marked host inside it
+     * untouched.
+     *
+     * @param string $html
+     * @param string|null $category
+     * @param array $params
+     * @param bool $declared Whether a content-block marker declared this unit a
+     *                       block; a declaration outranks the TOK-6 shape
+     * @return string
+     */
+    protected function translateBlockUnit($html, $category, array $params, $declared)
+    {
         $locale = $this->getLocale();
         if ($locale === null) {
             // Can't translate without locale, but placeholders still resolve.
@@ -1671,7 +1708,7 @@ class Client
         // TOK-6: a fragment whose one token is its one text node is a phrase,
         // looked up, registered and rendered as one, and written back into
         // that text node in place.
-        if (HtmlParser::isPhraseUnit($unit)) {
+        if (!$declared && HtmlParser::isPhraseUnit($unit)) {
             $rendered = $this->translateSource($phrases[0], $locale, $category, null, $params);
 
             return $this->replaceFragmentText($html, $phrases[0], $rendered);
@@ -1926,6 +1963,230 @@ class Client
     }
 
     /**
+     * Render every marked host in a rendered fragment as its own unit (MARK-4).
+     *
+     * @param string $html
+     * @param string|null $category
+     * @param array $params
+     * @param bool $belowSingleHost Whether to start below the fragment's one
+     *                              element, which the render may have stamped
+     * @return string
+     */
+    protected function renderNestedHostsIn($html, $category, array $params, $belowSingleHost)
+    {
+        $doc = $this->fragmentDocument($html);
+        $wrapper = $doc === null ? null : $doc->getElementsByTagName('div')->item(0);
+
+        if ($wrapper === null) {
+            return $html;
+        }
+
+        $root = $wrapper;
+        if ($belowSingleHost) {
+            foreach ($wrapper->childNodes as $child) {
+                if ($child instanceof \DOMElement) {
+                    $root = $child;
+                    break;
+                }
+            }
+        }
+
+        $this->renderNestedHosts($root, $category, $params);
+
+        $result = '';
+        foreach ($wrapper->childNodes as $child) {
+            $result .= $doc->saveHTML($child);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Render each outermost marked host below $root: a content-block host as a
+     * declared block of its content, a phrase host as one tokenized phrase.
+     * A host's own nested hosts are rendered first, so a phrase host keeps
+     * them translated when its markup is rebuilt.
+     *
+     * @param \DOMElement $root
+     * @param string|null $category
+     * @param array $params
+     * @return void
+     */
+    protected function renderNestedHosts(\DOMElement $root, $category, array $params)
+    {
+        foreach ($this->outermostMarkedHosts($root) as $host) {
+            $hostCategory = $host->hasAttribute('data-langsys-category') ? $host->getAttribute('data-langsys-category') : $category;
+
+            if (HtmlParser::isPhraseMarked($host)) {
+                $this->renderNestedHosts($host, $hostCategory, $params);
+                $this->renderTokenizedHost($host, $hostCategory, $params);
+                continue;
+            }
+
+            $inner = '';
+            foreach ($host->childNodes as $child) {
+                $inner .= $host->ownerDocument->saveHTML($child);
+            }
+
+            $rendered = $this->translateBlockUnit($inner, $hostCategory, $params, true);
+            $this->replaceChildrenWithHtml($host, $rendered);
+            $this->renderNestedHosts($host, $hostCategory, $params);
+        }
+    }
+
+    /**
+     * Marked hosts below $root that no other marked host below $root contains,
+     * skipping subtrees excluded from translation or that are not prose.
+     *
+     * @param \DOMElement $root
+     * @return \DOMElement[]
+     */
+    protected function outermostMarkedHosts(\DOMElement $root)
+    {
+        $found = [];
+
+        foreach ($root->childNodes as $child) {
+            if (!$child instanceof \DOMElement
+                || HtmlParser::isTranslationExcluded($child)
+                || in_array(strtolower($child->nodeName), HtmlParser::NON_PROSE_ELEMENTS, true)) {
+                continue;
+            }
+
+            if (HtmlParser::isMarkedHost($child)) {
+                $found[] = $child;
+                continue;
+            }
+
+            foreach ($this->outermostMarkedHosts($child) as $host) {
+                $found[] = $host;
+            }
+        }
+
+        return $found;
+    }
+
+    /**
+     * Translate a phrase-marked host as one tokenized phrase: its markup
+     * becomes tokens, the phrase is looked up and registered like any other,
+     * and the host's children are rebuilt from the translation. Its own
+     * translatable attributes, and those of its unmarked descendants, are
+     * phrases of their own.
+     *
+     * @param \DOMElement $host
+     * @param string|null $category
+     * @param array $params
+     * @return void
+     */
+    protected function renderTokenizedHost(\DOMElement $host, $category, array $params)
+    {
+        $tokenizer = new \Langsys\SDK\Html\MarkupTokenizer();
+        $encoded = $tokenizer->encode($host);
+
+        if ($encoded['text'] !== '') {
+            $slots = $encoded['slots'];
+            $rendered = $this->translateSource($encoded['text'], null, $category, null, array_merge($params, $tokenizer->tokenParams(count($slots))));
+
+            if ($tokenizer->hasTokens($rendered)) {
+                $rendered = (string) preg_replace('/\{m\d+[oc]\}/', '', $rendered);
+                $slots = [];
+            }
+
+            $nodes = $tokenizer->render($rendered, $slots, $host->ownerDocument);
+
+            while ($host->firstChild !== null) {
+                $host->removeChild($host->firstChild);
+            }
+
+            foreach ($nodes as $node) {
+                $host->appendChild($node);
+            }
+        }
+
+        $targets = [$host];
+        $walk = function (\DOMElement $element) use (&$walk, &$targets) {
+            foreach ($element->childNodes as $child) {
+                if ($child instanceof \DOMElement && !HtmlParser::isMarkedHost($child)) {
+                    $targets[] = $child;
+                    $walk($child);
+                }
+            }
+        };
+        $walk($host);
+
+        foreach ($targets as $target) {
+            foreach ($this->translatableItems->getTranslatableAttributes() as $attr) {
+                if (!$target->hasAttribute($attr)) {
+                    continue;
+                }
+
+                $value = \Langsys\SDK\Html\Canonical::phrase($target->getAttribute($attr));
+                if ($value !== '') {
+                    $target->setAttribute($attr, $this->translateSource($value, null, $category, null, $params));
+                }
+            }
+        }
+    }
+
+    /**
+     * @param string $html
+     * @return \DOMDocument|null
+     */
+    protected function fragmentDocument($html)
+    {
+        $internalErrors = libxml_use_internal_errors(true);
+
+        $doc = new \DOMDocument();
+        $doc->encoding = 'UTF-8';
+        $loaded = $doc->loadHTML('<?xml encoding="UTF-8"><div>' . $html . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+
+        libxml_clear_errors();
+        libxml_use_internal_errors($internalErrors);
+
+        return $loaded ? $doc : null;
+    }
+
+    /**
+     * @param \DOMElement $element
+     * @param string $html
+     * @return void
+     */
+    protected function replaceChildrenWithHtml(\DOMElement $element, $html)
+    {
+        $source = $this->fragmentDocument($html);
+        $wrapper = $source === null ? null : $source->getElementsByTagName('div')->item(0);
+
+        if ($wrapper === null) {
+            return;
+        }
+
+        while ($element->firstChild !== null) {
+            $element->removeChild($element->firstChild);
+        }
+
+        foreach ($wrapper->childNodes as $child) {
+            $element->appendChild($element->ownerDocument->importNode($child, true));
+        }
+    }
+
+    /**
+     * Whether a node sits inside a marked host below $root.
+     *
+     * @param \DOMNode $node
+     * @param \DOMElement $root
+     * @return bool
+     */
+    protected function insideMarkedHost(\DOMNode $node, \DOMElement $root)
+    {
+        for ($parent = $node->parentNode; $parent !== null && !$parent->isSameNode($root); $parent = $parent->parentNode) {
+            if ($parent instanceof \DOMElement && HtmlParser::isMarkedHost($parent)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Write a rendered phrase into the one text node of a fragment that holds
      * it, keeping the node's surrounding whitespace and every element around it.
      *
@@ -1952,7 +2213,7 @@ class Client
 
         $xpath = new \DOMXPath($doc);
         foreach ($xpath->query('.//text()', $wrapper) as $node) {
-            if (\Langsys\SDK\Html\Canonical::phrase($node->textContent) !== $phrase) {
+            if (\Langsys\SDK\Html\Canonical::phrase($node->textContent) !== $phrase || $this->insideMarkedHost($node, $wrapper)) {
                 continue;
             }
 
@@ -2068,9 +2329,14 @@ class Client
             }
         }
 
-        // Recurse into children
+        // Recurse into children. A marked host is its own unit (MARK-4) and is
+        // rendered on its own, never with this block's translations.
         if ($node->hasChildNodes()) {
             foreach ($node->childNodes as $child) {
+                if ($child instanceof \DOMElement && HtmlParser::isMarkedHost($child)) {
+                    continue;
+                }
+
                 $this->walkAndTranslateBlock($child, $translations, $translatableAttributes, $params, $locale);
             }
         }

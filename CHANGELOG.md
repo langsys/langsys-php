@@ -200,6 +200,12 @@ its id or re-registers it.
 
 ### Fixed
 
+- **A marked element inside other content is translated on its own.** An
+  element carrying a phrase or content-block marker inside a paragraph, a block
+  or another marked element no longer adds its words to what surrounds it, on
+  the page path and in `translateContentBlock()`: it registers and renders as a
+  unit of its own, and the surrounding content registers without it. A block
+  that contained such an element gets a new id and registers once more.
 - **The request locale is chosen from the URL, then a cookie, then the browser,
   and is always one the project serves.** With no locale set, `getLocale()` reads
   a `?locale=` parameter, the first path segment or the subdomain, then a

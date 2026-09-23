@@ -448,12 +448,14 @@ class PageTranslator
             // narrower, more explicit instruction ("this run is ONE phrase").
             if (HtmlParser::isPhraseMarked($child)) {
                 $this->extractAsTokenizedPhrase($child, $phrases, $effectiveCategory);
+                $this->extractNestedHosts($child, $phrases, $contentBlocks, $effectiveCategory);
                 continue;
             }
 
             // Check for data-langsys-contentblock - treat entire element as single content block
             if ($this->hasContentBlockAttribute($child)) {
                 $this->extractAsContentBlock($child, $contentBlocks, $effectiveCategory);
+                $this->extractNestedHosts($child, $phrases, $contentBlocks, $effectiveCategory);
                 continue;
             }
 
@@ -466,7 +468,66 @@ class PageTranslator
             }
 
             $this->extractUnit($child, $phrases, $contentBlocks, $effectiveCategory);
+            $this->extractNestedHosts($child, $phrases, $contentBlocks, $effectiveCategory);
         }
+    }
+
+    /**
+     * Register each outermost marked host inside $element as a unit of its own
+     * (MARK-4): the walk that tokenized $element excised it, so its words are
+     * registered here, on its own terms, and nowhere else.
+     *
+     * @param DOMElement $element
+     * @param array &$phrases
+     * @param array &$contentBlocks
+     * @param string|null $category
+     * @return void
+     */
+    protected function extractNestedHosts(DOMElement $element, array &$phrases, array &$contentBlocks, $category)
+    {
+        foreach ($element->childNodes as $child) {
+            if (!$child instanceof DOMElement
+                || HtmlParser::isTranslationExcluded($child)
+                || in_array(strtolower($child->tagName), self::SKIP_ELEMENTS, true)) {
+                continue;
+            }
+
+            if (!HtmlParser::isMarkedHost($child)) {
+                $this->extractNestedHosts($child, $phrases, $contentBlocks, $category);
+                continue;
+            }
+
+            $hostCategory = $this->determineEffectiveCategory($child, $category);
+
+            if (HtmlParser::isPhraseMarked($child)) {
+                $this->extractAsTokenizedPhrase($child, $phrases, $hostCategory);
+            } else {
+                $this->extractAsContentBlock($child, $contentBlocks, $hostCategory);
+            }
+
+            $this->extractNestedHosts($child, $phrases, $contentBlocks, $hostCategory);
+        }
+    }
+
+    /**
+     * An element and its descendants, stopping at a marked host below it.
+     *
+     * @param DOMElement $element
+     * @return DOMElement[]
+     */
+    protected function ownElements(DOMElement $element)
+    {
+        $elements = [$element];
+
+        foreach ($element->childNodes as $child) {
+            if ($child instanceof DOMElement && !HtmlParser::isMarkedHost($child)) {
+                foreach ($this->ownElements($child) as $own) {
+                    $elements[] = $own;
+                }
+            }
+        }
+
+        return $elements;
     }
 
     /**
@@ -577,21 +638,12 @@ class PageTranslator
         $found = [];
         $attributes = $this->htmlParser->getTranslatableAttributes();
 
-        foreach ($attributes as $attr) {
-            if ($element->hasAttribute($attr)) {
-                // TOK-4, and a register/lookup pair: collection trimmed while
-                // the apply side looked up the RAW value, so an alt text
-                // wrapped across source lines registered collapsed and was
-                // never found again - a miss on plain spaces, not only on
-                // non-ASCII whitespace.
-                $value = Canonical::phrase($element->getAttribute($attr));
-                if ($value !== '') {
-                    $found[] = $value;
-                }
-            }
-        }
-
-        foreach ($element->getElementsByTagName('*') as $descendant) {
+        // TOK-4, and a register/lookup pair: collection trimmed while the apply
+        // side looked up the RAW value, so an alt text wrapped across source
+        // lines registered collapsed and was never found again - a miss on
+        // plain spaces, not only on non-ASCII whitespace. A nested marked host's
+        // attributes are its own.
+        foreach ($this->ownElements($element) as $descendant) {
             foreach ($attributes as $attr) {
                 if ($descendant->hasAttribute($attr)) {
                     $value = Canonical::phrase($descendant->getAttribute($attr));
@@ -752,31 +804,8 @@ class PageTranslator
      */
     protected function applyBodyTranslations(DOMDocument $doc, array $phrases, array $contentBlocks, array $translations, $defaultCategory = null)
     {
-        // Apply phrase translations (text-only blocks)
-        foreach ($phrases as $phraseData) {
-            if (!isset($phraseData['element']) || !($phraseData['element'] instanceof DOMElement)) {
-                continue;
-            }
-
-            $originalText = $phraseData['text'];
-            // Use item's category or fall back to default
-            $itemCategory = isset($phraseData['category']) ? $phraseData['category'] : $defaultCategory;
-
-            // Tokenized phrases rebuild their markup rather than replacing text.
-            if (!empty($phraseData['tokenized'])) {
-                $this->applyTokenizedPhrase($phraseData, $itemCategory, $translations);
-                continue;
-            }
-
-            $translated = $this->interp($this->lookupTranslation($originalText, $itemCategory, $translations));
-
-            if ($translated !== $originalText) {
-                // Replace text content while preserving structure (br tags, etc.)
-                $this->replaceTextContent($phraseData['element'], $originalText, $translated);
-            }
-        }
-
-        // Apply content block translations
+        // Content blocks first: they translate in place, so a block nested in a
+        // phrase host is translated before that phrase's markup is rebuilt.
         foreach ($contentBlocks as $block) {
             if (!isset($block['element']) || !($block['element'] instanceof DOMElement)) {
                 continue;
@@ -804,6 +833,32 @@ class PageTranslator
             // Apply translations within the content block
             $this->applyContentBlockTranslations($block['element'], $blockTranslations);
         }
+
+        // Then phrases, innermost first: a phrase host nested in another
+        // (MARK-4) is translated before the outer one rebuilds its markup from
+        // copies of its children.
+        foreach (array_reverse($phrases) as $phraseData) {
+            if (!isset($phraseData['element']) || !($phraseData['element'] instanceof DOMElement)) {
+                continue;
+            }
+
+            $originalText = $phraseData['text'];
+            // Use item's category or fall back to default
+            $itemCategory = isset($phraseData['category']) ? $phraseData['category'] : $defaultCategory;
+
+            // Tokenized phrases rebuild their markup rather than replacing text.
+            if (!empty($phraseData['tokenized'])) {
+                $this->applyTokenizedPhrase($phraseData, $itemCategory, $translations);
+                continue;
+            }
+
+            $translated = $this->interp($this->lookupTranslation($originalText, $itemCategory, $translations));
+
+            if ($translated !== $originalText) {
+                // Replace text content while preserving structure (br tags, etc.)
+                $this->replaceTextContent($phraseData['element'], $originalText, $translated);
+            }
+        }
     }
 
     /**
@@ -822,7 +877,10 @@ class PageTranslator
     protected function applyTokenizedPhrase(array $phraseData, $itemCategory, array $translations)
     {
         $element = $phraseData['element'];
-        $slots = isset($phraseData['slots']) ? $phraseData['slots'] : [];
+
+        // Slots are taken now, not at extraction: a marked host nested in this
+        // one (MARK-4) has been translated since, and the rebuild copies it.
+        $slots = $this->markupTokenizer->encode($element)['slots'];
 
         $translated = $this->lookupTranslation($phraseData['text'], $itemCategory, $translations);
 
@@ -868,10 +926,7 @@ class PageTranslator
     {
         $attributes = $this->htmlParser->getTranslatableAttributes();
 
-        $targets = [$element];
-        foreach ($element->getElementsByTagName('*') as $descendant) {
-            $targets[] = $descendant;
-        }
+        $targets = $this->ownElements($element);
 
         foreach ($targets as $target) {
             foreach ($attributes as $attr) {
@@ -970,6 +1025,7 @@ class PageTranslator
             }
 
             if (HtmlParser::isTranslationExcluded($child)
+                || HtmlParser::isMarkedHost($child)
                 || in_array(strtolower($child->nodeName), HtmlParser::NON_PROSE_ELEMENTS, true)) {
                 continue;
             }
@@ -1055,9 +1111,13 @@ class PageTranslator
                 }
             }
 
-            // Recurse into children
+            // Recurse into children; a marked host is applied as its own unit.
             if ($node->hasChildNodes()) {
                 foreach ($node->childNodes as $child) {
+                    if ($child instanceof DOMElement && HtmlParser::isMarkedHost($child)) {
+                        continue;
+                    }
+
                     $this->walkAndTranslate($child, $translations);
                 }
             }

@@ -561,6 +561,20 @@ class HtmlParser
     }
 
     /**
+     * Whether an element is a marked host - a phrase marker, or a content-block
+     * marker that is not an opt-out. A marked host inside a walked unit is
+     * excised from it (MARK-4): it contributes no tokens and is a unit of its
+     * own.
+     *
+     * @param DOMElement $element
+     * @return bool
+     */
+    public static function isMarkedHost(DOMElement $element)
+    {
+        return self::isPhraseMarked($element) || self::isContentBlockMarked($element);
+    }
+
+    /**
      * Recursively walk DOM nodes and extract phrases.
      *
      * @param DOMNode $node The node to process
@@ -752,17 +766,6 @@ class HtmlParser
 
         // Handle element nodes
         if ($node instanceof DOMElement) {
-            // NOTE: data-langsys-phrase is deliberately NOT honoured here.
-            //
-            // It is a translatePage() feature, applied by PageTranslator, which
-            // rebuilds the element's children from markup tokens. Content blocks
-            // are applied by a different path that has no tokenized branch, so
-            // honouring the marker here registered a tokenized catalog entry
-            // that could never be rendered - paying for an entry, and polluting
-            // the shared catalog, for no effect.
-            //
-            // Inside a content block a marked run therefore splits as usual.
-
             // Extract translatable attributes
             $this->extractAttributePhrases($node, $phrases);
 
@@ -773,9 +776,14 @@ class HtmlParser
             $this->extractSelectOptions($node, $phrases);
         }
 
-        // Recurse into child nodes
+        // Recurse into child nodes. A marked host below the walk's root is
+        // excised (MARK-4): its words belong to its own unit, not this one.
         if ($node->hasChildNodes()) {
             foreach ($node->childNodes as $child) {
+                if ($child instanceof DOMElement && self::isMarkedHost($child)) {
+                    continue;
+                }
+
                 $this->walkNode($child, $phrases, $textNodes);
             }
         }

@@ -384,6 +384,14 @@ By default, `translatePage()` decomposes nested content into individual phrases 
 - Content where phrase order and context is critical
 - Reusable components with interdependent text
 
+**A marked element inside other content is its own unit.** An element carrying
+`data-langsys-contentblock` or `data-langsys-phrase` inside a paragraph, a content
+block or another marked element contributes none of its words to what surrounds
+it: it is registered and translated on its own, on `translatePage()` and
+`translateContentBlock()` alike. So `<p>See <span data-langsys-phrase>our <b>new</b>
+plans</span> today</p>` registers the block `["See", "today"]` and the phrase
+`our {m0o}new{m0c} plans`, and the same words never register twice.
+
 ## Fetching Translations
 
 ### Get All Translations
