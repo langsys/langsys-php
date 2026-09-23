@@ -165,6 +165,17 @@ abstract class ContractTestCase extends TestCase
     }
 
     /**
+     * Accepted state: the custom_id of every stored block.
+     */
+    protected function registeredBlockIds()
+    {
+        $state = $this->fixture('GET', '/state');
+        $project = isset($state['projects'][self::PROJECT]) ? $state['projects'][self::PROJECT] : ['blocks' => []];
+
+        return array_column($project['blocks'], 'custom_id');
+    }
+
+    /**
      * Hints the server accepted and stored.
      */
     protected function storedHints()
