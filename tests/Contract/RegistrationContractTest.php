@@ -118,10 +118,9 @@ class RegistrationContractTest extends ContractTestCase
     }
 
     /**
-     * GATE-6 and GATE-7, the writer's direction: every detection path registers,
-     * and nothing is reported.
+     * GATE-7, the writer's direction: every detection path registers.
      */
-    public function testAWriterRegistersFromEveryPathAndReportsNothing(): void
+    public function testAWriterRegistersFromEveryPath(): void
     {
         $this->seedReportingCapable();
 
@@ -129,23 +128,70 @@ class RegistrationContractTest extends ContractTestCase
 
         $this->assertEqualsCanonicalizing([[null, 'Phrase path'], [null, 'Page path']], $this->registeredPhrases());
         $this->assertSame([['UI', ['Block one', 'Block two']]], $this->registeredBlocks());
-        $this->assertSame([], $this->storedHints());
     }
 
     /**
-     * GATE-7, the non-writer's direction: nothing registers from any path. A
-     * server SDK's other lane is its log, never a report (HINT-2), so nothing is
-     * reported either - against a key the control shows could report.
+     * GATE-6: a writer does not report. The double stores no hint from a caller
+     * that can write, so the absence is shown after drift: the session learns it
+     * may write, then the key loses its allow-list, and a hint from it would now
+     * be stored - the control, sent in that world.
      */
-    public function testANonWriterRegistersNothingFromAnyPathAndReportsNothing(): void
+    public function testAWriterReportsNothingEvenOnceTheServerWouldStoreAHint(): void
+    {
+        $keys = function (array $allowList) {
+            return ['k-ip' => ['type' => 'ip_write', 'ip_allowlist' => $allowList, 'report_discovered_content' => true]];
+        };
+        $this->seedProject($keys(['127.0.0.1']), ['website_url' => 'https://example.com'], ['renderer_egress_ips' => ['10.9.9.9']]);
+        $client = $this->client('k-ip');
+        $client->setLocale('es-es');
+        $this->assertTrue($client->canWrite());
+
+        $this->seedProject($keys(['10.1.2.3']), ['website_url' => 'https://example.com'], ['renderer_egress_ips' => ['10.9.9.9']]);
+        $client->translate('Phrase path');
+        $client->translatePage('<html><body><p>Page path</p></body></html>');
+        $client->flushPendingRegistrations();
+        $this->assertSame([], $this->storedHints(), 'the writer reported nothing');
+
+        $this->postHint('k-ip', 'https://example.com/pricing');
+        $this->assertCount(1, $this->storedHints(), 'control: in the drifted world a hint from this key is stored');
+    }
+
+    /**
+     * GATE-7, the non-writer's direction: a server SDK's other lane is its log,
+     * never a report (HINT-2), so nothing is reported - by a key whose hint the
+     * double would store, as the control above shows.
+     */
+    public function testANonWriterReportsNothingFromAnyPath(): void
     {
         $this->seedReportingCapable();
 
         $this->missOnEveryPath('k-reader');
 
+        $this->assertSame([], $this->storedHints());
+    }
+
+    /**
+     * GATE-6 and GATE-7: a non-writer registers nothing from any path. Shown
+     * where the double would accept the writes: the session learns it may not
+     * write, then the key joins its allow-list.
+     */
+    public function testANonWriterHoldsBackEveryPathOnceTheServerWouldAcceptIt(): void
+    {
+        $this->seedProject(['k-ip' => ['type' => 'ip_write', 'ip_allowlist' => ['10.1.2.3']]]);
+        $client = $this->client('k-ip');
+        $client->setLocale('es-es');
+        $this->assertFalse($client->canWrite());
+
+        $this->seedProject(['k-ip' => ['type' => 'ip_write', 'ip_allowlist' => ['127.0.0.1']]]);
+        $client->translate('Phrase path');
+        $client->translateContentBlock('<div><p>Block one</p><p>Block two</p></div>', 'UI');
+        $client->translatePage('<html><body><p>Page path</p></body></html>');
+        $client->flushPendingRegistrations();
         $this->assertSame([], $this->registeredPhrases());
         $this->assertSame([], $this->registeredBlocks());
-        $this->assertSame([], $this->storedHints());
+
+        $this->missOnEveryPath('k-ip');
+        $this->assertNotEmpty($this->registeredPhrases(), 'control: in the drifted world a session that learns it may write does');
     }
 
     /**

@@ -28,12 +28,26 @@ class WriteDecisionContractTest extends ContractTestCase
         $this->assertSame([[null, 'New phrase']], $this->registeredPhrases());
     }
 
-    public function testAReadKeyRegistersNothing(): void
+    /**
+     * An absence is evidence only where the double would accept the write
+     * (CONF-2). The session learns it may not write; the server then starts
+     * allowing the key; this request still holds back, and a session that learns
+     * the new answer registers - the control in the drifted world.
+     */
+    public function testAReadKeyHoldsBackAfterTheServerWouldAcceptItsWrite(): void
     {
-        $this->seedProject(['k-read' => ['type' => 'read']]);
+        $this->seedProject(['k-drift' => ['type' => 'read']]);
+        $client = $this->client('k-drift');
+        $client->setLocale('es-es');
+        $this->assertFalse($client->canWrite());
 
-        $this->assertFalse($this->registerOneMiss('k-read')->canWrite());
-        $this->assertSame([], $this->registeredPhrases());
+        $this->seedProject(['k-drift' => ['type' => 'write']]);
+        $client->translate('Held back');
+        $client->flushPendingRegistrations();
+        $this->assertSame([], $this->registeredPhrases(), 'the request that learned it may not write holds back');
+
+        $this->registerOneMiss('k-drift');
+        $this->assertSame([[null, 'New phrase']], $this->registeredPhrases(), 'control: in the drifted world a session that learns it may write does');
     }
 
     public function testTheSameIpWriteKeyRegistersOnlyFromAnAllowListedAddress(): void
@@ -44,9 +58,26 @@ class WriteDecisionContractTest extends ContractTestCase
             $this->assertSame([[null, 'New phrase']], $this->registeredPhrases(), 'allow-listed: ' . implode(',', $allowList));
         }
 
+    }
+
+    /**
+     * The same key off its allow-list holds back - shown where the double would
+     * accept the write, by widening the list after the session learned its answer.
+     */
+    public function testTheSameIpWriteKeyOffItsListHoldsBackAfterTheListWidens(): void
+    {
         $this->seedProject(['k-ip' => ['type' => 'ip_write', 'ip_allowlist' => ['10.1.2.3']]]);
-        $this->assertFalse($this->registerOneMiss('k-ip')->canWrite());
-        $this->assertSame([], $this->registeredPhrases(), 'the same key from an address not on its list');
+        $client = $this->client('k-ip');
+        $client->setLocale('es-es');
+        $this->assertFalse($client->canWrite());
+
+        $this->seedProject(['k-ip' => ['type' => 'ip_write', 'ip_allowlist' => ['10.1.2.3', '127.0.0.1']]]);
+        $client->translate('Held back');
+        $client->flushPendingRegistrations();
+        $this->assertSame([], $this->registeredPhrases(), 'the request that learned it is off the list holds back');
+
+        $this->registerOneMiss('k-ip');
+        $this->assertSame([[null, 'New phrase']], $this->registeredPhrases(), 'control: in the drifted world the same key registers');
     }
 
     public function testAPreCapabilityServerFallsBackToThePlainWriteArmOnly(): void
@@ -57,9 +88,18 @@ class WriteDecisionContractTest extends ContractTestCase
         $this->registerOneMiss('k-write');
         $this->assertSame([[null, 'New phrase']], $this->registeredPhrases(), 'a write key may fall back to its key type');
 
+        // A read key does not fall back to a write - held back where the double
+        // would accept it: the key becomes a write key after the session learned.
         $this->seedProject(['k-read' => ['type' => 'read']], [], $legacy);
-        $this->registerOneMiss('k-read');
+        $held = $this->client('k-read');
+        $held->setLocale('es-es');
+        $this->assertFalse($held->canWrite());
+        $this->seedProject(['k-read' => ['type' => 'write']], [], $legacy);
+        $held->translate('Held back');
+        $held->flushPendingRegistrations();
         $this->assertSame([], $this->registeredPhrases(), 'a read key does not');
+        $this->registerOneMiss('k-read');
+        $this->assertSame([[null, 'New phrase']], $this->registeredPhrases(), 'control: in the drifted world it registers');
 
         $this->seedProject(['k-ip' => ['type' => 'ip_write', 'ip_allowlist' => ['127.0.0.1']]], [], $legacy);
         $this->assertFalse($this->registerOneMiss('k-ip')->canWrite());

@@ -10,7 +10,7 @@ use PHPUnit\Framework\TestCase;
 /**
  * Tests that run against the shared contract fixture (CONF-2): the Langsys API
  * double in tests/contract-fixture/, vendored byte for byte from
- * langsys-js-typescript at tree 0bf98665a99d9e6b9956d84c785fbe58cf633575.
+ * langsys-js-typescript at tree 542f57f5ffcb9038db1b7411152b7e31b96cb269.
  *
  * The double can refuse a request and holds state, so these tests assert on
  * what the server accepted - the state read back - never on what the SDK sent,
@@ -173,6 +173,21 @@ abstract class ContractTestCase extends TestCase
         $project = isset($state['projects'][self::PROJECT]) ? $state['projects'][self::PROJECT] : ['blocks' => []];
 
         return array_column($project['blocks'], 'custom_id');
+    }
+
+    /**
+     * Send a hint straight to the double, as a control that a hint from this key
+     * for this page would be stored in the current world.
+     */
+    protected function postHint($key, $pageUrl)
+    {
+        $context = stream_context_create(['http' => [
+            'method' => 'POST',
+            'header' => "Content-Type: application/json\r\nX-Authorization: $key\r\n",
+            'content' => json_encode(['project_id' => self::PROJECT, 'page_url' => $pageUrl]),
+            'ignore_errors' => true,
+        ]]);
+        file_get_contents(self::$baseUrl . '/discovery/hint', false, $context);
     }
 
     /**

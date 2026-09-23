@@ -172,6 +172,26 @@ class CatalogAndWireContractTest extends ContractTestCase
     }
 
     /**
+     * WIRE-3's read half: the catalog serves an uncategorised block under
+     * `__uncategorized__`, the key uncategorised phrases use, so a block rendered
+     * with no category is found there. Non-ASCII, so no historical id shape finds
+     * it a second way.
+     */
+    public function testAnUncategorisedBlockIsReadFromTheUncategorisedKey(): void
+    {
+        $id = (new HtmlParser())->generateCustomId(null, ['Café', 'Thé']);
+        $this->seedProject(['k-read' => ['type' => 'read']], ['blocks' => [['category' => null, 'custom_id' => $id, 'phrases' => [['phrase' => 'Café', 'translations' => ['es-es' => 'Cafe ES']], ['phrase' => 'Thé', 'translations' => ['es-es' => 'Te ES']]]]]]);
+
+        foreach ([null, ''] as $category) {
+            $client = $this->client('k-read');
+            $client->setLocale('es-es');
+
+            $this->assertStringContainsString('<p>Cafe ES</p><p>Te ES</p>', $client->translateContentBlock('<div><p>Café</p><p>Thé</p></div>', $category), var_export($category, true));
+            $this->assertFalse($client->hasPendingRegistrations(), var_export($category, true) . ': found, not queued');
+        }
+    }
+
+    /**
      * WIRE-3: the locale travels lowercase. The catalog holds es-es; a caller
      * spelling it es-ES still reads it.
      */
