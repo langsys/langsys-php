@@ -17,6 +17,7 @@ use Langsys\SDK\Log\LoggerInterface;
 use Langsys\SDK\Log\LogViewer;
 use Langsys\SDK\Log\NullLogger;
 use Langsys\SDK\Messages\ServerMessage;
+use Langsys\SDK\Migration\LegacyKeys;
 use Langsys\SDK\Resources\Translations;
 use Langsys\SDK\Resources\TranslatableItems;
 use Langsys\SDK\Resources\Utilities;
@@ -143,6 +144,11 @@ class Client
      * @var Interpolator|null Placeholder interpolator (lazily created)
      */
     protected $interpolator;
+
+    /**
+     * @var LegacyKeys|false|null Legacy-key resolver: null until first asked, false when the mode is off
+     */
+    protected $legacyKeys;
 
     /**
      * Create a new Langsys Client.
@@ -740,6 +746,36 @@ class Client
      */
     public function translate($phrase, $locale = null, $category = '__uncategorized__', $contentBlockId = null, array $params = [])
     {
+        // Legacy-key mode (MIG-2): the argument is a key first. A hit makes the
+        // key's source value the phrase - never the key - and its namespace the
+        // category unless the caller chose one. A miss is literal source text,
+        // except a package key, which never registers as a key-shaped phrase.
+        $legacy = $contentBlockId === null ? $this->getLegacyKeys() : null;
+
+        if ($legacy !== null && is_string($phrase)) {
+            $entry = $legacy->resolve($phrase);
+
+            if ($entry === null) {
+                if (LegacyKeys::isPackageKey($phrase)) {
+                    $this->logger->debug('A package key is not in the migration source files; nothing is registered', ['argument' => $phrase]);
+
+                    return $phrase;
+                }
+
+                $this->logger->debug('Not a key in the migration source files; treated as source text', ['argument' => $phrase]);
+            } else {
+                if (!$entry['recognised']) {
+                    $this->logger->warning('A migration source value is registered as written: it ' . $entry['issue'], ['key' => $entry['key'], 'file' => $entry['file']]);
+                }
+
+                $phrase = $entry['phrase'];
+
+                if (($category === null || $category === '' || $category === self::UNCATEGORIZED) && $entry['category'] !== null) {
+                    $category = $entry['category'];
+                }
+            }
+        }
+
         // Use set locale if not provided
         if ($locale === null) {
             $locale = $this->getLocale();
@@ -805,6 +841,48 @@ class Client
         $this->queuePhraseForRegistration($phrase, $category);
 
         return $this->interpolate($phrase, $params, $locale);
+    }
+
+    /**
+     * The legacy-key resolver, or null when the migration mode is off (MIG-1).
+     * Created on first use; files are read on the first lookup, never here.
+     *
+     * @return LegacyKeys|null
+     */
+    public function getLegacyKeys()
+    {
+        if ($this->legacyKeys === null) {
+            $migration = $this->config->getMigration();
+            $this->legacyKeys = $migration === null ? false : new LegacyKeys($migration);
+        }
+
+        return $this->legacyKeys === false ? null : $this->legacyKeys;
+    }
+
+    /**
+     * Resolve a legacy key without translating it: its source phrase, the
+     * category it registers under (the caller's, when given), the key and the
+     * file that answered. Null when the mode is off or no file holds the key.
+     *
+     * @param string $key
+     * @param string|null $category
+     * @return array{phrase: string, category: string|null, key: string, file: string}|null
+     */
+    public function resolveLegacyKey($key, $category = null)
+    {
+        $legacy = $this->getLegacyKeys();
+        $entry = $legacy === null ? null : $legacy->resolve($key);
+
+        if ($entry === null) {
+            return null;
+        }
+
+        return [
+            'phrase' => $entry['phrase'],
+            'category' => ($category === null || $category === '' || $category === self::UNCATEGORIZED) ? $entry['category'] : $category,
+            'key' => $entry['key'],
+            'file' => $entry['file'],
+        ];
     }
 
     /**

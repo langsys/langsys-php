@@ -1135,6 +1135,43 @@ An error class declares `CODE` and `MESSAGE` constants and a public property for
 marker. Run the command in CI so a message that can't be registered ahead of time
 fails the build.
 
+## Migrating from Key-Based Translation Files
+
+If your app calls translations by key (`checkout.submit`) and keeps its text in
+language files, you can move to Langsys without rewriting a single call. Keep only
+your source-language file, delete the others, and name it in the `migration` option:
+
+```php
+$client = new Client('your-api-key', 'your-project-id', [
+    'migration' => [
+        'files' => ['lang/en.json', 'lang/en/checkout.php'],
+    ],
+]);
+
+echo $client->translate('checkout.submit'); // looks up "Place order" in your file
+```
+
+- **A key resolves to its text.** The text, not the key, is what gets registered and
+  translated, so you can later replace the key with the text and delete the file with
+  nothing else changing.
+- **The key's namespace becomes the category.** `checkout.submit` registers under
+  `checkout`, or under the category you pass.
+- **Anything that isn't a key is text.** `translate('Pay now')` works as always.
+- **Placeholders and plurals are converted.** `:name` and `{{name}}` become `{name}`,
+  and Laravel, vue-i18n and i18next plural forms become ICU plurals.
+- **Forms that can't be converted are registered as written, with a warning**: a
+  capitalising placeholder like `:Name`, or a plural range with no exact equivalent.
+- **A framework's own bundled strings go in `fallback_files`**, which answer only
+  keys your `files` don't define. Package keys (`courier::messages.welcome`) resolve
+  through `'namespaces' => ['courier' => ['files' => [...], 'fallback_files' => [...]]]`.
+
+With no `migration` option nothing is read and nothing is looked up.
+
+List what can't be migrated as it stands by adding
+`new Langsys\SDK\Migration\LegacyKeysSource($client->getLegacyKeys())` to the sources
+in your `langsys-messages.php`: it names each value it can't convert and each key
+defined in more than one of your files.
+
 ## Error Handling
 
 The SDK throws specific exceptions for different error types:

@@ -75,6 +75,11 @@ class Config
     protected $messagesCategory;
 
     /**
+     * @var array|null Legacy-key migration mode, or null when it is off
+     */
+    protected $migration;
+
+    /**
      * Create a new Config instance.
      *
      * @param array $options
@@ -120,6 +125,11 @@ class Config
         $this->messagesCategory = isset($options['messages_category'])
             ? (string) $options['messages_category']
             : (string) $this->getEnv('LANGSYS_MESSAGES_CATEGORY', self::DEFAULT_MESSAGES_CATEGORY);
+
+        $this->migration = (isset($options['migration']) && is_array($options['migration'])
+            && (!empty($options['migration']['files']) || !empty($options['migration']['fallback_files']) || !empty($options['migration']['namespaces'])))
+            ? $options['migration']
+            : null;
     }
 
     /**
@@ -295,6 +305,18 @@ class Config
     public function getMessagesCategory()
     {
         return $this->messagesCategory;
+    }
+
+    /**
+     * The legacy-key migration mode (MIG-1): the source files `translate()`
+     * resolves an argument against as a key first. Null - the default - means
+     * the mode is off, and no file is read and no key is looked up.
+     *
+     * @return array|null
+     */
+    public function getMigration()
+    {
+        return $this->migration;
     }
 
     /**
