@@ -26,7 +26,26 @@ final class Canonical
      */
     public static function phrase($text)
     {
-        return self::placeholders(Whitespace::collapse($text));
+        return self::placeholders(Whitespace::collapse(self::stripControls($text)));
+    }
+
+    /**
+     * Delete the 28 C0 controls TOK-2 strips from every id input and catalog
+     * key: U+0001-U+0008, U+000B, U+000C and U+000E-U+001F. Deleted, not mapped
+     * to a space - libxml2 before 2.14 already deletes them from DOM text, and
+     * deletion is the one treatment every parser can agree with. TAB, LF and CR
+     * are not in the set; they collapse. NUL, U+007F and the C1 range stay.
+     *
+     * Byte-wise, because each of these is a single byte that never occurs
+     * inside a multi-byte UTF-8 sequence, so malformed input cannot make the
+     * strip fail.
+     *
+     * @param string $text
+     * @return string
+     */
+    public static function stripControls($text)
+    {
+        return (string) preg_replace('/[\x01-\x08\x0B\x0C\x0E-\x1F]/', '', (string) $text);
     }
 
     /**

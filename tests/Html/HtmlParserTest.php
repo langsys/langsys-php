@@ -336,15 +336,16 @@ class HtmlParserTest extends TestCase
      * The cross-SDK canonicalization vectors (TOK-1, TOK-2, TOK-4).
      *
      * Authored by langsys-js-typescript and adopted byte-identically
-     * (`16381e32:tests/fixtures/canonicalization-reference.json`, blob
-     * `c0c6b14f548193e95b90564fc5eaae37f373ba7e`). Each row carries every
+     * (`a5dca286:tests/fixtures/canonicalization-reference.json`, blob
+     * `170b5646cd84db90e5bdb85793f7e6832e499d3e`, 32 rows). Each row carries every
      * lane's MEASURED output alongside the expectation, so the file records
      * where the fleet disagreed rather than only where it should agree — this
      * SDK was 13/19 when the file was first adopted at `6596faf` (blob
      * `e4c1f185...`, 19 rows). Re-vendored at `4eac870` (26 rows) for the 8.0.1
      * re-row: no existing row's expectation changed, and the seven added rows
-     * are the 8.0.1 behaviours. The current copy differs from that one in
-     * provenance only: every row is identical, and `spec_blob` names `9e826c91`.
+     * are the 8.0.1 behaviours. The current copy adds six rows for TOK-2's C0
+     * strip (8.2.7), measured by this SDK, with no earlier row's expectation
+     * changed; `spec_blob` names `5fa32cb9`.
      *
      * Every row also carries codepoints. That is the load-bearing part: the
      * three rules here turn on characters that are invisible in a terminal and
@@ -361,7 +362,7 @@ class HtmlParserTest extends TestCase
         $fixture = json_decode(file_get_contents($path), true);
         $cases = $fixture['cases'];
 
-        $this->assertCount(26, $cases, 'the adopted file has 26 rows');
+        $this->assertCount(32, $cases, 'the adopted file has 32 rows');
 
         foreach ($cases as $case) {
             $tokens = array_values($this->parser->extractPhrases($case['html']));
@@ -2059,7 +2060,7 @@ class HtmlParserTest extends TestCase
     {
         $vendored = [
             // canonicalization-reference.json needs no exemption any more: re-vendored
-            // at langsys-js-typescript 16381e32 (blob c0c6b14f), which is escaped at source.
+            // at langsys-js-typescript a5dca286 (blob 170b5646), which is escaped at source.
             // legacy-custom-id-reference.json, langsys-python
             'dc5556466dc54fe82e81ac9fdbf4549b2b76e7ce' => 'adopted byte-identically from langsys-python',
         ];

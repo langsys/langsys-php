@@ -217,7 +217,7 @@ once already, and a path citation cannot tell you whether the bytes changed.
 | File | Origin | Blob |
 |---|---|---|
 | `legacy-custom-id-reference.json` | `langsys-python` | `dc5556466dc54fe82e81ac9fdbf4549b2b76e7ce` |
-| `canonicalization-reference.json` | `langsys-js-typescript` @ `16381e32` | `c0c6b14f548193e95b90564fc5eaae37f373ba7e` |
+| `canonicalization-reference.json` | `langsys-js-typescript` @ `a5dca286` | `170b5646cd84db90e5bdb85793f7e6832e499d3e` |
 
 `tokenizer-reference.json` is authored here. Its blob is recorded as a VALUE, not
 as a command to run — a command tells you what the file is now, which is exactly

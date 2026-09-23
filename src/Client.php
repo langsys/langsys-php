@@ -8,6 +8,7 @@ use Langsys\SDK\Cache\NullCache;
 use Langsys\SDK\Cache\RedisCache;
 use Langsys\SDK\Exception\LangsysException;
 use Langsys\SDK\Format\Interpolator;
+use Langsys\SDK\Html\Canonical;
 use Langsys\SDK\Html\HtmlParser;
 use Langsys\SDK\Html\PageTranslator;
 use Langsys\SDK\Http\HttpClient;
@@ -793,6 +794,12 @@ class Client
      */
     protected function translateSource($phrase, $locale, $category, $contentBlockId, array $params)
     {
+        // TOK-2: a code-registered key drops the C0 controls on lookup and on
+        // register alike, as every DOM path does.
+        if (is_string($phrase)) {
+            $phrase = Canonical::stripControls($phrase);
+        }
+
         // Use set locale if not provided
         if ($locale === null) {
             $locale = $this->getLocale();
@@ -1024,6 +1031,8 @@ class Client
      */
     protected function lookupMessageTemplate($template, $category, $locale)
     {
+        $template = Canonical::stripControls($template);
+
         try {
             $translations = $this->getTranslations($locale);
         } catch (\Throwable $e) {
@@ -1177,7 +1186,7 @@ class Client
         // Find new phrases
         $newPhrases = [];
         foreach ($localPhrases as $phraseData) {
-            $phrase = is_string($phraseData) ? $phraseData : $phraseData['phrase'];
+            $phrase = Canonical::stripControls(is_string($phraseData) ? $phraseData : $phraseData['phrase']);
             $category = is_string($phraseData)
                 ? '__uncategorized__'
                 : (isset($phraseData['category']) ? $phraseData['category'] : '__uncategorized__');
@@ -1974,6 +1983,7 @@ class Client
      */
     public function queuePhraseForRegistration($phrase, $category)
     {
+        $phrase = Canonical::stripControls($phrase);
         $key = $category . '::' . $phrase;
 
         // Skip if already queued

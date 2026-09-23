@@ -200,6 +200,14 @@ its id or re-registers it.
 
 ### Fixed
 
+- **Invisible control characters no longer change a phrase's identity.** The 28
+  C0 controls (U+0001–U+0008, U+000B, U+000C, U+000E–U+001F) are removed from
+  every phrase and content-block token before whitespace collapses: text,
+  translatable attributes, `translate()` keys, registered phrases and server
+  message templates, on registration and lookup alike. A phrase or block whose
+  source carried one, such as a stray U+001C pasted into an `alt`, gets the same
+  id as the other Langsys SDKs and re-registers once. TAB, LF and CR still
+  collapse to a space.
 - **A content-block fragment holding one phrase in one text node is a phrase.**
   `translateContentBlock('<p>Hello</p>')`, `registerContentBlock()` and
   `createContentBlocks()` register such a fragment as the phrase "Hello", and

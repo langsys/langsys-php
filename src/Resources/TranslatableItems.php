@@ -163,7 +163,7 @@ class TranslatableItems
         foreach ($phrases as $phrase) {
             $items[] = [
                 'type' => 'phrase',
-                'phrase' => is_string($phrase) ? $phrase : $phrase['phrase'],
+                'phrase' => \Langsys\SDK\Html\Canonical::stripControls(is_string($phrase) ? $phrase : $phrase['phrase']),
                 'category' => is_string($phrase) ? null : $this->normalizeCategory(isset($phrase['category']) ? $phrase['category'] : null),
                 'translatable' => is_string($phrase) ? true : (isset($phrase['translatable']) ? $phrase['translatable'] : true),
             ];
