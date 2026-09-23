@@ -111,11 +111,53 @@ class LegacyKeysTest extends TestCase
     public function testPluralKeyPairsResolveAsOneIcuPhrase(): void
     {
         $json = $this->json('app/en.json', ['cart' => ['items_one' => '{{count}} item', 'items_other' => '{{count}} items', 'old' => 'one entry', 'old_plural' => '{{count}} entries']]);
-        $keys = new LegacyKeys(['files' => [$json]]);
+        $keys = new LegacyKeys(['files' => [['path' => $json, 'format' => 'i18next']]]);
 
         $this->assertSame('{count, plural, one {# item} other {# items}}', $keys->resolve('cart.items')['phrase']);
         $this->assertSame('{count, plural, one {one entry} other {# entries}}', $keys->resolve('cart.old')['phrase']);
         $this->assertSame('cart', $keys->resolve('cart.items')['category']);
+    }
+
+    public function testSuffixPairsPairOnlyInAnI18nextFile(): void
+    {
+        $json = $this->json('app/en.json', ['cart' => ['items_one' => '{{count}} item', 'items_other' => '{{count}} items']]);
+        $keys = new LegacyKeys(['files' => [$json]]);
+
+        $this->assertNull($keys->resolve('cart.items'), 'an undeclared JSON file is plain: no pairing');
+        $this->assertSame('{count} item', $keys->resolve('cart.items_one')['phrase'], 'each suffixed key is its own phrase');
+    }
+
+    /**
+     * MIG-7's test: the format decides what a pipe means, and a file's type
+     * decides the default.
+     */
+    public function testTheFileFormatDecidesWhatAPipeMeans(): void
+    {
+        $json = $this->json('app/en.json', ['cart' => ['label' => 'car | cars']]);
+        $php = $this->php('app/lang/en/cart.php', ['count' => '{0} None|{1} One|[2,*] :count items']);
+
+        $undeclared = new LegacyKeys(['files' => [$json]]);
+        $entry = $undeclared->resolve('cart.label');
+        $this->assertSame('car | cars', $entry['phrase']);
+        $this->assertFalse($entry['recognised']);
+        $this->assertSame([$json, 'cart.label'], [$undeclared->problems()[0]['file'], $undeclared->problems()[0]['key']], 'warned by file and key');
+
+        $vue = new LegacyKeys(['files' => [['path' => $json, 'format' => 'vue-i18n']]]);
+        $this->assertSame('{count, plural, =1 {car} other {cars}}', $vue->resolve('cart.label')['phrase']);
+
+        $laravel = new LegacyKeys(['files' => [$php]]);
+        $this->assertSame('{count, plural, =0 {None} =1 {One} other {# items}}', $laravel->resolve('cart.count')['phrase'], 'a PHP array file is laravel by default');
+    }
+
+    public function testAnUnknownFormatIsReportedAndReadAsPlain(): void
+    {
+        $json = $this->json('app/en.json', ['cart' => ['label' => 'car | cars']]);
+        $keys = new LegacyKeys(['files' => [['path' => $json, 'format' => 'yaml']]]);
+
+        $this->assertSame('car | cars', $keys->resolve('cart.label')['phrase']);
+        $this->assertNotEmpty(array_filter($keys->problems(), function ($p) {
+            return $p['key'] === null && strpos($p['issue'], 'yaml') !== false;
+        }));
     }
 
     public function testAnUnrecognisedValueResolvesAsWrittenAndIsReported(): void

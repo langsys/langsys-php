@@ -138,9 +138,11 @@ its id or re-registers it.
   option naming an app's source-language files (JSON or PHP arrays, with an optional
   fallback tier and package namespaces), `translate()` resolves its argument as a
   key first: the key's text is what registers and translates, and the key's
-  namespace becomes the category. Legacy placeholders and Laravel, vue-i18n and
-  i18next plurals are converted to Langsys/ICU syntax; forms that can't be
-  converted are registered as written, warned, and listed. Off unless configured.
+  namespace becomes the category. Legacy placeholders are converted to `{name}`,
+  and plurals to ICU by each file's declared format (`laravel`, `vue-i18n`,
+  `i18next` or `plain`; a PHP array file defaults to `laravel`, JSON to `plain`).
+  Forms that can't be converted are registered as written, warned, and listed. Off
+  unless configured.
 
 - **Translated pages are marked as resolved.** `translatePage()` writes
   `data-ls-resolved="<locale>"` on the root of a page rendered in a non-base locale,

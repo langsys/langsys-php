@@ -12,16 +12,16 @@ use PHPUnit\Framework\TestCase;
  */
 class LegacyValueTest extends TestCase
 {
-    private function converts($value, $expected)
+    private function converts($value, $expected, $format = 'plain')
     {
-        $result = LegacyValue::convert($value);
+        $result = LegacyValue::convert($value, $format);
         $this->assertTrue($result['recognised'], "recognised: $value");
         $this->assertSame($expected, $result['text'], $value);
     }
 
-    private function keeps($value)
+    private function keeps($value, $format = 'plain')
     {
-        $result = LegacyValue::convert($value);
+        $result = LegacyValue::convert($value, $format);
         $this->assertFalse($result['recognised'], "flagged: $value");
         $this->assertSame($value, $result['text'], "kept as written: $value");
         $this->assertNotEmpty($result['issue'], "says why: $value");
@@ -44,39 +44,64 @@ class LegacyValueTest extends TestCase
 
     public function testACaseTransformingPlaceholderIsFlaggedNotConverted(): void
     {
-        $this->keeps('Welcome, :Name');
-        $this->keeps('WELCOME, :NAME');
+        foreach (LegacyValue::FORMATS as $format) {
+            $this->keeps('Welcome, :Name', $format);
+            $this->keeps('WELCOME, :NAME', $format);
+        }
+    }
+
+    public function testPlaceholdersConvertTheSameWayInEveryFormat(): void
+    {
+        foreach (LegacyValue::FORMATS as $format) {
+            $this->converts('Hello :name and {{other}}', 'Hello {name} and {other}', $format);
+        }
     }
 
     public function testLaravelRangesBecomeIcu(): void
     {
-        $this->converts('{0} No apples|{1} One apple|[2,*] :count apples', '{count, plural, =0 {No apples} =1 {One apple} other {# apples}}');
-        $this->converts('{0} None|[1,*] :count left', '{count, plural, =0 {None} other {# left}}');
-        $this->converts(':count apple|:count apples', '{count, plural, one {# apple} other {# apples}}');
-        $this->converts('{1} One apple|{0} No apples|[2,*] :count apples', '{count, plural, =0 {No apples} =1 {One apple} other {# apples}}');
+        $this->converts('{0} No apples|{1} One apple|[2,*] :count apples', '{count, plural, =0 {No apples} =1 {One apple} other {# apples}}', 'laravel');
+        $this->converts('{0} None|[1,*] :count left', '{count, plural, =0 {None} other {# left}}', 'laravel');
+        $this->converts(':count apple|:count apples', '{count, plural, one {# apple} other {# apples}}', 'laravel');
+        $this->converts('{1} One apple|{0} No apples|[2,*] :count apples', '{count, plural, =0 {No apples} =1 {One apple} other {# apples}}', 'laravel');
     }
 
     public function testRangesThatDoNotMapToCldrAreFlagged(): void
     {
-        $this->keeps('[2,19] Some|[20,*] Many');
-        $this->keeps('{0} None|[2,*] Many');
-        $this->keeps('{1} One|[2,*] Many');
+        $this->keeps('[2,19] Some|[20,*] Many', 'laravel');
+        $this->keeps('{0} None|[2,*] Many', 'laravel');
+        $this->keeps('{1} One|[2,*] Many', 'laravel');
     }
 
     public function testVuePipesBecomeIcu(): void
     {
         // vue selects by count, so exact values - never CLDR categories.
-        $this->converts('car | cars', '{count, plural, =1 {car} other {cars}}');
-        $this->converts('no apples | one apple | {count} apples', '{count, plural, =0 {no apples} =1 {one apple} other {# apples}}');
-        $this->converts('{n} item | {n} items', '{count, plural, =1 {# item} other {# items}}');
+        $this->converts('car | cars', '{count, plural, =1 {car} other {cars}}', 'vue-i18n');
+        $this->converts('no apples | one apple | {count} apples', '{count, plural, =0 {no apples} =1 {one apple} other {# apples}}', 'vue-i18n');
+        $this->converts('{n} item | {n} items', '{count, plural, =1 {# item} other {# items}}', 'vue-i18n');
+        $this->converts('car|cars', '{count, plural, =1 {car} other {cars}}', 'vue-i18n');
     }
 
     public function testAPipeThatIsNoRecognisedPluralIsFlagged(): void
     {
-        $this->keeps('Yes|No');
-        $this->keeps('apple|apples');
-        $this->keeps(':count apple|apples');
-        $this->keeps('a | b | c | d');
+        $this->keeps('Yes|No', 'laravel');
+        $this->keeps('apple|apples', 'laravel');
+        $this->keeps(':count apple|apples', 'laravel');
+        $this->keeps('a | b | c | d', 'vue-i18n');
+        $this->keeps('Save | Cancel', 'i18next');
+    }
+
+    /**
+     * The same string means different things to different frameworks, so the
+     * file's declared format decides, never the string's shape.
+     */
+    public function testThePipeMeansWhatTheFilesFormatSays(): void
+    {
+        $this->converts('car | cars', '{count, plural, =1 {car} other {cars}}', 'vue-i18n');
+        $this->keeps('car | cars', 'laravel');
+        $this->keeps('car | cars', 'plain');
+        $this->converts('{0} none | {1} one', '{count, plural, =1 {{0} none} other {{1} one}}', 'vue-i18n');
+        $this->converts('{0} None|{1} One|[2,*] Many', '{count, plural, =0 {None} =1 {One} other {Many}}', 'laravel');
+        $this->keeps('{0} None|{1} One|[2,*] Many', 'plain');
     }
 
     public function testPluralKeyPairsBecomeIcu(): void

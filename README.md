@@ -1144,7 +1144,10 @@ your source-language file, delete the others, and name it in the `migration` opt
 ```php
 $client = new Client('your-api-key', 'your-project-id', [
     'migration' => [
-        'files' => ['lang/en.json', 'lang/en/checkout.php'],
+        'files' => [
+            ['path' => 'lang/en.json', 'format' => 'laravel'],
+            'lang/en/checkout.php',
+        ],
     ],
 ]);
 
@@ -1157,8 +1160,13 @@ echo $client->translate('checkout.submit'); // looks up "Place order" in your fi
 - **The key's namespace becomes the category.** `checkout.submit` registers under
   `checkout`, or under the category you pass.
 - **Anything that isn't a key is text.** `translate('Pay now')` works as always.
-- **Placeholders and plurals are converted.** `:name` and `{{name}}` become `{name}`,
-  and Laravel, vue-i18n and i18next plural forms become ICU plurals.
+- **Placeholders are converted in every file.** `:name`, `{{name}}` and `{name}` all
+  become `{name}`.
+- **Plurals are converted by the file's format**: `laravel`, `vue-i18n`, `i18next` or
+  `plain`. The frameworks read the same characters differently (`car | cars` is a
+  plural in vue-i18n and plain text in Laravel), so each file says which one wrote it.
+  A PHP array file is `laravel` unless you say otherwise; a JSON file is `plain`, which
+  converts no plurals, so declare the format of any JSON file that holds them.
 - **Forms that can't be converted are registered as written, with a warning**: a
   capitalising placeholder like `:Name`, or a plural range with no exact equivalent.
 - **A framework's own bundled strings go in `fallback_files`**, which answer only

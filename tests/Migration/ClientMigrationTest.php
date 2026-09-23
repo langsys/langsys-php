@@ -45,7 +45,7 @@ class ClientMigrationTest extends TestCase
 
     private function inMode(array $catalog = [], array $options = [])
     {
-        $client = $this->mockClient($catalog, array_merge(['migration' => ['files' => [$this->dir . '/lang/en.json', $this->dir . '/lang/en/greeting.php']]], $options));
+        $client = $this->mockClient($catalog, array_merge(['migration' => ['files' => [['path' => $this->dir . '/lang/en.json', 'format' => 'i18next'], $this->dir . '/lang/en/greeting.php']]], $options));
         $client->setLocale('es-es');
 
         return $client;

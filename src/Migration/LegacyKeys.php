@@ -17,6 +17,11 @@ namespace Langsys\SDK\Migration;
  * array file is a group: its basename is the key's first segment and its
  * namespace. The namespace becomes the category.
  *
+ * Every file carries a format - laravel, vue-i18n, i18next or plain - which
+ * decides what its values' plurals mean (MIG-4, MIG-7). An entry is a path, or
+ * ['path' => ..., 'format' => ...]; with none declared a PHP array file is
+ * laravel and a JSON file is plain.
+ *
  * Nothing is read until a key is first looked up.
  */
 final class LegacyKeys
@@ -66,7 +71,7 @@ final class LegacyKeys
             return $tiers === null ? null : $this->resolveIn($tiers, $rest, $key);
         }
 
-        return $this->resolveIn([$this->paths('files'), $this->paths('fallback_files')], $key, $key);
+        return $this->resolveIn([$this->entries('files'), $this->entries('fallback_files')], $key, $key);
     }
 
     /**
@@ -81,9 +86,9 @@ final class LegacyKeys
         foreach ($this->ownTiers() as $prefix => $files) {
             $seen = [];
 
-            foreach ($files as $path) {
-                foreach (array_keys($this->leaves($path)) as $leaf) {
-                    $seen[$prefix . $leaf][] = $path;
+            foreach ($files as $entry) {
+                foreach (array_keys($this->leaves($entry)) as $leaf) {
+                    $seen[$prefix . $leaf][] = $entry['path'];
                 }
             }
 
@@ -108,12 +113,16 @@ final class LegacyKeys
         $problems = [];
 
         foreach ($this->ownTiers() as $prefix => $files) {
-            foreach ($files as $path) {
-                foreach ($this->leaves($path) as $leaf => $value) {
-                    $converted = is_array($value) ? LegacyValue::fromPluralForms($value) : LegacyValue::convert($value);
+            foreach ($files as $entry) {
+                if ($entry['invalid'] !== null) {
+                    $problems[] = ['file' => $entry['path'], 'key' => null, 'issue' => 'declares the unknown format "' . $entry['invalid'] . '"', 'fix' => 'declare one of ' . implode(', ', LegacyValue::FORMATS)];
+                }
+
+                foreach ($this->leaves($entry) as $leaf => $value) {
+                    $converted = is_array($value) ? LegacyValue::fromPluralForms($value) : LegacyValue::convert($value, $entry['format']);
 
                     if (!$converted['recognised']) {
-                        $problems[] = ['file' => $path, 'key' => $prefix . $leaf, 'issue' => $converted['issue'], 'fix' => 'rewrite the value as Langsys source text'];
+                        $problems[] = ['file' => $entry['path'], 'key' => $prefix . $leaf, 'issue' => $converted['issue'], 'fix' => 'rewrite the value as Langsys source text, or declare the file\'s format'];
                     }
                 }
             }
@@ -145,21 +154,21 @@ final class LegacyKeys
     private function resolveIn(array $tiers, $key, $fullKey)
     {
         foreach ($tiers as $files) {
-            foreach ($files as $path) {
-                $found = $this->lookup($path, $key);
+            foreach ($files as $entry) {
+                $found = $this->lookup($entry, $key);
 
                 if ($found === null) {
                     continue;
                 }
 
                 list($value, $category) = $found;
-                $converted = is_array($value) ? LegacyValue::fromPluralForms($value) : LegacyValue::convert($value);
+                $converted = is_array($value) ? LegacyValue::fromPluralForms($value) : LegacyValue::convert($value, $entry['format']);
 
                 return [
                     'phrase' => $converted['text'],
                     'category' => $category,
                     'key' => $fullKey,
-                    'file' => $path,
+                    'file' => $entry['path'],
                     'recognised' => $converted['recognised'],
                     'issue' => $converted['issue'],
                 ];
@@ -170,12 +179,14 @@ final class LegacyKeys
     }
 
     /**
-     * @param string $path
+     * @param array $entry ['path', 'format', 'invalid']
      * @param string $key
      * @return array|null [string|array $value, string|null $category]
      */
-    private function lookup($path, $key)
+    private function lookup(array $entry, $key)
     {
+        $path = $entry['path'];
+        $pairs = $entry['format'] === 'i18next';
         $data = $this->load($path);
 
         if ($data === null) {
@@ -189,7 +200,7 @@ final class LegacyKeys
                 return null;
             }
 
-            $value = self::valueAt($data, explode('.', substr($key, strlen($group) + 1)));
+            $value = self::valueAt($data, explode('.', substr($key, strlen($group) + 1)), $pairs);
 
             return $value === null ? null : [$value, $group];
         }
@@ -202,19 +213,21 @@ final class LegacyKeys
             return null;
         }
 
-        $value = self::valueAt($data, explode('.', $key));
+        $value = self::valueAt($data, explode('.', $key), $pairs);
 
         return $value === null ? null : [$value, strstr($key, '.', true)];
     }
 
     /**
-     * A string, or plural forms keyed by CLDR category, at a path.
+     * A string at a path - or, in an i18next file, plural forms keyed by CLDR
+     * category when the key is suffix-paired.
      *
      * @param array $data
      * @param string[] $segments
+     * @param bool $pairs Whether suffix-paired keys pair (i18next only)
      * @return string|array|null
      */
-    private static function valueAt(array $data, array $segments)
+    private static function valueAt(array $data, array $segments, $pairs)
     {
         $last = array_pop($segments);
         $container = $data;
@@ -229,6 +242,10 @@ final class LegacyKeys
 
         if (!is_array($container)) {
             return null;
+        }
+
+        if (!$pairs) {
+            return (isset($container[$last]) && is_string($container[$last])) ? $container[$last] : null;
         }
 
         $forms = [];
@@ -251,23 +268,23 @@ final class LegacyKeys
     }
 
     /**
-     * Every leaf of a file by its full key: strings, and plural forms grouped
-     * under their base key.
+     * Every leaf of a file by its full key: strings, and - in an i18next file -
+     * plural forms grouped under their base key.
      *
-     * @param string $path
+     * @param array $entry
      * @return array<string, string|array>
      */
-    private function leaves($path)
+    private function leaves(array $entry)
     {
-        $data = $this->load($path);
+        $data = $this->load($entry['path']);
 
         if ($data === null) {
             return [];
         }
 
-        $prefix = $this->isPhp($path) ? basename($path, '.php') . '.' : '';
+        $prefix = $this->isPhp($entry['path']) ? basename($entry['path'], '.php') . '.' : '';
         $out = [];
-        $this->collectLeaves($data, $prefix, $out);
+        $this->collectLeaves($data, $prefix, $out, $entry['format'] === 'i18next');
 
         return $out;
     }
@@ -276,9 +293,10 @@ final class LegacyKeys
      * @param array $node
      * @param string $prefix
      * @param array $out
+     * @param bool $pairs
      * @return void
      */
-    private function collectLeaves(array $node, $prefix, array &$out)
+    private function collectLeaves(array $node, $prefix, array &$out, $pairs)
     {
         $suffixes = array_merge(array_map(function ($c) {
             return '_' . $c;
@@ -288,7 +306,7 @@ final class LegacyKeys
             $key = (string) $key;
 
             if (is_array($value)) {
-                $this->collectLeaves($value, $prefix . $key . '.', $out);
+                $this->collectLeaves($value, $prefix . $key . '.', $out, $pairs);
                 continue;
             }
 
@@ -296,10 +314,10 @@ final class LegacyKeys
                 continue;
             }
 
-            foreach ($suffixes as $suffix) {
+            foreach ($pairs ? $suffixes : [] as $suffix) {
                 if (substr($key, -strlen($suffix)) === $suffix && strlen($key) > strlen($suffix)) {
                     $base = substr($key, 0, -strlen($suffix));
-                    $forms = self::valueAt($node, [$base]);
+                    $forms = self::valueAt($node, [$base], true);
 
                     if (is_array($forms)) {
                         $out[$prefix . $base] = $forms;
@@ -317,11 +335,11 @@ final class LegacyKeys
     /**
      * The app's own tiers, by key prefix: top-level `files`, and each namespace's.
      *
-     * @return array<string, string[]>
+     * @return array<string, array[]>
      */
     private function ownTiers()
     {
-        $tiers = ['' => $this->paths('files')];
+        $tiers = ['' => $this->entries('files')];
 
         foreach (array_keys($this->namespaces()) as $namespace) {
             $tiers[$namespace . '::'] = $this->namespaceTiers($namespace)[0];
@@ -332,7 +350,7 @@ final class LegacyKeys
 
     /**
      * @param string $namespace
-     * @return array<int, string[]>|null [files, fallback_files]
+     * @return array<int, array[]>|null [files, fallback_files]
      */
     private function namespaceTiers($namespace)
     {
@@ -346,12 +364,12 @@ final class LegacyKeys
 
         if (isset($entry['files']) || isset($entry['fallback_files'])) {
             return [
-                isset($entry['files']) ? array_values((array) $entry['files']) : [],
-                isset($entry['fallback_files']) ? array_values((array) $entry['fallback_files']) : [],
+                $this->normalize(isset($entry['files']) ? (array) $entry['files'] : []),
+                $this->normalize(isset($entry['fallback_files']) ? (array) $entry['fallback_files'] : []),
             ];
         }
 
-        return [array_values((array) $entry), []];
+        return [$this->normalize((array) $entry), []];
     }
 
     /**
@@ -364,11 +382,39 @@ final class LegacyKeys
 
     /**
      * @param string $tier
-     * @return string[]
+     * @return array[]
      */
-    private function paths($tier)
+    private function entries($tier)
     {
-        return isset($this->config[$tier]) ? array_values((array) $this->config[$tier]) : [];
+        return $this->normalize(isset($this->config[$tier]) ? (array) $this->config[$tier] : []);
+    }
+
+    /**
+     * File entries as ['path', 'format', 'invalid']: a bare path takes its type's
+     * default format - laravel for a PHP array, plain for JSON - and an unknown
+     * declared format reads as plain and is reported.
+     *
+     * @param array $entries
+     * @return array[]
+     */
+    private function normalize(array $entries)
+    {
+        $out = [];
+
+        foreach (array_values($entries) as $entry) {
+            $path = is_array($entry) ? (isset($entry['path']) ? (string) $entry['path'] : '') : (string) $entry;
+            $declared = (is_array($entry) && isset($entry['format'])) ? (string) $entry['format'] : null;
+            $default = $this->isPhp($path) ? 'laravel' : 'plain';
+            $valid = $declared === null || in_array($declared, LegacyValue::FORMATS, true);
+
+            $out[] = [
+                'path' => $path,
+                'format' => ($declared !== null && $valid) ? $declared : $default,
+                'invalid' => $valid ? null : $declared,
+            ];
+        }
+
+        return $out;
     }
 
     /**
