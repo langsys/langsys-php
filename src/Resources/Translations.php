@@ -2,6 +2,8 @@
 
 namespace Langsys\SDK\Resources;
 
+use Langsys\SDK\Locale\LocaleDetector;
+
 use Langsys\SDK\Exception\LangsysException;
 use Langsys\SDK\Http\HttpClient;
 use Langsys\SDK\Log\LoggerInterface;
@@ -67,7 +69,7 @@ class Translations
     {
         return $this->http->get('translations', [
             'project_id' => $this->projectId,
-            'locale' => $locale,
+            'locale' => LocaleDetector::normalize($locale),
             'format' => 'flat',
         ]);
     }
@@ -82,7 +84,7 @@ class Translations
     {
         return $this->http->get('translations/data', [
             'project_id' => $this->projectId,
-            'locale' => $locale,
+            'locale' => LocaleDetector::normalize($locale),
         ]);
     }
 

@@ -2,6 +2,8 @@
 
 namespace Langsys\SDK\Html;
 
+use Langsys\SDK\Locale\LocaleDetector;
+
 use Langsys\SDK\Log\LoggerInterface;
 use Langsys\SDK\Log\NullLogger;
 use DOMDocument;
@@ -150,6 +152,10 @@ class PageTranslator
      */
     public function translate($html, $locale, $defaultCategory = null, array $selectorCategories = [], array $params = [])
     {
+        // Lowercase xx-yy on the wire and in every key, and in the lang attribute
+        // written from it (WIRE-3).
+        $locale = LocaleDetector::normalize($locale);
+
         // Per-call state; reset every time since the instance is reused.
         $this->params = $params;
         $this->currentLocale = $locale;
@@ -203,11 +209,7 @@ class PageTranslator
         // Placeholders must resolve here too, or <title> and meta description
         // ship raw {name} to the browser while the body renders correctly.
         $headPhrases = $this->headHandler->extractPhrases($doc);
-        $this->headHandler->useInterpolation(
-            empty($params) ? null : $this->client->getInterpolator(),
-            $params,
-            $locale
-        );
+        $this->headHandler->useInterpolation($this->client->getInterpolator(), $params, $locale);
         $this->headHandler->process($doc, $locale, $translations, $defaultCategory);
 
         // Process body section (respects data-langsys-category attributes and selector categories)
@@ -1084,7 +1086,12 @@ class PageTranslator
      */
     protected function interp($text)
     {
-        if (empty($this->params) || !is_string($text) || $text === '') {
+        // No early return on empty params: a translation can hold ICU the caller
+        // knows nothing about - the backend promotes a plain {name} into a
+        // gendered select for locales that need one - and "no params" is the
+        // case that needs recovery. The interpolator's own fast path handles
+        // text with no construct in it.
+        if (!is_string($text) || $text === '') {
             return $text;
         }
 

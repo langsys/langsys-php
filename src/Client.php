@@ -636,6 +636,7 @@ class Client
      */
     public function getTranslations($locale, $useCache = true)
     {
+        $locale = LocaleDetector::normalize($locale);
         $memoryKey = $locale;
         $cacheKey = 'translations_' . $this->config->getProjectId() . '_' . $locale;
 
@@ -1123,6 +1124,8 @@ class Client
      */
     public function clearCache($locale = null)
     {
+        $locale = LocaleDetector::normalize($locale);
+
         if ($locale !== null) {
             // Clear in-memory cache for this locale
             unset($this->translationsMemoryCache[$locale]);

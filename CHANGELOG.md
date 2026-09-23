@@ -171,6 +171,15 @@ its id or re-registers it.
 
 ### Fixed
 
+- **A page translation holding ICU rendered as raw pattern text when no params
+  were passed.** `translatePage()` returned early on empty params, so a translated
+  `{gender, select, …}` reached the page, the `<title>` and attribute values as
+  MessageFormat source. It now renders the recovered branch, as `translate()` and
+  `translateContentBlock()` do.
+- **A locale in another spelling fetched the catalog again.** `es-ES` or `es_ES`
+  passed to `translate()`, `getTranslations()`, `clearCache()`, the page translator
+  or the Translations resource reached the API and the cache as given, splitting
+  one catalog into two. Every entry point now uses the lowercase `es-es` form.
 - **An API error in the langsys error envelope raised a TypeError instead of the
   error.** When the API sent `error` as an object (code, message, template), the
   client passed the whole object as the exception message. The exception now carries

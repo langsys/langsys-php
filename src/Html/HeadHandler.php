@@ -349,7 +349,7 @@ class HeadHandler
      */
     protected function interpolate($text)
     {
-        if ($this->interpolator === null || empty($this->params) || !is_string($text) || $text === '') {
+        if ($this->interpolator === null || !is_string($text) || $text === '') {
             return $text;
         }
 
