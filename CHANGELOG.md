@@ -200,6 +200,19 @@ its id or re-registers it.
 
 ### Fixed
 
+- **A failing registration endpoint is no longer asked again on every flush.**
+  After a failed send the items stay queued and the next flush waits 3 seconds,
+  doubling up to 5 minutes; the first success resets the wait. A failed
+  content-block send is now counted as `retained` like a failed phrase send.
+  The wait belongs to the `Client`, so on a long-lived worker it carries across
+  requests, while `resetRequestState()` now drops whatever is still queued rather
+  than sending one request's phrases with the next request's.
+- **A key that should write but cannot is reported.** When the server answers
+  `write_enabled: false` for a `write` or `ip_write` key, one warning is logged
+  for the life of the `Client`.
+- **A truncated phrase is not registered beside its full text.** A phrase ending
+  in `…` or `...` is logged at debug level, and not registered when a longer
+  phrase starting with the same text is already known in its category.
 - **Invisible control characters no longer change a phrase's identity.** The 28
   C0 controls (U+0001–U+0008, U+000B, U+000C, U+000E–U+001F) are removed from
   every phrase and content-block token before whitespace collapses: text,

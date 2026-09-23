@@ -119,6 +119,34 @@ class Client
     protected $shutdownRegistered = false;
 
     /**
+     * Consecutive failed sends, and when the next send may be tried (REG-8).
+     * Held by this object, not by the request: under a long-lived runtime the
+     * clock outlives resetRequestState(), so a failing endpoint is not asked
+     * again by every request the worker serves.
+     *
+     * @var int
+     */
+    protected $sendFailures = 0;
+
+    /**
+     * @var float
+     */
+    protected $nextSendAt = 0.0;
+
+    /**
+     * Whether an unusable write capability has been reported (OBS-1).
+     *
+     * @var bool
+     */
+    protected $unusableCapabilityReported = false;
+
+    /** First backoff after a failed send, in seconds; it doubles up to the ceiling. */
+    const SEND_BACKOFF_INITIAL = 3;
+
+    /** Longest wait between send attempts, in seconds. */
+    const SEND_BACKOFF_CEILING = 300;
+
+    /**
      * @var array In-memory translations cache (survives across getTranslations calls within same request)
      */
     protected $translationsMemoryCache = [];
@@ -421,6 +449,7 @@ class Client
             }
 
             $this->projectData = $data;
+            $this->reportUnusableCapability();
             $this->syncBatchLimit();
             $this->cache->set($cacheKey, $this->projectData);
             $keyType = isset($this->projectData['key_type']) ? $this->projectData['key_type'] : 'unknown';
@@ -433,6 +462,30 @@ class Client
         }
 
         return $response;
+    }
+
+    /**
+     * OBS-1: a key whose type is meant to write, answered write_enabled false,
+     * is otherwise completely silent - nothing is sent and nothing fails - so
+     * say so once for the life of this object, never per miss.
+     *
+     * @return void
+     */
+    protected function reportUnusableCapability()
+    {
+        $keyType = isset($this->projectData['key_type']) ? $this->projectData['key_type'] : null;
+
+        if ($this->unusableCapabilityReported || $this->writeEnabled !== false
+            || !in_array($keyType, [self::KEY_TYPE_WRITE, 'ip_write'], true)) {
+            return;
+        }
+
+        $this->unusableCapabilityReported = true;
+
+        $this->logger->warning('This key cannot register new text: its type writes, but the server answered write_enabled false, so nothing new will reach the catalog. For an ip_write key, check that this server\'s address is on the key\'s allow-list.', [
+            'project_id' => $this->config->getProjectId(),
+            'key_type' => $keyType,
+        ]);
     }
 
     /**
@@ -573,13 +626,24 @@ class Client
      * Under a long-lived runtime (Octane, Swoole, RoadRunner, a queue worker)
      * this Client can outlive the request it was built for, which would carry
      * one caller's write decision into the next caller's request. Call this
-     * between requests. Flush pending registrations first - this does not send
-     * them.
+     * between requests. Flush pending registrations first - this drops what is
+     * still queued rather than sending it.
      *
      * @return $this
      */
     public function resetRequestState()
     {
+        // REG-8: the queue belongs to the request that collected it. Sending one
+        // request's phrases with another's would carry request data across the
+        // boundary; the next render collects its own misses again. The backoff
+        // clock is not request state and stays.
+        $unsent = count($this->pendingPhrases) + count($this->pendingContentBlocks);
+        if ($unsent > 0) {
+            $this->logger->debug('Unsent registrations dropped at the request boundary', ['count' => $unsent]);
+        }
+        $this->pendingPhrases = [];
+        $this->pendingContentBlocks = [];
+
         $this->writeEnabled = null;
         $this->translationsMemoryCache = [];
         $this->translationFetchFailures = [];
@@ -1991,6 +2055,10 @@ class Client
             return;
         }
 
+        if ($this->isTruncationOfAKnownPhrase($phrase, $category)) {
+            return;
+        }
+
         $this->pendingPhrases[$key] = [
             'phrase' => $phrase,
             'category' => $category,
@@ -2019,6 +2087,51 @@ class Client
 
         // Register shutdown handler on first queue
         $this->registerShutdownHandler();
+    }
+
+    /**
+     * REG-11: a phrase ending in an ellipsis may be an upstream truncation of a
+     * longer one. It is always reported at debug, and suppressed only on the
+     * second signal - a longer phrase already known in its category that starts
+     * with the same text - since "Loading..." alone is legitimate copy.
+     *
+     * Known means the catalog this request read plus what it has queued, which
+     * is where the full form of a truncated teaser appears first.
+     *
+     * @param string $phrase
+     * @param string $category
+     * @return bool Whether to skip registering it
+     */
+    protected function isTruncationOfAKnownPhrase($phrase, $category)
+    {
+        if (!preg_match('/^(.*?)\s*(?:\x{2026}|\.\.\.)$/us', $phrase, $m)) {
+            return false;
+        }
+
+        $prefix = $m[1];
+        $longer = null;
+
+        if ($prefix !== '') {
+            foreach ($this->translationsMemoryCache as $catalog) {
+                foreach (isset($catalog[$category]) && is_array($catalog[$category]) ? $catalog[$category] : [] as $known => $unused) {
+                    $known = (string) $known;
+                    if ($known !== $phrase && strlen($known) > strlen($prefix) && strpos($known, $prefix) === 0) {
+                        $longer = $known;
+                        break 2;
+                    }
+                }
+            }
+        }
+
+        $this->logger->debug($longer === null
+            ? 'A phrase ends in an ellipsis; if the text was truncated before reaching the SDK, register the full text instead'
+            : 'A phrase ending in an ellipsis was not registered: a longer phrase starting with the same text is already known, so this looks like a truncation of it', [
+            'phrase' => $phrase,
+            'category' => $category,
+            'longer' => $longer,
+        ]);
+
+        return $longer !== null;
     }
 
     /**
@@ -2142,6 +2255,20 @@ class Client
             return $result;
         }
 
+        // REG-8: after a failed send, wait before asking the endpoint again.
+        // The queue stays for a flush after the wait.
+        if ($this->currentTime() < $this->nextSendAt) {
+            $pendingCount = count($this->pendingPhrases) + count($this->pendingContentBlocks);
+            $this->logger->debug('Flush deferred - backing off after a failed send', [
+                'pending' => $pendingCount,
+                'retry_in_seconds' => round($this->nextSendAt - $this->currentTime(), 1),
+            ]);
+            $result['skipped'] = $pendingCount;
+            $result['retained'] = $pendingCount;
+            $result['success'] = false;
+            return $result;
+        }
+
         // Skip if we can't write
         try {
             if (!$this->canWrite()) {
@@ -2169,6 +2296,7 @@ class Client
             $result['skipped'] = $pendingCount;
             $result['retained'] = $pendingCount;
             $result['success'] = false;
+            $this->noteSendFailure();
             return $result;
         }
 
@@ -2207,8 +2335,17 @@ class Client
                     'count' => count($this->pendingContentBlocks),
                     'error' => $e->getMessage(),
                 ]);
+                $result['skipped'] += count($this->pendingContentBlocks);
+                $result['retained'] += count($this->pendingContentBlocks);
                 $result['success'] = false;
             }
+        }
+
+        if ($result['success']) {
+            $this->sendFailures = 0;
+            $this->nextSendAt = 0.0;
+        } else {
+            $this->noteSendFailure();
         }
 
         // Clear translation cache if we registered anything
@@ -2229,6 +2366,27 @@ class Client
         }
 
         return $result;
+    }
+
+    /**
+     * Record a failed send and set when the next may be tried: 3s, doubling,
+     * up to five minutes.
+     *
+     * @return void
+     */
+    protected function noteSendFailure()
+    {
+        $this->sendFailures++;
+        $delay = min(self::SEND_BACKOFF_INITIAL * pow(2, $this->sendFailures - 1), self::SEND_BACKOFF_CEILING);
+        $this->nextSendAt = $this->currentTime() + $delay;
+    }
+
+    /**
+     * @return float Seconds since the epoch
+     */
+    protected function currentTime()
+    {
+        return microtime(true);
     }
 
     /**

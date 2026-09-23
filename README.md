@@ -626,11 +626,28 @@ $client->translate('New phrase');
 $client->translateContentBlock('<p>New content</p>');
 $client->translatePage($html);
 
-// Items are flushed automatically via PHP shutdown handler
-// Or flush manually:
+// Flush manually, or let the shutdown handler do it:
 $result = $client->flushPendingRegistrations();
-// Returns: ['phrases' => 5, 'content_blocks' => 2, 'success' => true]
+// Returns: ['phrases' => 5, 'content_blocks' => 2, 'success' => true, ...]
 ```
+
+The shutdown flush is **best-effort**: it does not run when the process is killed
+(out of memory, a hard timeout), and a long-lived worker (Octane, Swoole, a queue
+worker) may never reach it. Call `flushPendingRegistrations()` yourself at the end
+of each request or job, then `resetRequestState()`; the reset drops anything still
+queued, so one request's phrases never go out with another's.
+
+**When a send fails** the items stay queued and the SDK backs off: the next flush
+waits 3 seconds, then 6, doubling up to 5 minutes, and the first successful send
+resets the wait. The wait belongs to the `Client`, so on a long-lived worker it
+carries across requests, and a failing endpoint is not asked again by every request.
+`retained` in the result counts what is still queued; `dropped` counts what nothing
+will send.
+
+**A phrase ending in an ellipsis** (`…` or `...`) is logged at debug level, since
+upstream code may have cut a longer text short. It is not registered only when a
+longer phrase starting with the same text is already known in its category, so
+`Loading…` registers normally.
 
 **Queue Management:**
 
@@ -648,7 +665,11 @@ $blocks = $client->getPendingContentBlocks();
 $client->clearPendingRegistrations();
 ```
 
-> **Note**: With a read-only API key, items are queued but silently skipped during flush (no errors).
+> **Note**: With a key that may not write, the flush sends nothing and reports the
+> items as `dropped`. A key whose type writes but that the server answers with
+> `write_enabled: false` (an `ip_write` key used from an address off its allow-list,
+> for example) is reported once, as a warning, so a misconfigured integration is
+> not silent.
 
 ### Get Translation Statistics
 

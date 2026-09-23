@@ -1208,7 +1208,11 @@ class ClientTest extends TestCase
         $http = (new \ReflectionClass($client))->getProperty('http');
         $http->setAccessible(true);
         $http->setValue($client, new ErrorThrowingHttpClient());
-        $client->resetRequestState();
+
+        // Forget the write decision so the flush has to authorize again.
+        $writeEnabled = (new \ReflectionClass($client))->getProperty('writeEnabled');
+        $writeEnabled->setAccessible(true);
+        $writeEnabled->setValue($client, null);
 
         $result = $client->flushPendingRegistrations();
 
