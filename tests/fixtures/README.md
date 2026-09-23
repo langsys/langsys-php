@@ -190,9 +190,17 @@ must call with the argument genuinely omitted, not with an empty map. Their
 because the extension here loads even under `php -n`), controlled against the existing
 cases: all 15 marked independent matched without it, and all 4 marked dependent differed.
 
+Two cases pin a **formatter failure** (ICU-6): `You have {count, plural, one {{count}
+car} other {{count} cars}}` in `en`, with `count` 3 and 1. On PHP 8.3.19 with ICU 76.1
+the pattern parses and then fails to format (`U_ARGUMENT_TYPE_MISMATCH`, `{count}`
+declared both as a plural and as a plain argument), so here the rows exercise the SDK's
+own branch selection; a formatter that renders the pattern passes them directly. Both
+expect the chosen branch with the value filled in, never an empty string and never the
+raw construct, and both render identically without intl.
+
 Each case carries `requires_intl`, **measured** by generating the file twice —
 once with the extension and once without — rather than inferred from the
-template. Only 4 of 23 cases actually depend on it, and they are not the ones you
+template. Only 4 of 25 cases actually depend on it, and they are not the ones you
 would guess: the ICU missing-argument recoveries are intl-independent, while a
 plain `{id}` placeholder is not, because it needs CLDR number formatting.
 

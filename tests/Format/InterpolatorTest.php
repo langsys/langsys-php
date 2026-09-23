@@ -565,37 +565,87 @@ class InterpolatorTest extends TestCase
     }
 
     /**
-     * A pattern that parses can still fail to format: `{count}` written inside
-     * the branches of `{count, plural, ...}` declares one argument with two
-     * types, and intl's format() returns false (U_ARGUMENT_TYPE_MISMATCH). The
-     * failure is logged with intl's error, and the render keeps the phrase's
-     * words and the supplied value, never an empty string.
+     * ICU-6: a pattern that parses can still fail to format - `{count}` written
+     * inside the branches of `{count, plural, ...}` declares one argument with
+     * two types, and intl's format() returns false (U_ARGUMENT_TYPE_MISMATCH).
+     * The render goes through this SDK's own branch selection with the value
+     * filled in: never "", never the raw construct.
      */
-    public function testAFormatterFailureIsLoggedAndNeverRendersEmpty()
+    public function testAFormatterFailureRendersThroughTheSdksOwnBranchSelection()
     {
         $this->requireIntl();
-
-        $logger = new SpyLogger();
-        $interpolator = new Interpolator($logger);
 
         $pattern = 'You have {count, plural, one {{count} car} other {{count} cars}}';
 
         $this->assertFalse(
-            \MessageFormatter::create('es', $pattern)->format(['count' => 3]),
+            \MessageFormatter::create('en', $pattern)->format(['count' => 3]),
             'the vector must make intl fail at format time'
         );
 
-        $result = $interpolator->interpolate($pattern, ['count' => 3], 'es');
+        $this->assertSame('You have 3 cars', $this->interpolator->interpolate($pattern, ['count' => 3], 'en'));
+        $this->assertSame('You have 1 car', $this->interpolator->interpolate($pattern, ['count' => 1], 'en'));
+    }
 
-        $this->assertStringContainsString('You have', $result);
-        $this->assertStringContainsString('3 cars', $result);
+    /**
+     * ICU-6's CLDR clause: where intl can compute the value's category, the
+     * fallback uses it - Polish 3 is `few`, which one-iff-1 would render as
+     * `other`.
+     */
+    public function testAFormatterFailurePicksTheCldrCategory()
+    {
+        $this->requireIntl();
 
-        $warnings = array_values(array_filter($logger->entries, function ($entry) {
-            return $entry['level'] === 'warning';
+        $pattern = '{n, plural, one {# kot} few {# koty} many {# kotów} other {# kota}} ({n})';
+
+        $this->assertFalse(\MessageFormatter::create('pl', $pattern)->format(['n' => 3]));
+
+        $this->assertSame('3 koty (3)', $this->interpolator->interpolate($pattern, ['n' => 3], 'pl'));
+        $this->assertSame('5 kotów (5)', $this->interpolator->interpolate($pattern, ['n' => 5], 'pl'));
+        $this->assertSame('1 kot (1)', $this->interpolator->interpolate($pattern, ['n' => 1], 'pl'));
+
+        // An ordinal takes the ordinal rules, not the cardinal ones: English 2
+        // is `two` (2nd) and 11 is `other` (11th).
+        $ordinal = '{n, selectordinal, one {#st} two {#nd} few {#rd} other {#th}} ({n})';
+        $this->assertFalse(\MessageFormatter::create('en', $ordinal)->format(['n' => 2]));
+
+        $this->assertSame('2nd (2)', $this->interpolator->interpolate($ordinal, ['n' => 2], 'en'));
+        $this->assertSame('11th (11)', $this->interpolator->interpolate($ordinal, ['n' => 11], 'en'));
+        $this->assertSame('22nd (22)', $this->interpolator->interpolate($ordinal, ['n' => 22], 'en'));
+    }
+
+    /**
+     * ICU-6's warning fires with debug logging off - a formatter failure is a
+     * defect in the phrase, not the normal event ICU-4 notes at debug - names
+     * the phrase, the locale and intl's error, and fires once per template and
+     * locale.
+     */
+    public function testAFormatterFailureWarnsWithDebugOffOncePerTemplateAndLocale()
+    {
+        $this->requireIntl();
+
+        $path = tempnam(sys_get_temp_dir(), 'langsys-icu6-');
+        $interpolator = new Interpolator(new \Langsys\SDK\Log\Logger($path, 'warning'));
+
+        $pattern = 'You have {count, plural, one {{count} car} other {{count} cars}}';
+
+        $interpolator->interpolate($pattern, ['count' => 3], 'en');
+        $interpolator->interpolate($pattern, ['count' => 5], 'en');
+        $interpolator->interpolate($pattern, ['count' => 3], 'de');
+
+        $lines = array_values(array_filter(explode("\n", (string) file_get_contents($path))));
+        @unlink($path);
+
+        $warnings = array_values(array_filter($lines, function ($line) {
+            return strpos($line, 'ICU formatting failed') !== false;
         }));
-        $this->assertCount(1, $warnings, 'the formatter failure must be logged');
-        $this->assertSame($pattern, $warnings[0]['context']['phrase']);
-        $this->assertStringContainsString('U_ARGUMENT_TYPE_MISMATCH', $warnings[0]['context']['intl_error']);
+
+        $this->assertCount(2, $warnings, 'one warning per (template, locale): en once, de once');
+        foreach ($warnings as $warning) {
+            $this->assertStringContainsString('You have {count, plural', $warning);
+            $this->assertStringContainsString('U_ARGUMENT_TYPE_MISMATCH', $warning);
+        }
+        $this->assertStringContainsString('"locale":"en"', $warnings[0]);
+        $this->assertStringContainsString('"locale":"de"', $warnings[1]);
     }
 
     /**

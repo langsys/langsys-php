@@ -194,6 +194,12 @@ its id or re-registers it.
 
 ### Fixed
 
+- **A translation that fails to format renders its sentence.** A phrase whose
+  pattern parses but that intl cannot format, such as `{count}` written inside
+  the branches of its own plural, rendered the raw plural construct. It now
+  renders the branch for the value, by its CLDR category in the render locale,
+  with the value filled in ("You have 3 cars"), and logs a warning at every log
+  level, once per phrase and locale, naming the phrase and intl's error.
 - **`translatePage()` registers every element the other SDKs register, in the
   same shape.** An `<img alt>`, `<input placeholder>`, `<button data-confirm>`
   or any inline element outside a paragraph is now registered and translated;

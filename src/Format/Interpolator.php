@@ -95,6 +95,11 @@ class Interpolator
     protected $notedRecoveries = [];
 
     /**
+     * @var array Locale+template pairs whose formatter failure was warned.
+     */
+    protected $warnedFormatterFailures = [];
+
+    /**
      * Interpolate parameters into a string.
      *
      * @param string $text The (already translated) string
@@ -180,24 +185,32 @@ class Interpolator
                 // literal, which is the required output.
                 $suppliedParams = array_diff_key($params, array_flip($missing));
 
-                $formatted = $this->formatIcu($rewritten, $suppliedParams, $locale);
+                $formatted = $this->formatIcu($rewritten, $suppliedParams, $locale, $text);
 
-                if ($formatted !== null) {
+                if (is_string($formatted)) {
                     return $formatted;
                 }
 
-                // intl absent, or the rewritten pattern would not parse.
+                // intl absent, or the rewritten pattern would not parse or
+                // format.
                 return $this->renderIcuWithoutIntl($text, $params, $locale);
             }
 
             $formatted = $this->formatIcu($text, $params, $locale);
-            if ($formatted !== null) {
+            if (is_string($formatted)) {
                 return $formatted;
             }
 
-            // Parseable ICU failed: fall through to simple substitution, which
-            // leaves the construct untouched. This matches the JS SDK exactly
-            // and is deliberate - see testMalformedIcuFallsBackToTemplateUnchanged.
+            // ICU-6: a pattern that parses but fails to format renders through
+            // this SDK's own branch selection - never "" and never the raw
+            // construct.
+            if ($formatted === false) {
+                return $this->renderIcuWithoutIntl($text, $params, $locale);
+            }
+
+            // A pattern that does not parse falls through to simple
+            // substitution, which leaves the construct untouched. This matches
+            // the JS SDK exactly - see testMalformedIcuFallsBackToTemplateUnchanged.
         }
 
         return $this->substitute($text, $params, $locale);
@@ -231,9 +244,12 @@ class Interpolator
      * @param string $text
      * @param array $params
      * @param string|null $locale
-     * @return string|null Null when ICU could not be applied (caller falls back)
+     * @param string|null $template The phrase as written, when $text is a rewrite of it
+     * @return string|false|null The formatted string; false when the pattern
+     *                           parsed and the formatter failed on it (ICU-6);
+     *                           null when intl is absent or the pattern does not parse
      */
-    protected function formatIcu($text, array $params, $locale)
+    protected function formatIcu($text, array $params, $locale, $template = null)
     {
         if (!$this->hasIntl()) {
             $this->warnMissingIntl($text);
@@ -252,6 +268,8 @@ class Interpolator
         // raises IntlException when intl.use_exceptions is On, and @ does not
         // suppress exceptions. Escaping here would break the render, which this
         // class promises never to do.
+        $formatter = null;
+
         try {
             $formatter = @\MessageFormatter::create($icuLocale, $text);
 
@@ -268,23 +286,51 @@ class Interpolator
             $result = @$formatter->format($icuParams);
 
             if ($result === false) {
-                $this->log('warning', 'ICU formatting failed; falling back to simple interpolation', [
-                    'phrase' => $text,
-                    'locale' => $icuLocale,
-                    'intl_error' => $formatter->getErrorMessage(),
-                ]);
-                return null;
+                $this->warnFormatterFailure($template !== null ? $template : $text, $icuLocale, $formatter->getErrorMessage());
+                return false;
             }
 
             return $result;
         } catch (\Throwable $e) {
-            $this->log('warning', 'ICU formatting threw; falling back to simple interpolation', [
+            if ($formatter) {
+                $this->warnFormatterFailure($template !== null ? $template : $text, $icuLocale, $e->getMessage());
+                return false;
+            }
+
+            $this->log('warning', 'ICU pattern could not be parsed; falling back to simple interpolation', [
                 'phrase' => $text,
                 'locale' => $icuLocale,
                 'exception' => $e->getMessage(),
             ]);
             return null;
         }
+    }
+
+    /**
+     * ICU-6: a formatter failure is a defect in the phrase, so it warns at
+     * every log level - unlike ICU-4's debug-only notice for a missing
+     * argument, which is normal - once per template and locale.
+     *
+     * @param string $template
+     * @param string $icuLocale
+     * @param string $error
+     * @return void
+     */
+    protected function warnFormatterFailure($template, $icuLocale, $error)
+    {
+        $key = $icuLocale . "\0" . $template;
+
+        if (isset($this->warnedFormatterFailures[$key])) {
+            return;
+        }
+
+        $this->warnedFormatterFailures[$key] = true;
+
+        $this->log('warning', 'ICU formatting failed; rendered through the SDK\'s own branch selection. Fix the phrase.', [
+            'phrase' => $template,
+            'locale' => $icuLocale,
+            'intl_error' => $error,
+        ]);
     }
 
     /**
@@ -567,7 +613,7 @@ class Interpolator
         // destroying the sentence and dumping the pattern.
         $chosen = $missing
             ? (isset($branches['other']) ? $branches['other'] : null)
-            : $this->chooseIcuBranch($type, $value, $branches);
+            : $this->chooseIcuBranch($type, $value, $branches, $locale);
 
         if ($chosen === null) {
             return $verbatim;
@@ -645,7 +691,7 @@ class Interpolator
      * @param array $branches
      * @return string|null
      */
-    protected function chooseIcuBranch($type, $value, array $branches)
+    protected function chooseIcuBranch($type, $value, array $branches, $locale = null)
     {
         if ($type === 'select') {
             $key = is_scalar($value) ? (string) $value : '';
@@ -670,6 +716,15 @@ class Interpolator
                 }
             }
 
+            // The value's CLDR category in the render locale, where intl can
+            // compute it.
+            $category = $this->pluralCategory($type, $value, $locale);
+
+            if ($category !== null) {
+                return isset($branches[$category]) ? $branches[$category]
+                    : (isset($branches['other']) ? $branches['other'] : reset($branches));
+            }
+
             // Loose compare: 1, 1.0 and "1.0" must all take the `one` branch.
             if ($number === 1.0 && isset($branches['one'])) {
                 return $branches['one'];
@@ -682,6 +737,36 @@ class Interpolator
 
         // No 'other' (technically invalid ICU) - take whatever exists.
         return reset($branches) === false ? null : reset($branches);
+    }
+
+    /**
+     * The CLDR plural (or ordinal) category of a number in a locale, asked of
+     * intl through a pattern whose branches name their own category - PHP's
+     * intl exposes no plural-rules class. Null without intl, or when intl
+     * cannot answer.
+     *
+     * @param string $type plural or selectordinal
+     * @param mixed $value
+     * @param string|null $locale
+     * @return string|null
+     */
+    protected function pluralCategory($type, $value, $locale)
+    {
+        if (!$this->hasIntl()) {
+            return null;
+        }
+
+        $kind = $type === 'selectordinal' ? 'selectordinal' : 'plural';
+        $probe = '{n, ' . $kind . ', zero {zero} one {one} two {two} few {few} many {many} other {other}}';
+
+        try {
+            $formatter = @\MessageFormatter::create($this->resolveLocale($locale), $probe);
+            $category = $formatter ? @$formatter->format(['n' => $value + 0]) : false;
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        return is_string($category) && $category !== '' ? $category : null;
     }
 
     /**
