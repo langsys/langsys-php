@@ -194,6 +194,14 @@ its id or re-registers it.
 
 ### Fixed
 
+- **A content-block fragment holding one phrase in one text node is a phrase.**
+  `translateContentBlock('<p>Hello</p>')`, `registerContentBlock()` and
+  `createContentBlocks()` register such a fragment as the phrase "Hello", and
+  `translateContentBlock()` renders it from that phrase's translation, written
+  back into the text node. This is the shape every other Langsys SDK gives the
+  same content. A block previously registered for such a fragment is not looked
+  up: the fragment registers as a phrase once and is translated again. A
+  fragment registered with an explicit custom id stays a content block.
 - **A translation that fails to format renders its sentence.** A phrase whose
   pattern parses but that intl cannot format, such as `{count}` written inside
   the branches of its own plural, rendered the raw plural construct. It now

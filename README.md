@@ -165,19 +165,28 @@ echo (new Client())
 
 ### How It Works
 
-1. **Single-phrase blocks** are registered as simple phrases:
+The page is walked into **units**: every element that does not contain block
+elements of its own — a paragraph, a list item, a heading, and equally an `<img>`,
+`<input>`, `<button>` or `<a>` sitting directly under a container. A unit's phrases
+are its own translatable attributes first (`title`, `alt`, `placeholder`, … in a
+fixed order), then its text in document order.
+
+1. **A unit whose one phrase is its one text node** registers as a simple phrase:
    - `<p>Hello</p>` → phrase "Hello"
    - `<p><strong>Hello World</strong></p>` → phrase "Hello World" (inline formatting preserved)
    - `<p><a href="#">Click here</a></p>` → phrase "Click here"
-2. **Multi-phrase blocks** are registered as content blocks:
+   - `<p><svg>…<text>Label</text></svg></p>` → phrase "Label" (the drawing is kept)
+2. **Any other unit** registers as a content block:
    - `<p><strong>Hello</strong> World</p>` → content block with phrases ["Hello", "World"]
    - `<nav><a>Home</a><a>About</a></nav>` → content block with phrases ["Home", "About"]
-   - `<p><input placeholder="Email"></p>` → content block (phrase from attribute)
+   - `<p title="Tooltip">Hello</p>` → content block with phrases ["Tooltip", "Hello"]
+   - `<img alt="Logo">` → content block with phrases ["Logo"] (an attribute has no text node to write into)
 3. **Head section** is processed for translatable meta tags
 4. **`translate="no"`** attribute is respected to skip elements
 5. **Script/style** tags are never processed
 
-The key distinction: if a block element contains exactly **one phrase** that matches its text content, it's a simple phrase. Multiple phrases (from text nodes or attributes) = content block.
+The same content yields the same shape in every Langsys SDK, because a phrase and
+a block holding the same words are two catalog entries with two ids.
 
 ### Example Output
 
@@ -442,10 +451,9 @@ In `translateContentBlock()`, placeholders resolve in text nodes **and** in
 translatable attributes (`placeholder`, `alt`, `title`, …).
 
 In `translatePage()`, placeholders resolve in text nodes, in the `<head>`
-(`<title>`, meta description, `og:*`, `twitter:*`), and in attributes on elements
-that are classified as content blocks. An attribute on an element that is *not*
-part of a content block — for example a lone `<input placeholder="Search {site}">`
-beside a paragraph — is currently neither extracted nor interpolated.
+(`<title>`, meta description, `og:*`, `twitter:*`), and in translatable
+attributes, including a lone `<input placeholder="Search {site}">` beside a
+paragraph.
 
 #### Behaviour
 
@@ -587,7 +595,7 @@ than failing the render. Malformed ICU also falls back rather than throwing.
 
 ### Translate a Content Block
 
-The `translateContentBlock()` method translates HTML content AND automatically queues new content blocks for registration:
+The `translateContentBlock()` method translates HTML content AND automatically queues what is new for registration. The fragment is one unit, read the way the page walk reads one: a fragment whose one phrase is its one text node, such as `<p>Hello</p>`, is looked up, registered and rendered as the phrase "Hello", written back into that text node; anything else is a content block:
 
 ```php
 $client->setLocale('es-es');
@@ -604,7 +612,7 @@ $translated = $client->translateContentBlock($html, 'homepage');
 $translated = $client->translateContentBlock('<p>Hi {name}</p>', 'homepage', ['name' => 'Sarah']);
 ```
 
-This uses the same phrase extraction logic as `registerContentBlock()`, ensuring consistent behavior between translation and registration.
+This uses the same phrase extraction logic as `registerContentBlock()`, ensuring consistent behavior between translation and registration: `registerContentBlock('<p>Hello</p>')` registers the phrase "Hello". Passing a custom id names a content block explicitly, and it registers as one whatever its shape.
 
 ### Automatic Registration (Queuing)
 

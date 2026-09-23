@@ -776,6 +776,23 @@ class Client
             }
         }
 
+        return $this->translateSource($phrase, $locale, $category, $contentBlockId, $params);
+    }
+
+    /**
+     * Look a source phrase up in the catalog, queue it when it is new, and
+     * render it: translate() once any legacy key has been resolved, and the
+     * phrase a one-phrase content-block fragment registers as (TOK-6).
+     *
+     * @param string $phrase
+     * @param string|null $locale
+     * @param string|null $category
+     * @param string|null $contentBlockId
+     * @param array $params
+     * @return string
+     */
+    protected function translateSource($phrase, $locale, $category, $contentBlockId, array $params)
+    {
         // Use set locale if not provided
         if ($locale === null) {
             $locale = $this->getLocale();
@@ -1481,10 +1498,20 @@ class Client
 
         // Parse HTML and extract phrases
         $parser = new HtmlParser($this->translatableItems->getTranslatableAttributes());
-        $phrases = $parser->extractPhrases($html);
+        $unit = $parser->fragmentUnit($html);
+        $phrases = $unit['tokens'];
 
         if (empty($phrases)) {
             return $html; // No translatable content
+        }
+
+        // TOK-6: a fragment whose one token is its one text node is a phrase,
+        // looked up, registered and rendered as one, and written back into
+        // that text node in place.
+        if (HtmlParser::isPhraseUnit($unit)) {
+            $rendered = $this->translateSource($phrases[0], $locale, $category, null, $params);
+
+            return $this->replaceFragmentText($html, $phrases[0], $rendered);
         }
 
         // Placeholders inside a content block are part of the phrase text, so the
@@ -1733,6 +1760,51 @@ class Client
         }
 
         $host->setAttribute(HtmlParser::CONTENT_BLOCK_STAMP, $customId);
+    }
+
+    /**
+     * Write a rendered phrase into the one text node of a fragment that holds
+     * it, keeping the node's surrounding whitespace and every element around it.
+     *
+     * @param string $html
+     * @param string $phrase The canonical text the node holds
+     * @param string $rendered
+     * @return string
+     */
+    protected function replaceFragmentText($html, $phrase, $rendered)
+    {
+        $internalErrors = libxml_use_internal_errors(true);
+
+        $doc = new \DOMDocument();
+        $doc->encoding = 'UTF-8';
+        $doc->loadHTML('<?xml encoding="UTF-8"><div>' . $html . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+
+        libxml_clear_errors();
+        libxml_use_internal_errors($internalErrors);
+
+        $wrapper = $doc->getElementsByTagName('div')->item(0);
+        if ($wrapper === null) {
+            return $html;
+        }
+
+        $xpath = new \DOMXPath($doc);
+        foreach ($xpath->query('.//text()', $wrapper) as $node) {
+            if (\Langsys\SDK\Html\Canonical::phrase($node->textContent) !== $phrase) {
+                continue;
+            }
+
+            $leading = preg_match('/^' . \Langsys\SDK\Html\Whitespace::JS_WHITESPACE . '/u', $node->textContent) ? ' ' : '';
+            $trailing = preg_match('/' . \Langsys\SDK\Html\Whitespace::JS_WHITESPACE . '$/u', $node->textContent) ? ' ' : '';
+            $node->textContent = $leading . $rendered . $trailing;
+            break;
+        }
+
+        $result = '';
+        foreach ($wrapper->childNodes as $child) {
+            $result .= $doc->saveHTML($child);
+        }
+
+        return $result;
     }
 
     protected function applyBlockTranslations($html, array $translations, HtmlParser $parser, array $params = [], $locale = null, $customId = null)

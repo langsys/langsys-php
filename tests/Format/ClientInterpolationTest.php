@@ -166,7 +166,7 @@ class ClientInterpolationTest extends TestCase
         $client->setLocale('es-es');
 
         $result = $client->translateContentBlock(
-            '<p>Welcome back, {name}</p>',
+            '<p>Welcome back, {name}</p><p>Your cart</p>',
             '__uncategorized__',
             ['name' => 'Sarah']
         );
@@ -195,7 +195,7 @@ class ClientInterpolationTest extends TestCase
         $client->setLocale('es-es');
 
         $client->translateContentBlock(
-            '<p>Welcome back, {name}</p>',
+            '<p>Welcome back, {name}</p><p>Your cart</p>',
             '__uncategorized__',
             ['name' => 'Sarah']
         );
@@ -211,7 +211,7 @@ class ClientInterpolationTest extends TestCase
         $client = $this->makeClient(['__uncategorized__' => []]);
         $client->setLocale('es-es');
 
-        $result = $client->translateContentBlock('<p>Welcome back, {name}</p>');
+        $result = $client->translateContentBlock('<p>Welcome back, {name}</p><p>Your cart</p>');
 
         $this->assertStringContainsString('{name}', $result);
     }

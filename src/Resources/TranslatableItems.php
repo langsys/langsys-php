@@ -244,6 +244,17 @@ class TranslatableItems
         // Normalize HTML content
         $content = $this->normalizeHtmlContent($content);
 
+        // A fragment whose one token is its one text node is a phrase
+        // (TOK-6), unless the caller named a block by its custom id.
+        if ($customId === null && ($phraseItem = $this->phraseItemFor($parser, $content, $category)) !== null) {
+            $this->logger->debug('A one-phrase fragment registers as a phrase', ['phrase' => $phraseItem['phrase']]);
+
+            return $this->http->post('translatable-items', [
+                'project_id' => $this->projectId,
+                'translatable_items' => [$phraseItem],
+            ]);
+        }
+
         // Extract phrases from HTML content
         $phrases = $parser->extractPhrases($content);
 
@@ -309,6 +320,11 @@ class TranslatableItems
             // Normalize HTML content
             $html = $this->normalizeHtmlContent($html);
 
+            if ($customId === null && ($phraseItem = $this->phraseItemFor($parser, $html, $category)) !== null) {
+                $requestItems[] = $phraseItem;
+                continue;
+            }
+
             // Extract phrases from HTML content
             $phrases = $parser->extractPhrases($html);
 
@@ -356,6 +372,31 @@ class TranslatableItems
         }
 
         return $lastResponse;
+    }
+
+    /**
+     * The phrase item a fragment registers as, when its one token is its one
+     * text node (TOK-6); null when the fragment is a content block.
+     *
+     * @param HtmlParser $parser
+     * @param string $html
+     * @param string|null $category Already normalized for the wire
+     * @return array|null
+     */
+    protected function phraseItemFor(HtmlParser $parser, $html, $category)
+    {
+        $unit = $parser->fragmentUnit($html);
+
+        if (!HtmlParser::isPhraseUnit($unit)) {
+            return null;
+        }
+
+        return [
+            'type' => 'phrase',
+            'phrase' => $unit['tokens'][0],
+            'category' => $category,
+            'translatable' => true,
+        ];
     }
 
     /**

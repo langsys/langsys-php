@@ -130,7 +130,7 @@ class TranslatableItemsTest extends TestCase
 
         // Only content is required - category, label, customId are optional
         $result = $this->items->createContentBlock(
-            '<footer>Contact Us</footer>'
+            '<footer>Contact Us <em>today</em></footer>'
         );
 
         $request = $this->http->getLastRequest();
@@ -143,6 +143,7 @@ class TranslatableItemsTest extends TestCase
         // Phrases auto-extracted
         $this->assertEquals([
             ['phrase' => 'Contact Us'],
+            ['phrase' => 'today'],
         ], $item['phrases']);
     }
 
@@ -152,10 +153,10 @@ class TranslatableItemsTest extends TestCase
         $this->http->setResponse('POST', 'translatable-items', $expectedResponse);
 
         // Same content with same category should generate same customId
-        $this->items->createContentBlock('<p>Hello</p>', 'UI');
+        $this->items->createContentBlock('<p>Hello</p><p>World</p>', 'UI');
         $request1 = $this->http->getLastRequest();
 
-        $this->items->createContentBlock('<p>Hello</p>', 'UI');
+        $this->items->createContentBlock('<p>Hello</p><p>World</p>', 'UI');
         $request2 = $this->http->getLastRequest();
 
         $this->assertEquals(
@@ -164,7 +165,7 @@ class TranslatableItemsTest extends TestCase
         );
 
         // Different category should generate different customId
-        $this->items->createContentBlock('<p>Hello</p>', 'Marketing');
+        $this->items->createContentBlock('<p>Hello</p><p>World</p>', 'Marketing');
         $request3 = $this->http->getLastRequest();
 
         $this->assertNotEquals(

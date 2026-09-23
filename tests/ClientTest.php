@@ -358,13 +358,14 @@ class ClientTest extends TestCase
     {
         $mockHttp = new MockHttpClient();
 
-        $customId = (new HtmlParser())->generateCustomId('homepage', ['Hello']);
+        $customId = (new HtmlParser())->generateCustomId('homepage', ['Hello', 'World']);
 
         $mockHttp->setResponse('GET', 'translations', [
             'data' => [
                 'homepage' => [
                     $customId => [
                         'Hello' => 'Hola',
+                        'World' => 'Mundo',
                     ],
                 ],
             ],
@@ -373,7 +374,7 @@ class ClientTest extends TestCase
         $client = $this->createClientWithMockHttp($mockHttp);
         $client->setLocale('es-es');
 
-        $html = '<p>Hello</p>';
+        $html = '<p>Hello</p><p>World</p>';
         $result = $client->translateContentBlock($html, 'homepage');
 
         $this->assertStringContainsString('Hola', $result);
@@ -391,7 +392,7 @@ class ClientTest extends TestCase
         $client = $this->createClientWithMockHttp($mockHttp);
         $client->setLocale('es-es');
 
-        $html = '<p>Hello</p>';
+        $html = '<p>Hello</p><p>World</p>';
 
         // Translate same block twice
         $client->translateContentBlock($html);
@@ -893,11 +894,11 @@ class ClientTest extends TestCase
      */
     public function testUncategorizedLegacyBlockResolvesUnderTheEmptyCategorySlot()
     {
-        $html = '<div><p>Hello there</p></div>';
-        $legacyId = md5(implode('|', ['', 'Hello there']));
+        $html = '<div><p>Hello there</p><p>Bye</p></div>';
+        $legacyId = md5(implode('|', ['', 'Hello there', 'Bye']));
 
         $client = $this->clientWithCatalog([
-            '__uncategorized__' => [$legacyId => ['Hello there' => 'Hola']],
+            '__uncategorized__' => [$legacyId => ['Hello there' => 'Hola', 'Bye' => 'Adios']],
         ]);
 
         $this->assertStringContainsString('Hola', $client->translateContentBlock($html));
@@ -905,18 +906,24 @@ class ClientTest extends TestCase
 
     public function testUncategorizedLegacyBlockResolvesUnderTheSentinelCategorySlot()
     {
-        $html = '<div><p>Hello there</p></div>';
-        $legacyId = md5(implode('|', ['__uncategorized__', 'Hello there']));
+        $html = '<div><p>Hello there</p><p>Bye</p></div>';
+        $legacyId = md5(implode('|', ['__uncategorized__', 'Hello there', 'Bye']));
 
         $client = $this->clientWithCatalog([
-            '__uncategorized__' => [$legacyId => ['Hello there' => 'Hola']],
+            '__uncategorized__' => [$legacyId => ['Hello there' => 'Hola', 'Bye' => 'Adios']],
         ]);
 
         $this->assertStringContainsString('Hola', $client->translateContentBlock($html));
     }
 
     /**
-     * The legacy fallback, end to end, on content the two hashes DISAGREE about.
+     * The legacy fallback, through the client's block resolution, on content the
+     * two hashes DISAGREE about.
+     *
+     * Every diverging row is a single token, and a one-token fragment is a
+     * phrase (TOK-6) that never reaches a block lookup through
+     * translateContentBlock() - so the rows are driven through
+     * resolveContentBlockTranslations(), the resolution both block paths share.
      *
      * Every Client-level legacy test above uses ASCII, where the JS code-unit
      * hash and a UTF-8 byte hash produce the same digest - so all of them pass
@@ -943,23 +950,19 @@ class ClientTest extends TestCase
         $category = $row['category'];
 
         // The catalog as a JS SDK left it: filed under the pre-fix code-unit id.
-        $client = $this->clientWithCatalog([
-            $category => [
-                $row['legacy_custom_id'] => [$phrase => 'TRANSLATED'],
-            ],
-        ]);
+        $client = $this->clientWithCatalog([$category => []]);
+        $parser = new HtmlParser();
 
-        $html = '<div><p>' . $phrase . '</p></div>';
-
-        $this->assertStringContainsString(
-            'TRANSLATED',
-            $client->translateContentBlock($html, $category),
+        $this->assertSame(
+            [$phrase => 'TRANSLATED'],
+            $client->resolveContentBlockTranslations(
+                [$row['legacy_custom_id'] => [$phrase => 'TRANSLATED']],
+                $category,
+                $row['tokens'],
+                $parser->generateCustomId($category, $row['tokens']),
+                $parser
+            ),
             'row ' . $fixtureRow . ' (' . $row['note'] . ') did not resolve through the client'
-        );
-
-        $this->assertFalse(
-            $client->hasPendingRegistrations(),
-            'a resolved legacy block must not be re-registered - that is what strands it'
         );
     }
 
@@ -983,8 +986,8 @@ class ClientTest extends TestCase
      */
     public function testLegacyIdResolvingToDifferentContentIsRejected()
     {
-        $html = '<div><p>Hello there</p></div>';
-        $legacyId = md5(implode('|', ['Marketing', 'Hello there']));
+        $html = '<div><p>Hello there</p><p>Bye</p></div>';
+        $legacyId = md5(implode('|', ['Marketing', 'Hello there', 'Bye']));
 
         $client = $this->clientWithCatalog([
             'Marketing' => [
@@ -1004,7 +1007,7 @@ class ClientTest extends TestCase
      */
     public function testLegacyIdIsNeverSentToTheApi()
     {
-        $html = '<div><p>Brand new content</p></div>';
+        $html = '<div><p>Brand new content</p><p>More</p></div>';
 
         $mockHttp = new MockHttpClient();
         $mockHttp->setResponse('GET', 'authorize-project/project-id', [
@@ -1019,7 +1022,7 @@ class ClientTest extends TestCase
         $client->flushPendingRegistrations();
 
         $parser = new HtmlParser();
-        $currentId = $parser->generateCustomId('Marketing', ['Brand new content']);
+        $currentId = $parser->generateCustomId('Marketing', ['Brand new content', 'More']);
 
         // Only legacy ids that DIFFER from the current one can evidence
         // emission. For pure-ASCII content the JS code-unit hash and a UTF-8
@@ -1029,7 +1032,7 @@ class ClientTest extends TestCase
         // implementation, which is a test that reports the wrong thing rather
         // than a defect.
         $distinctLegacyIds = array_values(array_filter(
-            $parser->legacyCustomIds('Marketing', ['Brand new content']),
+            $parser->legacyCustomIds('Marketing', ['Brand new content', 'More']),
             function ($id) use ($currentId) { return $id !== $currentId; }
         ));
 
@@ -1224,7 +1227,7 @@ class ClientTest extends TestCase
 
         $client = $this->createClientWithMockHttp($mockHttp);
         $client->setLocale('es-es');
-        $client->translateContentBlock('<p>Hi</p>');
+        $client->translateContentBlock('<p>Hi</p><p>There</p>');
 
         // Only the content-block POST fails, and it fails with an \Error.
         $items = (new \ReflectionClass($client))->getProperty('translatableItems');
@@ -1244,7 +1247,7 @@ class ClientTest extends TestCase
     public function testTranslateContentBlockReturnsSourceHtmlWhenTheApiIsUnreachable()
     {
         $client = $this->clientWithUnreachableApi();
-        $html = '<div><p>Hello</p></div>';
+        $html = '<div><p>Hello</p><p>World</p></div>';
 
         $this->assertStringContainsString('Hello', $client->translateContentBlock($html));
     }
@@ -2093,9 +2096,9 @@ class ClientTest extends TestCase
     {
         $client = $this->clientWithCatalog(['UI' => []]);
         $parser = new \Langsys\SDK\Html\HtmlParser();
-        $expected = $parser->generateCustomId('UI', ['Buy now']);
+        $expected = $parser->generateCustomId('UI', ['Buy now', 'Later']);
 
-        $rendered = $client->translateContentBlock('<div class="card"><p>Buy now</p></div>', 'UI');
+        $rendered = $client->translateContentBlock('<div class="card"><p>Buy now</p><p>Later</p></div>', 'UI');
 
         $this->assertStringContainsString('data-ls-contentblock="' . $expected . '"', $rendered);
         $this->assertStringContainsString('class="card"', $rendered, 'the host element is otherwise untouched');
@@ -2130,7 +2133,7 @@ class ClientTest extends TestCase
         $client = $this->clientWithCatalog(['UI' => []]);
 
         $rendered = $client->translateContentBlock(
-            '<div ' . $attribute . '="theirs"><p>Buy now</p></div>',
+            '<div ' . $attribute . '="theirs"><p>Buy now</p><p>Later</p></div>',
             'UI'
         );
 
@@ -2160,7 +2163,7 @@ class ClientTest extends TestCase
     {
         $client = $this->clientWithUnreachableApi();
 
-        $rendered = $client->translateContentBlock('<div><p>Buy now</p></div>', 'UI');
+        $rendered = $client->translateContentBlock('<div><p>Buy now</p><p>Later</p></div>', 'UI');
 
         $this->assertStringNotContainsString('data-ls-contentblock', $rendered);
     }
@@ -2235,7 +2238,7 @@ class ClientTest extends TestCase
 
         $this->assertStringContainsString(
             'data-ls-contentblock=',
-            $client->translateContentBlock('<div><p>Buy now</p></div>', 'UI')
+            $client->translateContentBlock('<div><p>Buy now</p><p>Later</p></div>', 'UI')
         );
     }
 
@@ -2253,11 +2256,11 @@ class ClientTest extends TestCase
         // translations are actually stored. A flat phrase catalog never
         // resolves here and would make the assertion below measure nothing.
         $parser = new \Langsys\SDK\Html\HtmlParser();
-        $blockId = $parser->generateCustomId('UI', ['Buy now']);
+        $blockId = $parser->generateCustomId('UI', ['Buy now', 'Later']);
 
-        $client = $this->clientWithCatalog(['UI' => [$blockId => ['Buy now' => 'Compra ya']]]);
+        $client = $this->clientWithCatalog(['UI' => [$blockId => ['Buy now' => 'Compra ya', 'Later' => 'Luego']]]);
 
-        $rendered = $client->translateContentBlock("<p>\u{00A0}Buy now\u{00A0}</p>", 'UI');
+        $rendered = $client->translateContentBlock("<p>\u{00A0}Buy now\u{00A0}</p><p>Later</p>", 'UI');
 
         $this->assertStringContainsString('Compra ya', $rendered, 'sanity: the run translated');
         $this->assertMatchesRegularExpression(
@@ -2351,13 +2354,13 @@ class ClientTest extends TestCase
     public function testABlockAuthoredWithPercentPlaceholdersResolves()
     {
         $parser = new \Langsys\SDK\Html\HtmlParser();
-        $id = $parser->generateCustomId('UI', ['Hello {name}']);
+        $id = $parser->generateCustomId('UI', ['Hello {name}', 'Bye']);
 
-        $client = $this->clientWithCatalog(['UI' => [$id => ['Hello {name}' => 'Hola {name}']]]);
+        $client = $this->clientWithCatalog(['UI' => [$id => ['Hello {name}' => 'Hola {name}', 'Bye' => 'Adios']]]);
 
         $this->assertStringContainsString(
             'Hola Sarah',
-            $client->translateContentBlock('<p>Hello %name%</p>', 'UI', ['name' => 'Sarah'])
+            $client->translateContentBlock('<p>Hello %name%</p><p>Bye</p>', 'UI', ['name' => 'Sarah'])
         );
     }
 
@@ -2400,10 +2403,10 @@ class ClientTest extends TestCase
     public function insignificantEdgeTextProvider()
     {
         return [
-            'trailing newline'   => ["<strong>Buy now</strong>\n"],
-            'leading newline'    => ["\n<strong>Buy now</strong>"],
-            'both, and indented' => ["\n    <strong>Buy now</strong>\n"],
-            'non-breaking only'  => ["<strong>Buy now</strong>\u{00A0}"],
+            'trailing newline'   => ["<strong>Buy <em>now</em></strong>\n"],
+            'leading newline'    => ["\n<strong>Buy <em>now</em></strong>"],
+            'both, and indented' => ["\n    <strong>Buy <em>now</em></strong>\n"],
+            'non-breaking only'  => ["<strong>Buy <em>now</em></strong>\u{00A0}"],
         ];
     }
 

@@ -651,6 +651,46 @@ class HtmlParser
     }
 
     /**
+     * Tokenize an HTML fragment as one unit (TOK-6): the unit a
+     * translateContentBlock() call or a registered fragment wraps.
+     *
+     * @param string $html
+     * @return array{tokens: string[], textNodes: int}
+     */
+    public function fragmentUnit($html)
+    {
+        $tokens = [];
+        $textNodes = 0;
+
+        if (is_string($html) && $html !== '') {
+            $internalErrors = libxml_use_internal_errors(true);
+
+            $doc = new DOMDocument();
+            $doc->loadHTML('<?xml encoding="UTF-8"><div>' . $html . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+
+            libxml_clear_errors();
+            libxml_use_internal_errors($internalErrors);
+
+            $this->walkNode($doc->documentElement, $tokens, $textNodes);
+        }
+
+        return ['tokens' => $tokens, 'textNodes' => $textNodes];
+    }
+
+    /**
+     * Whether a unit registers as a phrase (TOK-6): exactly one token, and that
+     * token is its one non-whitespace text node. Anything else - several
+     * tokens, or one token held in an attribute - is a content block.
+     *
+     * @param array{tokens: string[], textNodes: int} $unit
+     * @return bool
+     */
+    public static function isPhraseUnit(array $unit)
+    {
+        return count($unit['tokens']) === 1 && $unit['textNodes'] === 1;
+    }
+
+    /**
      * The tokens an element carries on itself - its translatable attributes and
      * a button's value - without its content.
      *

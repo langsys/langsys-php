@@ -495,7 +495,7 @@ class PageTranslator
 
         $itemCategory = $effectiveCategory !== null ? $effectiveCategory : '__uncategorized__';
 
-        if (count($unit['tokens']) === 1 && $unit['textNodes'] === 1) {
+        if (HtmlParser::isPhraseUnit($unit)) {
             $phrases[] = [
                 'text' => $unit['tokens'][0],
                 'element' => $element,

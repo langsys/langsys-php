@@ -2213,4 +2213,17 @@ class PageTranslatorTest extends TestCase
             }
         }
     }
+
+    /**
+     * A marked content block holding one phrase still flushes as a block: the
+     * page queues it under its id, and a named block registers as one.
+     */
+    public function testAMarkedOnePhraseBlockFlushesAsABlock(): void
+    {
+        $items = $this->registeredPayloadFor('<html><body><div data-ls-contentblock><p>Hello</p></div></body></html>');
+
+        $this->assertCount(1, $items);
+        $this->assertSame('content_block', $items[0]['type']);
+        $this->assertSame([['phrase' => 'Hello']], $items[0]['phrases']);
+    }
 }
