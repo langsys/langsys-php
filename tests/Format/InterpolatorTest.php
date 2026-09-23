@@ -565,6 +565,40 @@ class InterpolatorTest extends TestCase
     }
 
     /**
+     * A pattern that parses can still fail to format: `{count}` written inside
+     * the branches of `{count, plural, ...}` declares one argument with two
+     * types, and intl's format() returns false (U_ARGUMENT_TYPE_MISMATCH). The
+     * failure is logged with intl's error, and the render keeps the phrase's
+     * words and the supplied value, never an empty string.
+     */
+    public function testAFormatterFailureIsLoggedAndNeverRendersEmpty()
+    {
+        $this->requireIntl();
+
+        $logger = new SpyLogger();
+        $interpolator = new Interpolator($logger);
+
+        $pattern = 'You have {count, plural, one {{count} car} other {{count} cars}}';
+
+        $this->assertFalse(
+            \MessageFormatter::create('es', $pattern)->format(['count' => 3]),
+            'the vector must make intl fail at format time'
+        );
+
+        $result = $interpolator->interpolate($pattern, ['count' => 3], 'es');
+
+        $this->assertStringContainsString('You have', $result);
+        $this->assertStringContainsString('3 cars', $result);
+
+        $warnings = array_values(array_filter($logger->entries, function ($entry) {
+            return $entry['level'] === 'warning';
+        }));
+        $this->assertCount(1, $warnings, 'the formatter failure must be logged');
+        $this->assertSame($pattern, $warnings[0]['context']['phrase']);
+        $this->assertStringContainsString('U_ARGUMENT_TYPE_MISMATCH', $warnings[0]['context']['intl_error']);
+    }
+
+    /**
      * The interpolation reference fixtures, asserted against by other Langsys
      * SDKs so a shared catalog renders the same sentence everywhere.
      *

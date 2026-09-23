@@ -119,6 +119,11 @@ class ClientMigrationTest extends TestCase
             return $entry['level'] === 'debug' && isset($entry['context']['argument']) && $entry['context']['argument'] === 'checkout.sumbit';
         });
         $this->assertNotEmpty($logged, 'the miss is visible at debug');
+
+        // translate() is Langsys t(): a miss is already Langsys syntax, so a
+        // Laravel-shaped argument registers exactly as written.
+        $client->translate('Hello :name', null, '__uncategorized__', null, ['name' => 'Ana']);
+        $this->assertContains(['__uncategorized__', 'Hello :name'], $this->queued($client));
     }
 
     /**
