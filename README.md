@@ -1329,6 +1329,10 @@ vendor/bin/phpunit tests/ConfigTest.php
 vendor/bin/phpunit --coverage-text
 ```
 
+The contract tests in `tests/Contract` run against a shared double of the Langsys API
+(`tests/contract-fixture/`) and need Node 18 or later; without Node they are skipped.
+
+
 ### Test Structure
 
 ```
