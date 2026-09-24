@@ -53,7 +53,9 @@ final class MessageTemplate
         $template = (string) $template;
 
         $filled = preg_replace_callback(self::MARKER_PATTERN, function ($match) use ($params) {
-            if (!array_key_exists($match[1], $params)) {
+            // A missing param stays its visible marker, and a present-but-null
+            // one is missing (ICU-2): never an empty gap in the sentence.
+            if (!array_key_exists($match[1], $params) || $params[$match[1]] === null) {
                 return $match[0];
             }
 

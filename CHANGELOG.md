@@ -200,6 +200,9 @@ its id or re-registers it.
 
 ### Fixed
 
+- **A server message param that is null keeps its marker.** Filling
+  `At least {min} characters.` with `min => null` now gives `At least {min}
+  characters.`, as a missing param does, instead of an empty gap.
 - **A server message that puts translatable text in a marker is reported.**
   When a message is translated or emitted and a marker's value is itself a
   phrase in the project's catalog, such as a status the app also translates,
