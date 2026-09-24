@@ -1594,11 +1594,14 @@ class Client
      * value, then Accept-Language negotiated against the project's locales,
      * else the base locale. Every candidate is validated against the project's
      * base and target locales, and an unsupported one falls through. Sends the
-     * Vary header the choice requires, and never writes a cookie.
+     * Vary header the choice requires, unless `send_vary` is false - for a
+     * binding that puts the returned `vary` on its own response - and never
+     * writes a cookie.
      *
      * @param array|null $request path, host, query, cookies, session,
      *                            accept_language; read from PHP's superglobals when null
-     * @param array|null $options Overrides the `request_locale` option
+     * @param array|null $options Overrides the `request_locale` option; takes
+     *                            RequestLocale's keys plus `send_vary`
      * @return array{locale: string|null, source: string, vary: string|null}
      */
     public function resolveRequestLocale(array $request = null, array $options = null)
@@ -1614,14 +1617,16 @@ class Client
         $base = isset($project['base_locale']) ? $project['base_locale'] : null;
         $served = array_merge($base === null ? [] : [$base], isset($project['target_locales']) && is_array($project['target_locales']) ? $project['target_locales'] : []);
 
+        $options = $options !== null ? $options : $this->requestLocaleOptions;
+
         $result = RequestLocale::resolve(
             $served,
             $base,
             $request !== null ? $request : $this->currentRequest(),
-            $options !== null ? $options : $this->requestLocaleOptions
+            $options
         );
 
-        if ($result['vary'] !== null) {
+        if ($result['vary'] !== null && !(isset($options['send_vary']) && $options['send_vary'] === false)) {
             $this->sendVaryHeader($result['vary']);
         }
 

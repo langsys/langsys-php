@@ -233,7 +233,8 @@ its id or re-registers it.
   not serve became the locale and every lookup failed. The response carries
   `Vary: Cookie` or `Vary: Accept-Language` when those decided. The names and an
   app resolver are set with the `request_locale` option, and
-  `resolveRequestLocale()` exposes the decision.
+  `resolveRequestLocale()` exposes the decision; `'send_vary' => false` leaves the
+  `Vary` header to a framework that sets it on its own response.
 - **An outage of the translations API is not paid for on every request.** A
   failed catalog fetch is remembered per locale for 3 seconds, doubling on each
   consecutive failure up to 5 minutes, and cleared by the first success. Inside

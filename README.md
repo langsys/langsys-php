@@ -176,6 +176,8 @@ $client = new Client($key, $project, ['request_locale' => [
     'query_param' => 'lang',
     'cookie' => 'site_lang',
     // 'resolver' => fn (array $request) => ['locale' => $request['query']['l'] ?? null, 'from' => 'url'],
+    // A framework that sets Vary on its own response: take it from the result instead
+    // 'send_vary' => false,
 ]]);
 
 // Chained usage

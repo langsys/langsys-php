@@ -188,4 +188,47 @@ class RequestLocaleTest extends TestCase
         $this->assertSame('es-es', $client->getLocale());
         $this->assertSame([], $client->vary);
     }
+
+    /**
+     * A binding that sets Vary on its own response turns the Client's off;
+     * the decision still comes back, Vary included.
+     */
+    public function testSendVaryFalseReturnsTheDecisionAndSendsNothing(): void
+    {
+        $client = $this->client();
+
+        $result = $client->resolveRequestLocale(['cookies' => ['lang' => 'fr']], ['cookie' => 'lang', 'send_vary' => false]);
+
+        $this->assertSame(['locale' => 'fr-fr', 'source' => 'cookie', 'vary' => 'Cookie'], $result);
+        $this->assertSame([], $client->vary);
+    }
+
+    public function testSendVaryFalseInTheClientOptionAppliesToGetLocale(): void
+    {
+        $http = new MockHttpClient();
+        $http->setResponse('GET', 'authorize-project/project-id', ['data' => [
+            'key_type' => 'read', 'write_enabled' => false, 'base_locale' => 'en-us', 'target_locales' => ['es-es', 'fr-fr'],
+        ]]);
+
+        $client = new class ('test-api-key', 'project-id', ['cache' => new NullCache(), 'request_locale' => ['send_vary' => false]]) extends Client {
+            public $vary = [];
+
+            protected function sendVaryHeader($value)
+            {
+                $this->vary[] = $value;
+            }
+
+            protected function currentRequest()
+            {
+                return ['accept_language' => 'es'];
+            }
+        };
+
+        $prop = new \ReflectionProperty(Client::class, 'http');
+        $prop->setAccessible(true);
+        $prop->setValue($client, $http);
+
+        $this->assertSame('es-es', $client->getLocale());
+        $this->assertSame([], $client->vary);
+    }
 }
