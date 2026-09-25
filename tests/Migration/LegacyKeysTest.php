@@ -149,15 +149,48 @@ class LegacyKeysTest extends TestCase
         $this->assertSame('{count, plural, =0 {None} =1 {One} other {# items}}', $laravel->resolve('cart.count')['phrase'], 'a PHP array file is laravel by default');
     }
 
-    public function testAnUnknownFormatIsReportedAndReadAsPlain(): void
+    /**
+     * MIG-7: a format this SDK does not read is refused when the configuration
+     * loads, naming the format and the file - never read as plain.
+     *
+     * @dataProvider unreadFormatProvider
+     */
+    public function testAFormatThisSdkDoesNotReadIsRefusedAtLoad($entry, array $named): void
     {
-        $json = $this->json('app/en.json', ['cart' => ['label' => 'car | cars']]);
-        $keys = new LegacyKeys(['files' => [['path' => $json, 'format' => 'yaml']]]);
+        try {
+            new LegacyKeys(['files' => [$entry]]);
+            $this->fail('the file is refused');
+        } catch (\Langsys\SDK\Exception\LangsysException $e) {
+            foreach ($named as $expected) {
+                $this->assertStringContainsString($expected, $e->getMessage());
+            }
+        }
+    }
 
-        $this->assertSame('car | cars', $keys->resolve('cart.label')['phrase']);
-        $this->assertNotEmpty(array_filter($keys->problems(), function ($p) {
-            return $p['key'] === null && strpos($p['issue'], 'yaml') !== false;
-        }));
+    public function unreadFormatProvider(): array
+    {
+        return [
+            'an unknown declared format' => [['path' => 'app/en.json', 'format' => 'yaml'], ['yaml', 'app/en.json']],
+            'gettext by declaration' => [['path' => 'app/en.json', 'format' => 'gettext'], ['gettext', 'app/en.json']],
+            'rails-i18n by type' => ['config/locales/en.yml', ['rails-i18n', 'config/locales/en.yml']],
+            'gettext by type' => ['locale/django.po', ['gettext', 'locale/django.po']],
+            'a .mo names its .po' => ['locale/django.mo', ['locale/django.mo', 'locale/django.po']],
+            'a namespace file too' => [['path' => 'vendor/x.yml'], ['rails-i18n', 'vendor/x.yml']],
+        ];
+    }
+
+    public function testEveryFormatThisSdkReadsLoads(): void
+    {
+        foreach (['laravel', 'plain', 'vue-i18n', 'i18next'] as $format) {
+            $this->assertInstanceOf(LegacyKeys::class, new LegacyKeys(['files' => [['path' => 'app/en.json', 'format' => $format]]]));
+        }
+        $this->assertInstanceOf(LegacyKeys::class, new LegacyKeys(['files' => ['lang/en/app.php', 'lang/en.json']]));
+    }
+
+    public function testANamespacedFileIsRefusedToo(): void
+    {
+        $this->expectException(\Langsys\SDK\Exception\LangsysException::class);
+        new LegacyKeys(['namespaces' => ['courier' => ['files' => ['vendor/courier/en.yml']]]]);
     }
 
     public function testAnUnrecognisedValueResolvesAsWrittenAndIsReported(): void

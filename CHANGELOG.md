@@ -200,6 +200,16 @@ its id or re-registers it.
 
 ### Fixed
 
+- **A migration file in a format this SDK does not read is refused.** A file
+  declared, or typed, as anything but `laravel`, `plain`, `vue-i18n` or `i18next`
+  (a Rails YAML file, a gettext `.po`, an unknown name) now makes the `Client`
+  constructor throw, naming the format and the file; a compiled `.mo` names its
+  `.po`. Before, it was read as plain text and reported. More placeholder forms
+  convert in migrated values: `%{name}`, `%(name)s` and `%(name)d` become
+  `{name}`, `%%` becomes `%`, and a formatted or positional `%` placeholder is
+  registered as written with a warning. A JSON file may declare a `namespace`,
+  and an i18next root key pairs with its suffixes. `resolveLegacyKey()` also
+  returns `recognised` and `issue`.
 - **An exclusive upper bound and the inclusive bounds get a message code.**
   `MessageCodes::forSize()` now maps `lt` to the upper bound (`too_long`,
   `too_large`, `too_many` by type) and `ge`/`le` to the same codes as

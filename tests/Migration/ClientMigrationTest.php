@@ -195,7 +195,7 @@ class ClientMigrationTest extends TestCase
     {
         $client = $this->inMode();
 
-        $this->assertSame(['phrase' => 'Place order', 'category' => 'checkout', 'key' => 'checkout.submit', 'file' => $this->dir . '/lang/en.json'], $client->resolveLegacyKey('checkout.submit'));
+        $this->assertSame(['phrase' => 'Place order', 'category' => 'checkout', 'key' => 'checkout.submit', 'file' => $this->dir . '/lang/en.json', 'recognised' => true, 'issue' => null], $client->resolveLegacyKey('checkout.submit'));
         $this->assertSame('UI', $client->resolveLegacyKey('checkout.submit', 'UI')['category']);
         $this->assertNull($client->resolveLegacyKey('Pay now'));
     }

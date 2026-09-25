@@ -247,6 +247,12 @@ class Client
         // runtime too, or those users hit an obscure failure inside the ICU code
         // with nothing pointing at the cause. Host frameworks that surface the
         // SDK logger themselves can silence the error_log leg.
+        // MIG-7: a migration file in a format this SDK does not read is refused
+        // here, when the configuration loads, not inside a render.
+        if ($this->config->getMigration() !== null) {
+            LegacyKeys::refuseUnreadFormats($this->config->getMigration());
+        }
+
         if (isset($options['request_locale']) && is_array($options['request_locale'])) {
             $this->requestLocaleOptions = $options['request_locale'];
         }
@@ -1001,7 +1007,7 @@ class Client
      *
      * @param string $key
      * @param string|null $category
-     * @return array{phrase: string, category: string|null, key: string, file: string}|null
+     * @return array{phrase: string, category: string|null, key: string, file: string, recognised: bool, issue: string|null}|null
      */
     public function resolveLegacyKey($key, $category = null)
     {
@@ -1017,6 +1023,8 @@ class Client
             'category' => ($category === null || $category === '' || $category === self::UNCATEGORIZED) ? $entry['category'] : $category,
             'key' => $entry['key'],
             'file' => $entry['file'],
+            'recognised' => $entry['recognised'],
+            'issue' => $entry['issue'],
         ];
     }
 

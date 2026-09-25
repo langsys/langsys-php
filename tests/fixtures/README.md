@@ -10,6 +10,7 @@ langsys-js-typescript as well as this SDK:
 | `canonicalization-reference.json` | the cross-SDK TOK-1/TOK-2/TOK-4 vectors: HTML -> tokens -> custom_id, with **each lane's measured output** beside the expectation |
 | `parse-model-reference.json` | where libxml2 and the JS family build different DOMs from the same bytes, and what that does to the key |
 | `custom-id-reference.json` | category + tokens -> custom_id |
+| `mig-vectors.json` | key migration (MIG-2, MIG-4, MIG-7): value -> phrase by format, plural forms, entry-point calls, key -> resolution, unsupported formats -> refusal |
 | `server-message-vectors.json` | server messages (MSG-1, MSG-4): template -> markers, template + params -> filled text, response body -> entries, entry + catalog -> rendered text |
 
 **Why one per boundary rather than one suite.** Every cross-SDK defect found so
@@ -218,7 +219,8 @@ once already, and a path citation cannot tell you whether the bytes changed.
 | File | Origin | Blob |
 |---|---|---|
 | `legacy-custom-id-reference.json` | `langsys-python` | `dc5556466dc54fe82e81ac9fdbf4549b2b76e7ce` |
-| `canonicalization-reference.json` | `langsys-js-typescript` @ `86871033` | `fc4bb6efa7826a37f83ca6f8f7764e88370232d9` |
+| `canonicalization-reference.json` | `langsys-js-typescript` @ `2d57cdd9` | `cae284dfd6d291ab7f95b2f620f0c0b189362829` |
+| `mig-vectors.json` | `langsys-js-typescript` @ `2d57cdd9` | `822dcc82ba9ddfef593d9cf173bbd6748de02947` |
 | `server-message-vectors.json` | `langsys-js-typescript` @ `86871033` | `c8125549cfee0f5286f79a8cbc194cd30ccd446e` |
 
 `tokenizer-reference.json` is authored here. Its blob is recorded as a VALUE, not

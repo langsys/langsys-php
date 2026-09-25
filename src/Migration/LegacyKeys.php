@@ -2,6 +2,8 @@
 
 namespace Langsys\SDK\Migration;
 
+use Langsys\SDK\Exception\LangsysException;
+
 /**
  * Resolves legacy i18n keys against an app's kept source-language files
  * (MIG-2, MIG-5, MIG-7).
@@ -37,10 +39,97 @@ final class LegacyKeys
 
     /**
      * @param array $config ['files' => [...], 'fallback_files' => [...], 'namespaces' => [ns => [...] | ['files' => [...], 'fallback_files' => [...]]]]
+     * @throws LangsysException When a configured file is in a format this SDK does not read (MIG-7)
      */
     public function __construct(array $config)
     {
         $this->config = $config;
+        self::refuseUnreadFormats($config);
+    }
+
+    /**
+     * MIG-7: a file is read in the formats this SDK's ecosystem uses - laravel
+     * and plain - and vue-i18n and i18next besides. Any other format is refused
+     * when the configuration is loaded, naming the format and the file, never
+     * read as something it is not. A `.mo` is refused for every format: it is
+     * the compiled artifact of a `.po`, and the source file is the one to name.
+     * Reads no file.
+     *
+     * @param array $config
+     * @return void
+     * @throws LangsysException
+     */
+    public static function refuseUnreadFormats(array $config)
+    {
+        $entries = [];
+        foreach (['files', 'fallback_files'] as $tier) {
+            $entries = array_merge($entries, isset($config[$tier]) && is_array($config[$tier]) ? array_values($config[$tier]) : []);
+        }
+        foreach (isset($config['namespaces']) && is_array($config['namespaces']) ? $config['namespaces'] : [] as $namespace) {
+            $tiers = is_array($namespace) && (isset($namespace['files']) || isset($namespace['fallback_files'])) ? $namespace : ['files' => $namespace];
+            foreach (['files', 'fallback_files'] as $tier) {
+                $entries = array_merge($entries, isset($tiers[$tier]) && is_array($tiers[$tier]) ? array_values($tiers[$tier]) : []);
+            }
+        }
+
+        foreach ($entries as $entry) {
+            $path = is_array($entry) ? (isset($entry['path']) ? (string) $entry['path'] : '') : (string) $entry;
+            $format = self::formatOf($entry);
+
+            if (strtolower(pathinfo($path, PATHINFO_EXTENSION)) === 'mo') {
+                throw new LangsysException(sprintf(
+                    'The migration file %s is a compiled gettext catalog; configure its source, %s, instead.',
+                    $path,
+                    substr($path, 0, -3) . '.po'
+                ));
+            }
+
+            if (!in_array($format, LegacyValue::FORMATS, true)) {
+                throw new LangsysException(sprintf(
+                    'The migration file %s is in the %s format, which this SDK does not read; it reads %s.',
+                    $path,
+                    $format,
+                    implode(', ', LegacyValue::FORMATS)
+                ));
+            }
+        }
+    }
+
+    /**
+     * A file entry's format: the one it declares, else its type's - a PHP
+     * array is laravel, YAML rails-i18n, a .po or .mo gettext, and anything
+     * else, JSON included, plain.
+     *
+     * @param string|array $entry
+     * @return string
+     */
+    private static function formatOf($entry)
+    {
+        if (is_array($entry) && isset($entry['format'])) {
+            return (string) $entry['format'];
+        }
+
+        $path = is_array($entry) ? (isset($entry['path']) ? (string) $entry['path'] : '') : (string) $entry;
+        $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $byType = ['php' => 'laravel', 'yml' => 'rails-i18n', 'yaml' => 'rails-i18n', 'po' => 'gettext', 'mo' => 'gettext'];
+
+        return isset($byType[$extension]) ? $byType[$extension] : 'plain';
+    }
+
+    /**
+     * The group a file's keys sit under: a PHP array file's basename, or the
+     * namespace a JSON file declares. Null when its keys are its own.
+     *
+     * @param array $entry
+     * @return string|null
+     */
+    private function group(array $entry)
+    {
+        if ($this->isPhp($entry['path'])) {
+            return basename($entry['path'], '.php');
+        }
+
+        return $entry['namespace'];
     }
 
     /**
@@ -114,10 +203,6 @@ final class LegacyKeys
 
         foreach ($this->ownTiers() as $prefix => $files) {
             foreach ($files as $entry) {
-                if ($entry['invalid'] !== null) {
-                    $problems[] = ['file' => $entry['path'], 'key' => null, 'issue' => 'declares the unknown format "' . $entry['invalid'] . '"', 'fix' => 'declare one of ' . implode(', ', LegacyValue::FORMATS)];
-                }
-
                 foreach ($this->leaves($entry) as $leaf => $value) {
                     $converted = is_array($value) ? LegacyValue::fromPluralForms($value) : LegacyValue::convert($value, $entry['format']);
 
@@ -193,9 +278,9 @@ final class LegacyKeys
             return null;
         }
 
-        if ($this->isPhp($path)) {
-            $group = basename($path, '.php');
+        $group = $this->group($entry);
 
+        if ($group !== null) {
             if (strpos($key, $group . '.') !== 0) {
                 return null;
             }
@@ -203,6 +288,16 @@ final class LegacyKeys
             $value = self::valueAt($data, explode('.', substr($key, strlen($group) + 1)), $pairs);
 
             return $value === null ? null : [$value, $group];
+        }
+
+        // In an i18next file a root key pairs too (`items_one` at the top), and
+        // its pair outranks its bare string: `item` beside `item_plural` is the
+        // plural's one form, not the phrase.
+        if ($pairs && strpos($key, '.') === false) {
+            $forms = self::valueAt($data, [$key], true);
+            if (is_array($forms)) {
+                return [$forms, null];
+            }
         }
 
         if (array_key_exists($key, $data) && is_string($data[$key])) {
@@ -282,7 +377,8 @@ final class LegacyKeys
             return [];
         }
 
-        $prefix = $this->isPhp($entry['path']) ? basename($entry['path'], '.php') . '.' : '';
+        $group = $this->group($entry);
+        $prefix = $group === null ? '' : $group . '.';
         $out = [];
         $this->collectLeaves($data, $prefix, $out, $entry['format'] === 'i18next');
 
@@ -403,14 +499,11 @@ final class LegacyKeys
 
         foreach (array_values($entries) as $entry) {
             $path = is_array($entry) ? (isset($entry['path']) ? (string) $entry['path'] : '') : (string) $entry;
-            $declared = (is_array($entry) && isset($entry['format'])) ? (string) $entry['format'] : null;
-            $default = $this->isPhp($path) ? 'laravel' : 'plain';
-            $valid = $declared === null || in_array($declared, LegacyValue::FORMATS, true);
 
             $out[] = [
                 'path' => $path,
-                'format' => ($declared !== null && $valid) ? $declared : $default,
-                'invalid' => $valid ? null : $declared,
+                'format' => self::formatOf($entry),
+                'namespace' => (is_array($entry) && isset($entry['namespace']) && $entry['namespace'] !== '') ? (string) $entry['namespace'] : null,
             ];
         }
 

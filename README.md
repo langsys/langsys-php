@@ -1239,13 +1239,20 @@ echo $client->translate('checkout.submit'); // looks up "Place order" in your fi
   Laravel reads it: only the placeholders the call passes convert, a `|` is a plural
   only through `trans_choice()`, and `:Name`/`:NAME` stay as written with a warning.
   So `__('Hello :name', ['name' => $n])` and `translate('Hello {name}')` are one phrase.
-- **Placeholders are converted in every file.** `:name`, `{{name}}` and `{name}` all
-  become `{name}`.
+- **Placeholders are converted in every file.** `:name`, `{{name}}`, `{name}`, `%{name}`,
+  `%(name)s` and `%(name)d` all become `{name}`, and `%%` is a literal `%`. A placeholder
+  carrying number formatting (`%.2f`, `%(amount).2f`) or no name (`%s`) is registered as
+  written, with a warning.
 - **Plurals are converted by the file's format**: `laravel`, `vue-i18n`, `i18next` or
   `plain`. The frameworks read the same characters differently (`car | cars` is a
   plural in vue-i18n and plain text in Laravel), so each file says which one wrote it.
   A PHP array file is `laravel` unless you say otherwise; a JSON file is `plain`, which
-  converts no plurals, so declare the format of any JSON file that holds them.
+  converts no plurals, so declare the format of any JSON file that holds them. Any other
+  format, such as a Rails YAML file or a gettext `.po`, is refused when the `Client` is
+  created, with an error naming the format and the file.
+- **A JSON file can sit under a namespace**: `['path' => 'locales/en/cart.json',
+  'namespace' => 'cart']` answers `cart.items.title` from `{"items": {"title": ...}}`, as
+  a PHP array file answers keys under its own name.
 - **Forms that can't be converted are registered as written, with a warning**: a
   capitalising placeholder like `:Name`, or a plural range with no exact equivalent.
 - **A framework's own bundled strings go in `fallback_files`**, which answer only

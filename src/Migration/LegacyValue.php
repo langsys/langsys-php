@@ -6,7 +6,10 @@ namespace Langsys\SDK\Migration;
  * Turns a legacy i18n value into Langsys/ICU source text (MIG-4).
  *
  * Placeholders convert the same way whatever the file's format: `{{name}}`,
- * `{name}` and Laravel's `:name` become `{name}`. Plurals convert by the format
+ * `{name}`, Laravel's `:name`, Rails' `%{name}` and Python's `%(name)s` and
+ * `%(name)d` become `{name}`, and `%%` is a literal `%`. A printf form carrying
+ * formatting `{name}` cannot express (`%<name>.2f`, `%(name).2f`) or naming
+ * nothing (a positional `%s`) is returned as written and flagged. Plurals convert by the format
  * the file declares, because the frameworks read the same characters
  * differently - vue-i18n reserves `|`, Laravel's `__()` treats it as text - and
  * each conversion preserves its framework's own selection:
@@ -31,8 +34,17 @@ final class LegacyValue
     /** CLDR plural categories, in ICU's customary order. */
     const CATEGORIES = ['zero', 'one', 'two', 'few', 'many', 'other'];
 
-    /** The formats a source file can declare (MIG-7). */
+    /** The formats this SDK reads (MIG-7): its ecosystem's laravel and plain, and vue-i18n and i18next besides. */
     const FORMATS = ['laravel', 'vue-i18n', 'i18next', 'plain'];
+
+    /**
+     * Percent placeholders, in one alternation so `%%` is consumed before
+     * anything reads the character after it: `%%`; Rails' `%{name}` (1); Python's
+     * `%(name)s`/`%(name)d` (2); and the forms `{name}` cannot express - Rails'
+     * `%<name>` with formatting, Python's `%(name)` with formatting, and a
+     * positional `%s`, `%d`, `%.2f`.
+     */
+    const PRINTF_PATTERN = '/%%|%\{([A-Za-z_][A-Za-z0-9_]*)\}|%\(([A-Za-z_][A-Za-z0-9_]*)\)[sd](?![A-Za-z0-9_])|%<[A-Za-z_][A-Za-z0-9_]*>[-+ 0#]*\d*(?:\.\d+)?[A-Za-z]|%\([A-Za-z_][A-Za-z0-9_]*\)[-+ 0#]*\d*(?:\.\d+)?[A-Za-z]|%(?:\d+\$)?[-+0#]*\d*(?:\.\d+)?[sdifuxXeEgGc](?![A-Za-z])/';
 
     /**
      * @param string $value
@@ -45,6 +57,10 @@ final class LegacyValue
 
         if (self::hasCaseTransform($value)) {
             return self::unrecognised($value, 'uses a case-transforming placeholder (:Name or :NAME), which ICU cannot express');
+        }
+
+        if (self::hasUnconvertiblePrintf($value)) {
+            return self::unrecognised($value, 'uses a printf placeholder with formatting or no name (%.2f, %s), which {name} cannot express');
         }
 
         if (strpos($value, '|') === false) {
@@ -281,8 +297,38 @@ final class LegacyValue
     private static function placeholders($text)
     {
         $text = preg_replace('/\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/', '{$1}', $text);
+        $text = preg_replace('/(?<![\w:]):([a-z][a-z0-9_]*)/', '{$1}', $text);
 
-        return preg_replace('/(?<![\w:]):([a-z][a-z0-9_]*)/', '{$1}', $text);
+        // `%%` is consumed first, so `%%{name}` stays the literal `%{name}`.
+        return preg_replace_callback(self::PRINTF_PATTERN, function ($m) {
+            if ($m[0] === '%%') {
+                return '%';
+            }
+
+            return isset($m[1]) && $m[1] !== '' ? '{' . $m[1] . '}' : (isset($m[2]) && $m[2] !== '' ? '{' . $m[2] . '}' : $m[0]);
+        }, $text);
+    }
+
+    /**
+     * Whether a value holds a printf placeholder `{name}` cannot express: one
+     * carrying formatting, or a positional one naming nothing.
+     *
+     * @param string $text
+     * @return bool
+     */
+    private static function hasUnconvertiblePrintf($text)
+    {
+        if (!preg_match_all(self::PRINTF_PATTERN, $text, $matches, PREG_SET_ORDER)) {
+            return false;
+        }
+
+        foreach ($matches as $m) {
+            if ($m[0] !== '%%' && (!isset($m[1]) || $m[1] === '') && (!isset($m[2]) || $m[2] === '')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
