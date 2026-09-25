@@ -56,9 +56,11 @@ final class MessageCodes
     ];
 
     /**
-     * The reference's size rules, each onto its side.
+     * The reference's size rules, each onto its side (MSG-2): an exclusive
+     * bound (gt, lt) and an inclusive one (ge, le) are the same condition as
+     * min and max, so they carry the same code.
      */
-    const SIZE_RULE_SIDES = ['min' => 'lower', 'gt' => 'lower', 'max' => 'upper'];
+    const SIZE_RULE_SIDES = ['min' => 'lower', 'gt' => 'lower', 'ge' => 'lower', 'max' => 'upper', 'lt' => 'upper', 'le' => 'upper'];
 
     /**
      * @param mixed $code
@@ -87,7 +89,7 @@ final class MessageCodes
     }
 
     /**
-     * The code for one of the reference's size rules (min, max, gt), or null.
+     * The code for one of the reference's size rules (min, gt, ge, max, lt, le), or null.
      *
      * @param string $rule
      * @param string $type

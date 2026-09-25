@@ -200,6 +200,10 @@ its id or re-registers it.
 
 ### Fixed
 
+- **An exclusive upper bound and the inclusive bounds get a message code.**
+  `MessageCodes::forSize()` now maps `lt` to the upper bound (`too_long`,
+  `too_large`, `too_many` by type) and `ge`/`le` to the same codes as
+  `min`/`max`.
 - **A server message param that is null keeps its marker.** Filling
   `At least {min} characters.` with `min => null` now gives `At least {min}
   characters.`, as a missing param does, instead of an empty gap.

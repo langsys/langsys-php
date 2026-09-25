@@ -38,6 +38,9 @@ class MessageCodesTest extends TestCase
             ['min', 'string', 'too_short'], ['min', 'numeric', 'too_small'], ['min', 'array', 'too_few'], ['min', 'file', 'too_small'],
             ['max', 'string', 'too_long'], ['max', 'numeric', 'too_large'], ['max', 'array', 'too_many'], ['max', 'file', 'too_large'],
             ['gt', 'string', 'too_short'], ['gt', 'numeric', 'too_small'], ['gt', 'array', 'too_few'], ['gt', 'file', 'too_small'],
+            ['ge', 'string', 'too_short'], ['ge', 'numeric', 'too_small'], ['ge', 'array', 'too_few'], ['ge', 'file', 'too_small'],
+            ['lt', 'string', 'too_long'], ['lt', 'numeric', 'too_large'], ['lt', 'array', 'too_many'], ['lt', 'file', 'too_large'],
+            ['le', 'string', 'too_long'], ['le', 'numeric', 'too_large'], ['le', 'array', 'too_many'], ['le', 'file', 'too_large'],
         ];
 
         foreach ($expected as list($rule, $type, $code)) {
