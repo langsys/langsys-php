@@ -1291,6 +1291,12 @@ A snapshot is a cache, never a source. **To refresh one, export it again.** Don'
 it: every snapshot carries a checksum of its contents, and `Snapshot::load()` refuses
 one that has changed since it was exported.
 
+Every Langsys SDK writes and reads the same snapshot format, `langsys-catalog-snapshot`
+version 1, so a snapshot exported here loads in another SDK and the other way round.
+It carries the project's base locale (`$snapshot->baseLocale()`) along with the catalog.
+A load that fails says why: `SnapshotException::getReason()` is `format`, `version`,
+`missing-member` or `checksum`.
+
 ## Error Handling
 
 The SDK throws specific exceptions for different error types:

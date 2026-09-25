@@ -6,8 +6,8 @@ use Langsys\SDK\Snapshot\Snapshot;
 
 /**
  * SNAP-1 against the contract fixture: the export is a client-side filter of
- * `GET /translations/data` by category, carrying exactly what the API returns
- * for the chosen categories and nothing else.
+ * the flat catalog `GET /translations` returns, by category, carrying exactly
+ * what the API returns for the chosen categories and nothing else.
  */
 class SnapshotContractTest extends ContractTestCase
 {
@@ -28,7 +28,7 @@ class SnapshotContractTest extends ContractTestCase
     private function served($locale)
     {
         $context = stream_context_create(['http' => ['header' => "X-Authorization: k-read\r\n", 'ignore_errors' => true]]);
-        $body = json_decode(file_get_contents(self::$baseUrl . '/translations/data?project_id=' . self::PROJECT . '&locale=' . $locale, false, $context), true);
+        $body = json_decode(file_get_contents(self::$baseUrl . '/translations?project_id=' . self::PROJECT . '&locale=' . $locale . '&format=flat', false, $context), true);
 
         return $body['data'];
     }
@@ -41,8 +41,10 @@ class SnapshotContractTest extends ContractTestCase
 
         foreach (['es-es', 'fr-fr'] as $locale) {
             $served = $this->served($locale);
-            $this->assertSame(['UI' => $served['UI'], 'Errors' => $served['Errors']], $snapshot->catalog($locale), $locale);
+            $this->assertSame(['Errors' => $served['Errors'], 'UI' => $served['UI']], $snapshot->catalog($locale), $locale);
         }
+        $this->assertSame('en-us', $snapshot->baseLocale(), 'the project\'s base locale travels with the snapshot');
+        $this->assertSame(['Errors', 'UI'], $snapshot->categories(), 'sorted');
         $this->assertSame(['Save' => 'Guardar', 'abc123' => ['One' => 'Uno', 'Two' => null]], $snapshot->catalog('es-es')['UI'], 'blocks and untranslated entries as served');
         $this->assertArrayNotHasKey('Billing', $snapshot->catalog('es-es'));
     }
@@ -70,7 +72,7 @@ class SnapshotContractTest extends ContractTestCase
             exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($bin) . ' --config=' . escapeshellarg($config) . ' --locale=es-es --category=UI --category=Errors --out=' . escapeshellarg($out) . ' 2>&1', $output, $code);
 
             $this->assertSame(0, $code, implode("\n", $output));
-            $this->assertSame(['UI', 'Errors'], array_keys(Snapshot::load($out)->catalog('es-es')));
+            $this->assertSame(['Errors', 'UI'], array_keys(Snapshot::load($out)->catalog('es-es')));
 
             exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($bin) . ' --config=' . escapeshellarg($config) . ' --locale=es-es --out=' . escapeshellarg($out) . ' 2>&1', $noCategory, $failed);
             $this->assertSame(1, $failed, 'a snapshot names its categories');

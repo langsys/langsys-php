@@ -90,4 +90,31 @@ class SnapshotTest extends TestCase
             @unlink($path);
         }
     }
+
+    /**
+     * The export reads the flat catalog GET /translations returns, the one an
+     * SDK seeds - not the data format, which is shaped differently.
+     */
+    public function testTheExportReadsTheFlatCatalog(): void
+    {
+        $client = $this->mockClient(['UI' => ['Save' => 'Guardar']]);
+        $this->http->setResponse('GET', 'translations/data', ['data' => ['UI' => ['Save' => 'WRONG: the data format']]]);
+
+        $this->assertSame(['UI' => ['Save' => 'Guardar']], Snapshot::export($client, ['es-es'], ['UI'])->catalog('es-es'));
+    }
+
+    /**
+     * Keys order by code point, which PHP's own comparison does not do for two
+     * numeric keys: "10" comes before "9".
+     */
+    public function testNumericKeysOrderByCodePoint(): void
+    {
+        $canonical = Snapshot::canonical([
+            'project_id' => 'p', 'generated_at' => 't', 'base_locale' => 'en',
+            'locales' => ['en'], 'categories' => ['UI'],
+            'catalog' => ['en' => ['UI' => [9 => 'nine', 10 => 'ten', 'a' => 'letter']]],
+        ]);
+
+        $this->assertStringContainsString('{"10":"ten","9":"nine","a":"letter"}', $canonical);
+    }
 }

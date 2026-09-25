@@ -200,6 +200,12 @@ its id or re-registers it.
 
 ### Fixed
 
+- **Snapshots use the one format every Langsys SDK reads.** A snapshot now
+  carries the project's base locale and the flat catalog the SDK loads from
+  `GET /translations`, and its checksum is computed over one canonical
+  serialisation, so a snapshot exported here loads in any other SDK. A refused
+  load names its reason through `SnapshotException::getReason()`. **Snapshots
+  exported before this change do not load: export them again.**
 - **A migration file in a format this SDK does not read is refused.** A file
   declared, or typed, as anything but `laravel`, `plain`, `vue-i18n` or `i18next`
   (a Rails YAML file, a gettext `.po`, an unknown name) now makes the `Client`

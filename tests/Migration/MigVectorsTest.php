@@ -12,20 +12,19 @@ use PHPUnit\Framework\TestCase;
 /**
  * The shared key-migration vectors (MIG-2, MIG-4, MIG-7), authored by
  * langsys-js-typescript and adopted byte-identically
- * (`2d57cdd9:tests/fixtures/mig-vectors.json`, blob
- * `822dcc82ba9ddfef593d9cf173bbd6748de02947`).
+ * (`a639ae8c:tests/fixtures/mig-vectors.json`, blob
+ * `20f2bdd678cb33981e3064e42d43ca62783920ad`).
  *
  * This core reads laravel and plain, its ecosystem's set, and vue-i18n and
  * i18next besides; rows in any of those formats run here. Rows for another
- * ecosystem's formats (rails-i18n, gettext) and entry points (I18n.t, gettext,
- * the JS bridges) are that ecosystem's, `n/a (format)` here, and a file in a
- * format this core does not read is refused at load.
+ * ecosystem's formats (rails-i18n, gettext) are that ecosystem's, `n/a
+ * (format)` here, and a file in a format this core does not read is refused at
+ * load; call rows run for the fixture's `core_entry_points` for php, the others
+ * `n/a (entry point)`.
  */
 class MigVectorsTest extends TestCase
 {
     const READ = ['laravel', 'plain', 'vue-i18n', 'i18next'];
-
-    const OWN_ENTRY_POINTS = ['t', '__', 'trans_choice'];
 
     /**
      * @var string|null
@@ -76,8 +75,10 @@ class MigVectorsTest extends TestCase
 
     public function callProvider(): array
     {
-        return self::rows('calls', function ($row) {
-            return in_array($row['entry_point'], self::OWN_ENTRY_POINTS, true);
+        $own = self::fixture()['core_entry_points']['php'];
+
+        return self::rows('calls', function ($row) use ($own) {
+            return in_array($row['entry_point'], $own, true);
         });
     }
 

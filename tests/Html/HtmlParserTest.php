@@ -336,8 +336,8 @@ class HtmlParserTest extends TestCase
      * The cross-SDK canonicalization vectors (TOK-1, TOK-2, TOK-4).
      *
      * Authored by langsys-js-typescript and adopted byte-identically
-     * (`2d57cdd9:tests/fixtures/canonicalization-reference.json`, blob
-     * `cae284dfd6d291ab7f95b2f620f0c0b189362829`, 32 rows). Each row carries every
+     * (`a639ae8c:tests/fixtures/canonicalization-reference.json`, blob
+     * `34034931872b93e761faea49fb040f3fd8a6b9f5`, 32 rows). Each row carries every
      * lane's MEASURED output alongside the expectation, so the file records
      * where the fleet disagreed rather than only where it should agree — this
      * SDK was 13/19 when the file was first adopted at `6596faf` (blob
@@ -2060,7 +2060,7 @@ class HtmlParserTest extends TestCase
     {
         $vendored = [
             // canonicalization-reference.json needs no exemption any more: re-vendored
-            // at langsys-js-typescript 2d57cdd9 (blob cae284df), which is escaped at source.
+            // at langsys-js-typescript a639ae8c (blob 34034931), which is escaped at source.
             // legacy-custom-id-reference.json, langsys-python
             'dc5556466dc54fe82e81ac9fdbf4549b2b76e7ce' => 'adopted byte-identically from langsys-python',
         ];
