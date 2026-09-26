@@ -96,10 +96,11 @@ final class MessageCatalogCommand
     /**
      * @param MessageSource[] $sources
      * @param Client|null $client Needed only to register
-     * @param array $options `register` and `verbose`
+     * @param array $options `register`, `verbose` and `strict`
      * @param resource|null $out
      * @param resource|null $err
-     * @return int Exit code: 0 when every message is listed (and registered, if asked), 1 otherwise
+     * @return int Exit code: 1 when registering fails, or under `strict` when a
+     *             message cannot be listed; 0 otherwise
      */
     public static function run(array $sources, $client = null, array $options = [], $out = null, $err = null)
     {
@@ -121,11 +122,16 @@ final class MessageCatalogCommand
             fwrite($err, '✗ ' . $problem . "\n");
         }
 
+        // A message that cannot be listed still registers the first time it is
+        // emitted (MSG-8), so it is reported, not failed - unless the app asks
+        // for no untranslated error ever, with --strict (MSG-7).
         if ($catalog->hasProblems()) {
             $count = count($catalog->problems());
-            fwrite($err, $count . ($count === 1 ? ' message cannot' : ' messages cannot') . " be registered ahead of time\n");
+            fwrite($err, $count . ($count === 1 ? ' message cannot' : ' messages cannot') . " be registered ahead of time; each registers the first time it is sent\n");
 
-            return 1;
+            if (!empty($options['strict'])) {
+                return 1;
+            }
         }
 
         if (empty($options['register'])) {

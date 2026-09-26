@@ -116,16 +116,23 @@ class MessageCatalogCommandTest extends TestCase
         $this->assertStringContainsString('The name is required.  SampleApp\\SignupRequest', $this->read($this->out));
     }
 
-    public function testAMessageThatCannotBeListedFailsTheBuildWithAnActionableLine(): void
+    /**
+     * MSG-7: a message that cannot be listed is reported with an actionable
+     * line and the command exits zero - it registers when first sent (MSG-8) -
+     * unless the app asks for a strict build.
+     */
+    public function testAMessageThatCannotBeListedIsReportedAndFailsOnlyUnderStrict(): void
     {
         $source = new ListedSource(self::TEMPLATES, [['SampleApp\\SignupRequest', 'uses a closure rule, which declares no template', 'replace it with a rule that declares its template', 'terms']]);
 
         $code = MessageCatalogCommand::run([$source], null, [], $this->out, $this->err);
         $err = $this->read($this->err);
 
-        $this->assertSame(1, $code);
+        $this->assertSame(0, $code);
         $this->assertStringContainsString('✗ SampleApp\\SignupRequest.terms: uses a closure rule, which declares no template — replace it with a rule that declares its template', $err);
         $this->assertStringContainsString('1 message cannot be registered ahead of time', $err);
+
+        $this->assertSame(1, MessageCatalogCommand::run([$source], null, ['strict' => true], $this->out, $this->err));
     }
 
     public function testRegisterFilesEveryTemplateUnderTheMessagesCategory(): void
@@ -148,11 +155,21 @@ class MessageCatalogCommandTest extends TestCase
         $this->assertStringContainsString('nothing new to register', $this->read($this->out));
     }
 
-    public function testProblemsStopRegistration(): void
+    public function testAReportedMessageDoesNotHoldBackTheListedOnes(): void
     {
         $source = new ListedSource(self::TEMPLATES, [['SampleApp\\SignupRequest', 'has no label', 'add it to attributes()', 'cc_number']]);
 
         $code = MessageCatalogCommand::run([$source], $this->client(['Errors' => []]), ['register' => true], $this->out, $this->err);
+
+        $this->assertSame(0, $code);
+        $this->assertEqualsCanonicalizing(self::TEMPLATES, array_column($this->registered(), 0));
+    }
+
+    public function testStrictRegistersNothingWhenAMessageCannotBeListed(): void
+    {
+        $source = new ListedSource(self::TEMPLATES, [['SampleApp\\SignupRequest', 'has no label', 'add it to attributes()', 'cc_number']]);
+
+        $code = MessageCatalogCommand::run([$source], $this->client(['Errors' => []]), ['register' => true, 'strict' => true], $this->out, $this->err);
 
         $this->assertSame(1, $code);
         $this->assertSame([], $this->registered());
@@ -186,16 +203,19 @@ class MessageCatalogCommandTest extends TestCase
         $this->assertStringContainsString('write', $this->read($this->err));
     }
 
-    public function testTheCliExitsNonZeroOnAProblemAndZeroWhenClean(): void
+    public function testTheCliExitsNonZeroOnAProblemOnlyUnderStrict(): void
     {
         $bin = dirname(__DIR__, 2) . '/bin/langsys-messages';
+        $withProblem = escapeshellarg(dirname(__DIR__) . '/fixtures/messages/with-problem.php');
 
         exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($bin) . ' --config=' . escapeshellarg(dirname(__DIR__) . '/fixtures/messages/clean.php') . ' 2>&1', $cleanOut, $cleanCode);
-        exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($bin) . ' --config=' . escapeshellarg(dirname(__DIR__) . '/fixtures/messages/with-problem.php') . ' 2>&1', $badOut, $badCode);
+        exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($bin) . ' --config=' . $withProblem . ' 2>&1', $badOut, $badCode);
+        exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($bin) . ' --strict --config=' . $withProblem . ' 2>&1', $strictOut, $strictCode);
 
         $this->assertSame(0, $cleanCode, implode("\n", $cleanOut));
         $this->assertStringContainsString('1 message templates', implode("\n", $cleanOut));
-        $this->assertSame(1, $badCode, implode("\n", $badOut));
+        $this->assertSame(0, $badCode, implode("\n", $badOut));
         $this->assertStringContainsString('✗ SampleApp\\Errors\\QuotaError: uses the marker {limit} but has no $limit property to fill it', implode("\n", $badOut));
+        $this->assertSame(1, $strictCode, implode("\n", $strictOut));
     }
 }

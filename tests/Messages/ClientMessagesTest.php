@@ -252,4 +252,20 @@ class ClientMessagesTest extends TestCase
 
         $this->assertFalse($client->hasPendingRegistrations());
     }
+
+    /**
+     * MSG-1 / MSG-5: an entry with only a message has nothing to look up. It is
+     * shown as its message, and nothing is queued for it.
+     */
+    public function testAnEntryWithNoTemplateIsItsMessageAndRegistersNothing(): void
+    {
+        $client = $this->client(['Errors' => []]);
+        $client->setLocale('es-es');
+        $entry = ServerMessage::fromArray(['message' => 'Something went wrong.']);
+
+        $this->assertSame('Something went wrong.', $client->translateMessage($entry));
+        $client->emitMessage($entry);
+
+        $this->assertFalse($client->hasPendingRegistrations());
+    }
 }

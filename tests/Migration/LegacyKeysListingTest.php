@@ -29,11 +29,11 @@ class LegacyKeysListingTest extends TestCase
         rmdir($this->dir);
     }
 
-    private function run_(array $files, array $fallback = [])
+    private function run_(array $files, array $fallback = [], array $options = [])
     {
         $out = fopen('php://memory', 'w+');
         $err = fopen('php://memory', 'w+');
-        $code = MessageCatalogCommand::run([new LegacyKeysSource(new LegacyKeys(['files' => $files, 'fallback_files' => $fallback]))], null, [], $out, $err);
+        $code = MessageCatalogCommand::run([new LegacyKeysSource(new LegacyKeys(['files' => $files, 'fallback_files' => $fallback]))], null, $options, $out, $err);
         rewind($err);
 
         return [$code, stream_get_contents($err)];
@@ -46,16 +46,19 @@ class LegacyKeysListingTest extends TestCase
         $this->assertSame([0, ''], $this->run_([$this->dir . '/en.json']));
     }
 
-    public function testAnUnrecognisedValueAndADuplicateKeyFailTheBuildByName(): void
+    public function testAnUnrecognisedValueAndADuplicateKeyAreReportedByName(): void
     {
         file_put_contents($this->dir . '/en.json', json_encode(['greeting' => ['hello' => 'Hello, :Name'], 'checkout' => ['submit' => 'Place order']]));
         file_put_contents($this->dir . '/checkout.php', '<?php return ["submit" => "Order now"];');
 
         list($code, $err) = $this->run_([$this->dir . '/en.json', $this->dir . '/checkout.php']);
 
-        $this->assertSame(1, $code);
+        $this->assertSame(0, $code, 'reported, not a failed build');
         $this->assertStringContainsString($this->dir . '/en.json.greeting.hello: uses a case-transforming placeholder', $err);
         $this->assertStringContainsString($this->dir . '/en.json.checkout.submit: defines a key also defined in ' . $this->dir . '/checkout.php', $err);
+
+        list($strict) = $this->run_([$this->dir . '/en.json', $this->dir . '/checkout.php'], [], ['strict' => true]);
+        $this->assertSame(1, $strict);
     }
 
     public function testAnOverrideOfAFallbackKeyIsNotAProblem(): void

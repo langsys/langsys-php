@@ -3,49 +3,51 @@
 namespace Langsys\SDK\Messages;
 
 /**
- * One server message entry: `{ field?, code, message, template, params? }` (MSG-1).
- *
- * The key names are fixed across every SDK; the envelope around entries is the
- * app's own. `code` is the slug an app branches on, `template` the source
- * sentence a client translates, `params` the values for its markers, `message`
- * the template already filled, and `field` a dotted path for a field failure.
+ * One server message entry (MSG-1): `template`, the framework's source sentence
+ * before its values are filled, and `params`, the values for its markers - the
+ * only pieces translation needs. `message` is the template already filled, the
+ * fallback a client shows when it cannot look the template up; an entry with no
+ * template is shown as its message and never looked up. `code` and `field` are
+ * what the framework itself reports about the failure, carried unchanged: its
+ * own identifier, or none, and its field path in its own format - a dotted
+ * string, or a list such as Pydantic's `loc`.
  */
 final class ServerMessage implements \JsonSerializable
 {
-    /**
-     * The code for a failure that arrived with text but no rule (MSG-9).
-     */
-    const INVALID = 'invalid';
+    /** The piece names on the wire, overridable per app (MSG-1). */
+    const PIECES = ['template' => 'template', 'params' => 'params', 'message' => 'message', 'code' => 'code', 'field' => 'field'];
 
-    /** @var string|null */
+    /** @var string|array|null */
     private $field;
 
-    /** @var string */
+    /** @var string|int|null */
     private $code;
 
     /** @var string */
     private $message;
 
-    /** @var string */
+    /** @var string|null */
     private $template;
 
     /** @var array */
     private $params;
 
     /**
-     * @param string $code
-     * @param string $message
-     * @param string $template
+     * @param string|int|null $code The framework's own identifier, or null
+     * @param string|null $message The filled template; filled from params when null
+     * @param string|null $template Null for a message that has none
      * @param array $params
-     * @param string|null $field
+     * @param string|array|null $field The framework's field path, as it reports it
      */
     public function __construct($code, $message, $template, array $params = [], $field = null)
     {
-        $this->code = (string) $code;
-        $this->message = (string) $message;
-        $this->template = (string) $template;
+        $this->code = ($code === null || $code === '') ? null : $code;
+        $this->template = $template === null ? null : (string) $template;
         $this->params = $params;
-        $this->field = ($field === null || $field === '') ? null : (string) $field;
+        $this->message = (($message === null || $message === '') && $this->template !== null)
+            ? MessageTemplate::fill($this->template, $params)
+            : (string) $message;
+        $this->field = ($field === null || $field === '' || $field === []) ? null : (is_array($field) ? $field : (string) $field);
     }
 
     /**
@@ -56,7 +58,7 @@ final class ServerMessage implements \JsonSerializable
      * when the template has none. A marker with no param stays out of `params`
      * and stays literal in `message`.
      *
-     * @param string $code
+     * @param string|int|null $code The framework's own identifier, or null
      * @param string $template
      * @param array $params
      * @param string|null $field
@@ -76,46 +78,57 @@ final class ServerMessage implements \JsonSerializable
     }
 
     /**
-     * The entry for a failure that arrived with text only - a package throwing
-     * its own message (MSG-9). Its text becomes the template, under `invalid`,
-     * so it still renders and the catalog command can report it for a real one.
+     * The entry for a failure that arrived as finished text only - a package
+     * throwing its own sentence (MSG-9): the text is its template, with no
+     * params, and the catalog command reports it so the app can give it an
+     * unfilled message.
      *
      * @param string $text
      * @param string|null $field
+     * @param string|int|null $code The framework's own identifier, if it has one
      * @return self
      */
-    public static function fromText($text, $field = null)
+    public static function fromText($text, $field = null, $code = null)
     {
-        return new self(self::INVALID, $text, $text, [], $field);
+        return new self($code, $text, $text, [], $field);
     }
 
     /**
      * Read an entry from its wire form, or null when it is not one.
      *
-     * An entry needs `code`, `message` and `template` as text. Anything missing
-     * one of them is not rendered from: without `template` there is nothing to
-     * look up, and falling back to `message` as a key is the one thing a client
-     * must never do (MSG-5).
+     * An entry needs a `template` or a `message` as text. `message` defaults to
+     * the template filled from `params`; an entry with only a message is shown
+     * as that text and never looked up, since using `message` as a key is the
+     * one thing a client must never do (MSG-5). `code` and `field` are kept as
+     * the framework reported them.
      *
      * @param array $data
+     * @param array $pieces Piece names, overriding PIECES
+     * @param bool $requireTemplate Whether a message alone is not enough - for
+     *                              finding entries by shape in a framework's body
      * @return self|null
      */
-    public static function fromArray(array $data)
+    public static function fromArray(array $data, array $pieces = [], $requireTemplate = false)
     {
-        foreach (['code', 'message', 'template'] as $piece) {
-            if (!isset($data[$piece]) || !is_string($data[$piece])) {
-                return null;
-            }
+        $names = array_merge(self::PIECES, $pieces);
+
+        $template = isset($data[$names['template']]) && is_string($data[$names['template']]) ? $data[$names['template']] : null;
+        $message = isset($data[$names['message']]) && is_string($data[$names['message']]) ? $data[$names['message']] : null;
+
+        if ($template === null && ($message === null || $requireTemplate)) {
+            return null;
         }
 
-        $params = isset($data['params']) && is_array($data['params']) ? $data['params'] : [];
-        $field = isset($data['field']) && is_string($data['field']) ? $data['field'] : null;
+        $code = isset($data[$names['code']]) && (is_string($data[$names['code']]) || is_int($data[$names['code']])) ? $data[$names['code']] : null;
+        $field = isset($data[$names['field']]) && (is_string($data[$names['field']]) || is_array($data[$names['field']])) ? $data[$names['field']] : null;
 
-        return new self($data['code'], $data['message'], $data['template'], $params, $field);
+        $params = isset($data[$names['params']]) && is_array($data[$names['params']]) ? $data[$names['params']] : [];
+
+        return new self($code, $message, $template, $params, $field);
     }
 
     /**
-     * @return string|null
+     * @return string|array|null
      */
     public function getField()
     {
@@ -123,7 +136,9 @@ final class ServerMessage implements \JsonSerializable
     }
 
     /**
-     * @return string
+     * The framework's own identifier for the failure, or null when it has none.
+     *
+     * @return string|int|null
      */
     public function getCode()
     {
@@ -139,7 +154,7 @@ final class ServerMessage implements \JsonSerializable
     }
 
     /**
-     * @return string
+     * @return string|null Null for an entry that carries only its message
      */
     public function getTemplate()
     {
@@ -155,7 +170,8 @@ final class ServerMessage implements \JsonSerializable
     }
 
     /**
-     * The wire form, in the reference's key order.
+     * The wire form: `field` and `code` only when the framework reported them,
+     * `params` only when the template has markers.
      *
      * @return array
      */
@@ -167,9 +183,15 @@ final class ServerMessage implements \JsonSerializable
             $entry['field'] = $this->field;
         }
 
-        $entry['code'] = $this->code;
+        if ($this->code !== null) {
+            $entry['code'] = $this->code;
+        }
+
         $entry['message'] = $this->message;
-        $entry['template'] = $this->template;
+
+        if ($this->template !== null) {
+            $entry['template'] = $this->template;
+        }
 
         if ($this->params !== []) {
             $entry['params'] = $this->params;

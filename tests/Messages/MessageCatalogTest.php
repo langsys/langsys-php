@@ -44,6 +44,11 @@ class ProbeBadCodeError
     const MESSAGE = 'A probe was bad.';
 }
 
+class ProbeNoCodeError
+{
+    const MESSAGE = 'A probe had no code.';
+}
+
 class ProbeFieldError
 {
     const CODE = 'too_short';
@@ -111,19 +116,29 @@ class MessageCatalogTest extends TestCase
         $this->assertStringStartsWith('SignupRequest.name: ', $catalog->problems()[0]);
     }
 
-    public function testALabelCarriedInAMarkerIsAProblem(): void
+    /**
+     * MSG-11: a template still holding Laravel's own label placeholder is
+     * refused - the label should have been written in. Any other placeholder
+     * left unfilled is refused as a value that should be a {marker}.
+     */
+    public function testAFrameworkLabelPlaceholderIsRefused(): void
     {
-        foreach (MessageCatalog::LABEL_MARKERS as $marker) {
+        foreach (MessageCatalog::LABEL_PLACEHOLDERS as $placeholder) {
             $catalog = new MessageCatalog();
-            $catalog->add("The {{$marker}} is required.", 'SignupRequest');
+            $catalog->add("The $placeholder field is required.", 'SignupRequest');
 
-            $this->assertSame([], $catalog->templates(), $marker);
-            $this->assertStringContainsString("{{$marker}}", $catalog->problems()[0]);
+            $this->assertSame([], $catalog->templates(), $placeholder);
+            $this->assertStringContainsString("leaves the label placeholder $placeholder", $catalog->problems()[0]);
         }
 
-        $numeric = new MessageCatalog();
-        $numeric->add('The password must be at least {min} characters.', 'SignupRequest.password');
-        $this->assertFalse($numeric->hasProblems(), 'a number in a marker is the accepted case');
+        $value = new MessageCatalog();
+        $value->add('The password must be at least :min characters.', 'SignupRequest.password');
+        $this->assertStringContainsString('write the value as a {min} marker', $value->problems()[0]);
+
+        $marker = new MessageCatalog();
+        $marker->add('The password must be at least {min} characters.', 'SignupRequest.password');
+        $marker->add('The {field} field is required.', 'SignupRequest');
+        $this->assertFalse($marker->hasProblems(), 'a marker is judged by its value at render (MSG-11), not by its name');
     }
 
     public function testAProblemNamesTheSourceTheFieldTheIssueAndTheFix(): void
@@ -151,15 +166,15 @@ class MessageCatalogTest extends TestCase
     public function testAnErrorClassThatCannotBeListedIsNamedWithItsFix(): void
     {
         $catalog = new MessageCatalog();
-        (new ErrorClassSource([ProbeMissingPropertyError::class, ProbeInheritedMessageError::class, ProbeBadCodeError::class, 'App\\Errors\\DoesNotExist']))->collect($catalog);
+        (new ErrorClassSource([ProbeMissingPropertyError::class, ProbeInheritedMessageError::class, ProbeBadCodeError::class, ProbeNoCodeError::class, 'App\\Errors\\DoesNotExist']))->collect($catalog);
 
         $problems = implode("\n", $catalog->problems());
 
         $this->assertStringContainsString(ProbeMissingPropertyError::class . ': uses the marker {limit} but has no $limit property to fill it', $problems);
         $this->assertStringContainsString(ProbeInheritedMessageError::class . ': inherits its MESSAGE', $problems);
-        $this->assertStringContainsString(ProbeBadCodeError::class . ": its code 'ProbeBad' is not a snake_case slug", $problems);
         $this->assertStringContainsString('App\\Errors\\DoesNotExist: is not a loadable class', $problems);
-        $this->assertCount(4, $catalog->problems());
+        $this->assertCount(3, $catalog->problems(), 'a code is the app\'s own, whatever its shape, or absent (MSG-2)');
+        $this->assertContains('A probe had no code.', array_column($catalog->templates(), 'template'));
     }
 
     /**

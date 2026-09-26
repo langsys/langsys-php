@@ -6,9 +6,8 @@ use Langsys\SDK\Messages\MessageTemplate;
 use PHPUnit\Framework\TestCase;
 
 /**
- * MSG-3 / MSG-4: the marker grammar and fill, ported from langsys4 907's
- * ErrorTemplate so a template the server builds and a template this SDK fills
- * agree character for character.
+ * MSG-3 / MSG-4: the marker grammar and fill, so a template a server fills and
+ * a template this SDK fills agree character for character.
  */
 class MessageTemplateTest extends TestCase
 {

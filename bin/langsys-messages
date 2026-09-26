@@ -2,10 +2,11 @@
 <?php
 
 /**
- * List every server message template an app can send, fail on any it cannot
- * list, and register them with --register (MSG-7).
+ * List every server message template an app can send, report any it cannot
+ * list, and register them with --register (MSG-7). --strict fails the build on
+ * a message it cannot list.
  *
- *   vendor/bin/langsys-messages [--config=langsys-messages.php] [--register] [-v]
+ *   vendor/bin/langsys-messages [--config=langsys-messages.php] [--register] [--strict] [-v]
  *
  * The config file returns ['sources' => [MessageSource, ...], 'client' => Client|Closure].
  */
@@ -25,10 +26,10 @@ if (!$loaded) {
     exit(1);
 }
 
-$options = getopt('v', ['config:', 'register', 'verbose', 'help']);
+$options = getopt('v', ['config:', 'register', 'strict', 'verbose', 'help']);
 
 if (isset($options['help'])) {
-    fwrite(STDOUT, "Usage: langsys-messages [--config=langsys-messages.php] [--register] [-v]\n");
+    fwrite(STDOUT, "Usage: langsys-messages [--config=langsys-messages.php] [--register] [--strict] [-v]\n");
     exit(0);
 }
 
@@ -55,7 +56,7 @@ if ($client instanceof Closure) {
 exit(\Langsys\SDK\Messages\MessageCatalogCommand::run(
     $config['sources'],
     $client,
-    ['register' => isset($options['register']), 'verbose' => isset($options['verbose']) || isset($options['v'])],
+    ['register' => isset($options['register']), 'strict' => isset($options['strict']), 'verbose' => isset($options['verbose']) || isset($options['v'])],
     STDOUT,
     STDERR
 ));

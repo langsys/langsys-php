@@ -14,10 +14,10 @@ use PHPUnit\Framework\TestCase;
 /**
  * The shared server-message vectors (MSG-1, MSG-4), authored by
  * langsys-js-typescript and adopted byte-identically
- * (`86871033:tests/fixtures/server-message-vectors.json`, blob
- * `c8125549cfee0f5286f79a8cbc194cd30ccd446e`): markers, fill, resolve and render,
- * plus the langsys4 reference's canonical entries, each of which fills to its
- * own message.
+ * (`239166a6:tests/fixtures/server-message-vectors.json`, blob
+ * `7333e3919dac43af81c6c20bfdba974efd79725b`): markers, fill, resolve and render,
+ * plus canonical entries built from real framework messages - Laravel,
+ * Pydantic, Django, DRF, ActiveModel - each of which fills to its own message.
  */
 class ServerMessageVectorsTest extends TestCase
 {
@@ -82,7 +82,8 @@ class ServerMessageVectorsTest extends TestCase
      */
     public function testResolve(array $row): void
     {
-        $options = isset($row['key']) ? ['key' => $row['key']] : [];
+        $options = isset($row['options']) ? $row['options'] : [];
+        $before = $row['body'];
 
         $normalise = function (array $entry) {
             ksort($entry);
@@ -94,6 +95,7 @@ class ServerMessageVectorsTest extends TestCase
             array_map($normalise, $row['expected']),
             array_map($normalise, MessageSet::fromResponse($row['body'], $options)->toArray())
         );
+        $this->assertSame($before, $row['body'], 'resolving never changes the body');
     }
 
     /**

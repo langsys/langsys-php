@@ -1132,6 +1132,11 @@ class Client
             return '';
         }
 
+        // An entry with no template has nothing to look up: it is its message.
+        if ($entry->getTemplate() === null) {
+            return $entry->getMessage();
+        }
+
         if ($locale === null) {
             $locale = $this->messageLocale();
 
@@ -1179,6 +1184,10 @@ class Client
      */
     public function emitMessage(ServerMessage $message)
     {
+        if ($message->getTemplate() === null) {
+            return $message;
+        }
+
         $locale = $this->messageLocale();
 
         if ($locale === null) {

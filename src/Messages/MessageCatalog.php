@@ -24,12 +24,11 @@ final class MessageCatalog
     const PLACEHOLDER_PATTERN = '/(?<![\w:]):[a-z][a-z_]*/';
 
     /**
-     * Marker names that can only hold a translatable label. A heuristic: a
-     * marker's value cannot be proven non-translatable from its name, so this
-     * catches the names a label reaches a marker under, not every translatable
-     * value an author could put in one.
+     * Laravel's own label placeholders (MSG-11): where a sentence references a
+     * field, the label is written in, so one of these left in a template means
+     * the label never was.
      */
-    const LABEL_MARKERS = ['attribute', 'field', 'label', 'other', 'values'];
+    const LABEL_PLACEHOLDERS = [':attribute', ':other', ':values'];
 
     /** @var array<string, string> template => first source */
     private $templates = [];
@@ -61,7 +60,11 @@ final class MessageCatalog
         preg_match_all(self::PLACEHOLDER_PATTERN, $template, $placeholders);
 
         foreach (array_unique($placeholders[0]) as $placeholder) {
-            $this->problem($source, "leaves the placeholder $placeholder unfilled in \"$template\"", "write the field's label or the value's marker into the sentence", $field);
+            if (in_array($placeholder, self::LABEL_PLACEHOLDERS, true)) {
+                $this->problem($source, "leaves the label placeholder $placeholder in \"$template\"", "write the field's label into the sentence, one template per field", $field);
+            } else {
+                $this->problem($source, "leaves the placeholder $placeholder unfilled in \"$template\"", 'write the value as a {' . substr($placeholder, 1) . '} marker', $field);
+            }
             $listable = false;
         }
 
@@ -69,11 +72,6 @@ final class MessageCatalog
 
         if (strpos($withoutMarkers, '{') !== false || strpos($withoutMarkers, '}') !== false) {
             $this->problem($source, "has a brace that is not a {name} marker in \"$template\"", 'markers are lowercase snake_case names in braces, like {min}; write anything else as text', $field);
-            $listable = false;
-        }
-
-        foreach (array_intersect(MessageTemplate::markers($template), self::LABEL_MARKERS) as $marker) {
-            $this->problem($source, "puts a translatable label in the marker {{$marker}} in \"$template\"", 'write the label into the sentence and list one template per label', $field);
             $listable = false;
         }
 

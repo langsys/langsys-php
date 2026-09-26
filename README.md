@@ -1151,24 +1151,30 @@ The log viewer includes:
 ## Server Messages
 
 Validation errors and other messages your server sends can be translated like any
-phrase. Each message travels as an entry with a fixed shape: `code` for your logic,
-`template` for translation, `params` for its values, and `message` already filled
-in. A translator sees one whole sentence, so gender and number come out right.
+phrase, without changing how your framework reports them. Each message travels as an
+entry: `template`, your framework's own sentence before its values are filled, and
+`params`, those values; `message` is the filled sentence, shown until a translation
+exists. `code` and `field` are whatever your framework already reports - its rule
+name or error identifier, and its field path - carried unchanged, or absent. A
+translator sees one whole sentence, so gender and number come out right.
 
 ### Build entries
 
 ```php
 use Langsys\SDK\Messages\ServerMessage;
 
-$entry = ServerMessage::make('too_short', 'The password must be at least {min} characters.', ['min' => 12], 'password');
+$entry = ServerMessage::make('min', 'The password field must be at least {min} characters.', ['min' => 12], 'password');
 
-$entry->getMessage(); // "The password must be at least 12 characters."
+$entry->getMessage(); // "The password field must be at least 12 characters."
 $entry->toArray();    // field, code, message, template, params
 ```
 
-Write everything translatable into the template, the field's label included. Use a
-`{name}` marker only for a value that isn't translatable: a number, a date, what the
-user typed.
+The template is your framework's own sentence with the field's label written in where
+it references the field (Laravel's `The :attribute field is required.` becomes `The
+password field is required.`). Use a `{name}` marker only for a value that isn't
+translatable: a number, a date, what the user typed. Attach the entries to your
+framework's own error response under a key of your choosing; the response otherwise
+stays exactly as your framework writes it.
 
 ### Render entries
 
@@ -1176,6 +1182,7 @@ user typed.
 use Langsys\SDK\Messages\MessageSet;
 
 $messages = MessageSet::fromResponse($responseBody); // finds entries wherever they sit
+// or: MessageSet::fromResponse($responseBody, ['key' => 'translatable', 'pieces' => ['template' => 'msgid']]);
 
 foreach ($messages->forField('password') as $entry) {
     echo $client->translateMessage($entry); // translated, or the server's message until it is
@@ -1204,13 +1211,17 @@ return [
 ```
 
 ```bash
-vendor/bin/langsys-messages             # lists templates; exits 1 naming each one it can't list
+vendor/bin/langsys-messages             # lists templates, and reports each one it can't list
 vendor/bin/langsys-messages --register  # registers the ones the catalog doesn't have yet
+vendor/bin/langsys-messages --strict    # exits 1 when any message can't be listed
 ```
 
-An error class declares `CODE` and `MESSAGE` constants and a public property for each
-marker. Run the command in CI so a message that can't be registered ahead of time
-fails the build.
+A message the command can't list still registers the first time your server sends it,
+so it is reported, not failed; add `--strict` in CI if no error should ever show
+untranslated. An error class declares a `MESSAGE` constant, a public property for
+each marker, and optionally a `CODE`, passed through as the entry's code. A template
+that still holds a Laravel label placeholder (`:attribute`, `:other`, `:values`) is
+refused: write the label in.
 
 ## Migrating from Key-Based Translation Files
 

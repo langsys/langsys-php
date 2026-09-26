@@ -165,14 +165,16 @@ its id or re-registers it.
   source. A base-locale render is not marked.
 
 - **Server messages.** Validation errors and system messages can now be registered
-  and translated ahead of time, the way the backend's own error templates are (spec
-  8.1.0, Server messages). `Langsys\SDK\Messages` fills `{name}` markers exactly as
-  the backend does, reads message entries from any response shape, and checks each
-  template for what would make it untranslatable: a brace that is not a marker, a
-  framework placeholder left unfilled, a label carried in a marker.
-  `vendor/bin/langsys-messages` lists every template an app declares, exits non-zero
-  naming each message it cannot list, and with `--register` registers only what the
-  catalog lacks. `Client::translateMessage()` renders an entry in the request locale
+  and translated ahead of time, without changing how the framework reports them. An
+  entry is a `template` - the framework's own sentence, label written in - and its
+  `params`; `message` is the filled sentence, and `code` and `field` are the
+  framework's own, carried unchanged or absent. `Langsys\SDK\Messages` fills
+  `{name}` markers, reads entries from any response body - beside a framework's own
+  errors, under a configurable key and piece names - and refuses a template holding
+  a brace that is not a marker or a framework placeholder left unfilled.
+  `vendor/bin/langsys-messages` lists every template an app declares, reports each
+  message it cannot list (failing only with `--strict`), and with `--register`
+  registers only what the catalog lacks. `Client::translateMessage()` renders an entry in the request locale
   and falls back to the message the server sent; `Client::emitMessage()` registers a
   template the catalog lacks after the response. Templates live under one category,
   `Errors` by default (`messages_category`, `LANGSYS_MESSAGES_CATEGORY`).
@@ -229,10 +231,6 @@ its id or re-registers it.
   registered as written with a warning. A JSON file may declare a `namespace`,
   and an i18next root key pairs with its suffixes. `resolveLegacyKey()` also
   returns `recognised` and `issue`.
-- **An exclusive upper bound and the inclusive bounds get a message code.**
-  `MessageCodes::forSize()` now maps `lt` to the upper bound (`too_long`,
-  `too_large`, `too_many` by type) and `ge`/`le` to the same codes as
-  `min`/`max`.
 - **A server message param that is null keeps its marker.** Filling
   `At least {min} characters.` with `min => null` now gives `At least {min}
   characters.`, as a missing param does, instead of an empty gap.

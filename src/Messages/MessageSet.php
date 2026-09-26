@@ -7,12 +7,14 @@ use Langsys\SDK\Exception\LangsysException;
 /**
  * The entries a response carries, resolved from wherever they sit (MSG-1).
  *
- * The envelope is the app's: the default langsys shape
- * (`error` and `error.errors`), a Laravel body with entries under its own key,
- * a JSON:API document, a house style. By default every array in the body that
- * carries an entry's pieces is an entry, so none of those needs configuring.
- * `key` narrows the search to one dotted path, and `resolver` maps an app's
- * native failures to entries when they carry no entries at all.
+ * The body is the framework's: Laravel's 422 with the entries attached beside
+ * its own `errors` map, a JSON:API document, a house style, or the Langsys
+ * API's own error body. With no configuration, every array in the body that
+ * carries a template is an entry - found by shape, so a framework's own
+ * `message` is never mistaken for one. `key` names where the entries sit, and
+ * there an entry with only a message counts too; `pieces` renames an entry's
+ * pieces, and `resolver` maps an app's native failures to entries when they
+ * carry no entries at all.
  */
 final class MessageSet implements \Countable, \IteratorAggregate, \JsonSerializable
 {
@@ -40,8 +42,13 @@ final class MessageSet implements \Countable, \IteratorAggregate, \JsonSerializa
     /**
      * Resolve entries from a response body.
      *
+     * Entries are found wherever they sit in the body - beside a framework's own
+     * errors, under any container key - so resolution never depends on the
+     * shape around them (MSG-1). `key` narrows it to one place.
+     *
      * @param array|string|object|null $body Decoded body, or its JSON
-     * @param array $options `key` (dotted path) or `resolver` (callable taking the body)
+     * @param array $options `key` (dotted path), `resolver` (callable taking the
+     *                       body), `pieces` (piece names, as ServerMessage::PIECES)
      * @return self
      */
     public static function fromResponse($body, array $options = [])
@@ -58,11 +65,15 @@ final class MessageSet implements \Countable, \IteratorAggregate, \JsonSerializa
             return new self();
         }
 
+        $pieces = isset($options['pieces']) && is_array($options['pieces']) ? $options['pieces'] : [];
+
         if (isset($options['resolver']) && is_callable($options['resolver'])) {
-            return self::fromIterable(call_user_func($options['resolver'], $body));
+            return self::fromIterable(call_user_func($options['resolver'], $body), $pieces);
         }
 
-        if (isset($options['key']) && is_string($options['key']) && $options['key'] !== '') {
+        $keyed = isset($options['key']) && is_string($options['key']) && $options['key'] !== '';
+
+        if ($keyed) {
             $body = self::dig($body, $options['key']);
 
             if (!is_array($body)) {
@@ -71,7 +82,7 @@ final class MessageSet implements \Countable, \IteratorAggregate, \JsonSerializa
         }
 
         $found = [];
-        self::walk($body, $found, 0);
+        self::walk($body, $found, 0, $pieces, !$keyed);
 
         return new self($found);
     }
@@ -192,7 +203,7 @@ final class MessageSet implements \Countable, \IteratorAggregate, \JsonSerializa
      * @param mixed $items
      * @return self
      */
-    private static function fromIterable($items)
+    private static function fromIterable($items, array $pieces = [])
     {
         if (!is_array($items) && !($items instanceof \Traversable)) {
             return new self();
@@ -203,7 +214,7 @@ final class MessageSet implements \Countable, \IteratorAggregate, \JsonSerializa
         foreach ($items as $item) {
             if ($item instanceof ServerMessage) {
                 $entries[] = $item;
-            } elseif (is_array($item) && ($entry = ServerMessage::fromArray($item)) !== null) {
+            } elseif (is_array($item) && ($entry = ServerMessage::fromArray($item, $pieces)) !== null) {
                 $entries[] = $entry;
             }
         }
@@ -217,13 +228,14 @@ final class MessageSet implements \Countable, \IteratorAggregate, \JsonSerializa
      * @param int $depth
      * @return void
      */
-    private static function walk(array $node, array &$found, $depth)
+    private static function walk(array $node, array &$found, $depth, array $pieces = [], $requireTemplate = true)
     {
         if ($depth > self::MAX_DEPTH) {
             return;
         }
 
-        $entry = ServerMessage::fromArray($node);
+        $entry = ServerMessage::fromArray($node, $pieces, $requireTemplate);
+        $paramsKey = isset($pieces['params']) ? $pieces['params'] : ServerMessage::PIECES['params'];
 
         if ($entry !== null) {
             $found[] = $entry;
@@ -231,12 +243,12 @@ final class MessageSet implements \Countable, \IteratorAggregate, \JsonSerializa
 
         foreach ($node as $key => $child) {
             // An entry's params are its marker values, never more entries.
-            if ($entry !== null && $key === 'params') {
+            if ($entry !== null && $key === $paramsKey) {
                 continue;
             }
 
             if (is_array($child)) {
-                self::walk($child, $found, $depth + 1);
+                self::walk($child, $found, $depth + 1, $pieces, $requireTemplate);
             }
         }
     }

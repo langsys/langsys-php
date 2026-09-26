@@ -5,10 +5,11 @@ namespace Langsys\SDK\Messages;
 /**
  * The marker grammar of a server message template (MSG-3, MSG-4).
  *
- * A port of langsys4's ErrorTemplate, kept byte-compatible on purpose: the
- * server fills `message` from the template and this SDK fills the same template
- * on the way back, so the two must agree on what a marker is and what a fill
- * produces. A `{name}` marker stands for a value that is not translatable - a
+ * The same grammar and fill every Langsys SDK uses, pinned by the shared
+ * server-message vectors: a server fills `message` from the template and a
+ * client fills the translated template on the way back, so both must agree on
+ * what a marker is and what a fill produces. A `{name}` marker stands for a
+ * value that is not translatable - a
  * number, a date, what the user typed - and anything translatable is written
  * into the sentence instead.
  */

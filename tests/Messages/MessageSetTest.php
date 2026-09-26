@@ -7,8 +7,8 @@ use Langsys\SDK\Messages\ServerMessage;
 use PHPUnit\Framework\TestCase;
 
 /**
- * MSG-1: entries resolve wherever they sit. The envelope is the app's; only the
- * entry's pieces are fixed.
+ * MSG-1: entries resolve wherever they sit, and the body around them is the
+ * framework's.
  */
 class MessageSetTest extends TestCase
 {
@@ -28,7 +28,7 @@ class MessageSetTest extends TestCase
         ];
     }
 
-    public function testTheDefaultLangsysEnvelopeResolves(): void
+    public function testTheLangsysApisOwnErrorBodyResolves(): void
     {
         $set = MessageSet::fromResponse($this->validationFailure());
 
@@ -107,5 +107,40 @@ class MessageSetTest extends TestCase
         $set = MessageSet::fromResponse($this->validationFailure());
 
         $this->assertSame($set->toArray(), MessageSet::fromArray(json_decode(json_encode($set), true))->toArray());
+    }
+
+    /**
+     * Entries attached beside Laravel's own `errors` map, under a key the app
+     * configured, resolve by that configuration; the framework's body is left
+     * exactly as Laravel wrote it.
+     */
+    public function testEntriesAttachedToAFrameworksOwnBodyResolveByConfiguration(): void
+    {
+        $body = [
+            'message' => 'The password field must be at least 12 characters.',
+            'errors' => ['password' => ['The password field must be at least 12 characters.']],
+            'translatable' => [
+                ['field' => 'password', 'code' => 'min', 'message' => 'The password field must be at least 12 characters.', 'template' => 'The password field must be at least {min} characters.', 'params' => ['min' => 12]],
+            ],
+        ];
+        $before = $body;
+
+        $set = MessageSet::fromResponse($body, ['key' => 'translatable']);
+
+        $this->assertCount(1, $set);
+        $this->assertSame('min', $set->forField('password')[0]->getCode());
+        $this->assertSame($before, $body, 'the framework\'s body is unchanged');
+        $this->assertSame(['The password field must be at least 12 characters.'], $body['errors']['password']);
+    }
+
+    public function testRenamedPiecesResolveThroughConfiguration(): void
+    {
+        $set = MessageSet::fromResponse(['detail' => [['loc' => 'password', 'msgid' => 'At least {min} characters.', 'vars' => ['min' => 8], 'type' => 'string_too_short']]], [
+            'pieces' => ['template' => 'msgid', 'params' => 'vars', 'code' => 'type', 'field' => 'loc'],
+        ]);
+
+        $this->assertCount(1, $set);
+        $this->assertSame('At least 8 characters.', $set->forField('password')[0]->getMessage());
+        $this->assertSame('string_too_short', $set->forField('password')[0]->getCode());
     }
 }
