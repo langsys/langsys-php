@@ -128,6 +128,13 @@ its id or re-registers it.
 
 ### Added
 
+- **A client can be seeded from a snapshot.** Pass `'snapshot' => $snapshot` or
+  call `useSnapshot()`: phrases, blocks, pages and server messages the snapshot
+  holds render from it with no API call; anything it lacks is read from the live
+  catalog, which then outranks the snapshot, or stays source text offline. Only
+  the live catalog decides registrations. While authorization is unavailable,
+  the snapshot's base locale and locales are the ones the request locale can
+  resolve to.
 - **`LegacyValue::fromCall()` converts the text a Laravel call passes when it is
   not a key.** For `__()` only the placeholders the call passes become `{name}`,
   substituted as Laravel substitutes them; `trans_choice()` also converts

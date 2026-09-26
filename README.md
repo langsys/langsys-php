@@ -1297,6 +1297,19 @@ It carries the project's base locale (`$snapshot->baseLocale()`) along with the 
 A load that fails says why: `SnapshotException::getReason()` is `format`, `version`,
 `missing-member` or `checksum`.
 
+**Seed the client from a snapshot** to render with no API call:
+
+```php
+$client = new Client($key, $project, ['snapshot' => Snapshot::load('catalog.snapshot.json')]);
+// or: $client->useSnapshot(Snapshot::load('catalog.snapshot.json'));
+```
+
+A phrase or block the snapshot holds renders from it without fetching. Anything it
+doesn't hold is read from the live catalog, which from then on outranks the snapshot;
+offline, it stays in the source language. Only the live catalog decides what is new
+and registered. While the API can't be reached, the snapshot's languages are the ones
+the request locale can resolve to.
+
 ## Error Handling
 
 The SDK throws specific exceptions for different error types:

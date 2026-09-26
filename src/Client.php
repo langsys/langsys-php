@@ -14,6 +14,7 @@ use Langsys\SDK\Html\PageTranslator;
 use Langsys\SDK\Http\HttpClient;
 use Langsys\SDK\Locale\LocaleDetector;
 use Langsys\SDK\Locale\RequestLocale;
+use Langsys\SDK\Snapshot\Snapshot;
 use Langsys\SDK\Log\Logger;
 use Langsys\SDK\Log\ErrorLogLogger;
 use Langsys\SDK\Log\LoggerInterface;
@@ -137,6 +138,21 @@ class Client
     protected $nextSendAt = 0.0;
 
     /**
+     * A snapshot seeding the catalog (SNAP-2), or null.
+     *
+     * @var Snapshot|null
+     */
+    protected $snapshot = null;
+
+    /**
+     * Locales whose live catalog has been read this request; once read, it
+     * outranks the snapshot.
+     *
+     * @var array<string, true>
+     */
+    protected $liveCatalogs = [];
+
+    /**
      * Where the app keeps the request's locale (RequestLocale::DEFAULTS).
      *
      * @var array
@@ -255,6 +271,10 @@ class Client
 
         if (isset($options['request_locale']) && is_array($options['request_locale'])) {
             $this->requestLocaleOptions = $options['request_locale'];
+        }
+
+        if (isset($options['snapshot']) && $options['snapshot'] instanceof Snapshot) {
+            $this->snapshot = $options['snapshot'];
         }
 
         if (array_key_exists('warn_runtime_requirements', $options)) {
@@ -690,6 +710,7 @@ class Client
 
         $this->writeEnabled = null;
         $this->requestLocale = null;
+        $this->liveCatalogs = [];
         $this->translationsMemoryCache = [];
 
         return $this;
@@ -794,6 +815,7 @@ class Client
             if ($cached !== null) {
                 // Store in memory cache for this request
                 $this->translationsMemoryCache[$memoryKey] = $cached;
+                $this->liveCatalogs[$memoryKey] = true;
                 $this->logger->debug('Translations cache hit', [
                     'locale' => $locale,
                     'source' => 'persistent',
@@ -831,6 +853,7 @@ class Client
         }
 
         unset($this->translationFetchFailures[$memoryKey]);
+        $this->liveCatalogs[$memoryKey] = true;
 
         // Store in both caches
         if ($useCache) {
@@ -928,6 +951,17 @@ class Client
 
         $category = $this->normalizeCategory($category);
 
+        // A seeded snapshot answers a phrase it holds with no fetch and no
+        // registration decision; a phrase it does not hold goes to the live
+        // catalog, which decides (SNAP-2, REG-13).
+        $seed = $contentBlockId === null ? $this->seedCatalog($locale) : null;
+        if ($seed !== null && isset($seed[$category]) && is_array($seed[$category])
+            && array_key_exists($phrase, $seed[$category]) && !is_array($seed[$category][$phrase])) {
+            $value = $seed[$category][$phrase];
+
+            return $this->interpolate(($value === null || $value === '') ? $phrase : $value, $params, $locale);
+        }
+
         try {
             $translations = $this->getTranslations($locale);
         } catch (\Throwable $e) {
@@ -982,6 +1016,42 @@ class Client
         $this->queuePhraseForRegistration($phrase, $category);
 
         return $this->interpolate($phrase, $params, $locale);
+    }
+
+    /**
+     * Seed the catalog from a snapshot (SNAP-2). Lookups read it with no
+     * network call until the live catalog for a locale has been read, which
+     * then outranks it; whether a phrase is registered is decided only against
+     * the live catalog. While authorization is unavailable, the snapshot also
+     * gives the request-locale resolver the locales it may serve (SRV-6).
+     * When to seed - at boot, per request, before hydration - is the caller's.
+     *
+     * @param Snapshot $snapshot
+     * @return $this
+     */
+    public function useSnapshot(Snapshot $snapshot)
+    {
+        $this->snapshot = $snapshot;
+
+        return $this;
+    }
+
+    /**
+     * The snapshot's catalog for a locale while it still answers - seeded,
+     * holding the locale, and the live catalog not yet read - else null.
+     *
+     * @param string $locale
+     * @return array|null category => entries
+     */
+    public function seedCatalog($locale)
+    {
+        if ($this->snapshot === null) {
+            return null;
+        }
+
+        $locale = LocaleDetector::normalize($locale);
+
+        return isset($this->liveCatalogs[$locale]) ? null : $this->snapshot->catalog($locale);
     }
 
     /**
@@ -1159,10 +1229,15 @@ class Client
                 continue;
             }
 
-            try {
-                $translations = $this->getTranslations($locale);
-            } catch (\Throwable $e) {
-                return;
+            // The catalog the message was rendered from: a seeded snapshot's
+            // while it answers, else the live one.
+            $translations = $this->seedCatalog($locale);
+            if ($translations === null) {
+                try {
+                    $translations = $this->getTranslations($locale);
+                } catch (\Throwable $e) {
+                    return;
+                }
             }
 
             foreach ($translations as $items) {
@@ -1207,6 +1282,13 @@ class Client
     protected function lookupMessageTemplate($template, $category, $locale)
     {
         $template = Canonical::stripControls($template);
+
+        $seed = $this->seedCatalog($locale);
+        if ($seed !== null && isset($seed[$category]) && is_array($seed[$category]) && array_key_exists($template, $seed[$category])) {
+            $value = $seed[$category][$template];
+
+            return [true, (is_string($value) && $value !== '') ? $value : null];
+        }
 
         try {
             $translations = $this->getTranslations($locale);
@@ -1616,14 +1698,20 @@ class Client
     {
         try {
             $project = $this->getProject();
+            $base = isset($project['base_locale']) ? $project['base_locale'] : null;
+            $served = array_merge($base === null ? [] : [$base], isset($project['target_locales']) && is_array($project['target_locales']) ? $project['target_locales'] : []);
         } catch (\Throwable $e) {
-            $this->logger->error('Could not read the project\'s locales to choose the request locale', ['error' => $e->getMessage()]);
+            // Offline, a loaded snapshot answers for authorization: its base
+            // and locales are the served set until authorization answers.
+            if ($this->snapshot === null) {
+                $this->logger->error('Could not read the project\'s locales to choose the request locale', ['error' => $e->getMessage()]);
 
-            return ['locale' => null, 'source' => 'none', 'vary' => null];
+                return ['locale' => null, 'source' => 'none', 'vary' => null];
+            }
+
+            $base = $this->snapshot->baseLocale();
+            $served = array_merge([$base], $this->snapshot->locales());
         }
-
-        $base = isset($project['base_locale']) ? $project['base_locale'] : null;
-        $served = array_merge($base === null ? [] : [$base], isset($project['target_locales']) && is_array($project['target_locales']) ? $project['target_locales'] : []);
 
         $options = $options !== null ? $options : $this->requestLocaleOptions;
 
@@ -1805,6 +1893,15 @@ class Client
 
         // Generate customId for this content block
         $customId = $parser->generateCustomId($category, $phrases);
+
+        // A seeded snapshot holding this block renders it with no fetch and no
+        // registration decision (SNAP-2).
+        $seed = $this->seedCatalog($locale);
+        if ($seed !== null && isset($seed[$category][$customId]) && is_array($seed[$category][$customId])) {
+            $resolvedId = $customId;
+
+            return $this->applyBlockTranslations($html, $seed[$category][$customId], $parser, $params, $locale, $customId);
+        }
 
         // Get translations. As in translate(), an unreachable API degrades to
         // the source HTML rather than throwing into the caller's render.
@@ -2145,7 +2242,11 @@ class Client
         $category = $this->normalizeCategory($category);
         $blockTranslations = [];
 
-        if ($locale !== null) {
+        $seed = $locale === null ? null : $this->seedCatalog($locale);
+
+        if ($seed !== null && isset($seed[$category][$customId]) && is_array($seed[$category][$customId])) {
+            $blockTranslations = $seed[$category][$customId];
+        } elseif ($locale !== null) {
             try {
                 $translations = $this->getTranslations($locale);
                 if (isset($translations[$category][$customId]) && is_array($translations[$category][$customId])) {

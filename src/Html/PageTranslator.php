@@ -187,26 +187,51 @@ class PageTranslator
             ? new SelectorMatcher($selectorCategories)
             : null;
 
-        // Get translations (uses cache)
-        try {
-            $translations = $this->client->getTranslations($locale);
-        } catch (\Throwable $e) {
-            // \Throwable, not \Exception: an \Error from a wrong-shaped cache
-            // hit escaped this catch and took the whole page render down.
-            return $html;
-        }
-
-        // Process head section (extract phrases + apply translations + set lang/charset)
-        // Placeholders must resolve here too, or <title> and meta description
-        // ship raw {name} to the browser while the body renders correctly.
+        // Extract first: whether a seeded snapshot answers the page is decided
+        // by what the page holds.
         $headPhrases = $this->headHandler->extractPhrases($doc);
-        $this->headHandler->useInterpolation($this->client->getInterpolator(), $params, $locale);
-        $this->headHandler->process($doc, $locale, $translations, $defaultCategory);
 
         // Process body section (respects data-langsys-category attributes and selector categories)
         $bodyResult = $this->processBody($doc, $defaultCategory);
         $bodyPhrases = $bodyResult['phrases'];
         $contentBlocks = $bodyResult['contentBlocks'];
+
+        // SNAP-2: a seeded snapshot that holds every unit of the page answers it
+        // with no fetch. Otherwise the live catalog is read; if it cannot be,
+        // the snapshot still renders what it holds. Either way the snapshot
+        // never decides a registration (REG-13).
+        $seed = $this->client->seedCatalog($locale);
+        $fromSeed = $seed !== null && $this->seedHolds($seed, $this->addCategoryToPhrases($headPhrases, $defaultCategory), $bodyPhrases, $contentBlocks);
+
+        if ($fromSeed) {
+            $translations = $seed;
+        } else {
+            try {
+                $translations = $this->client->getTranslations($locale);
+            } catch (\Throwable $e) {
+                // \Throwable, not \Exception: an \Error from a wrong-shaped cache
+                // hit escaped this catch and took the whole page render down.
+                if ($seed === null) {
+                    return $html;
+                }
+
+                $translations = $seed;
+                $fromSeed = true;
+            }
+        }
+
+        // Head: apply translations and set lang/charset. Placeholders must
+        // resolve here too, or <title> and meta description ship raw {name}
+        // to the browser while the body renders correctly.
+        $this->headHandler->useInterpolation($this->client->getInterpolator(), $params, $locale);
+        $this->headHandler->process($doc, $locale, $translations, $defaultCategory);
+
+        if ($fromSeed) {
+            $this->applyBodyTranslations($doc, $bodyPhrases, $contentBlocks, $translations, $defaultCategory);
+            $this->markResolvedRoot($doc, $locale);
+
+            return $this->saveHtml($doc);
+        }
 
         // Collect all unique categories used
         $usedCategories = $this->collectUsedCategories($headPhrases, $bodyPhrases, $contentBlocks, $defaultCategory);
@@ -268,6 +293,35 @@ class PageTranslator
 
         // Return translated HTML
         return $this->saveHtml($doc);
+    }
+
+    /**
+     * Whether a snapshot's catalog holds every unit of a page: each phrase in
+     * its category, and each block under its id.
+     *
+     * @param array $seed category => entries
+     * @param array $headPhrases With categories
+     * @param array $bodyPhrases
+     * @param array $contentBlocks
+     * @return bool
+     */
+    protected function seedHolds(array $seed, array $headPhrases, array $bodyPhrases, array $contentBlocks)
+    {
+        foreach (array_merge($headPhrases, $bodyPhrases) as $phrase) {
+            $cat = isset($phrase['category']) ? $phrase['category'] : '__uncategorized__';
+            if (!isset($seed[$cat]) || !is_array($seed[$cat]) || !array_key_exists($phrase['text'], $seed[$cat]) || is_array($seed[$cat][$phrase['text']])) {
+                return false;
+            }
+        }
+
+        foreach ($contentBlocks as $block) {
+            $cat = isset($block['category']) ? $block['category'] : '__uncategorized__';
+            if (!isset($seed[$cat][$block['customId']]) || !is_array($seed[$cat][$block['customId']])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
