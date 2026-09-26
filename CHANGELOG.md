@@ -207,6 +207,12 @@ its id or re-registers it.
 
 ### Fixed
 
+- **A locale the framework already resolved is served as is.** Passed as
+  `framework` in the request data, it wins over the URL, cookie and
+  `Accept-Language`, which are consulted only when nothing resolved the
+  locale. It is validated against the project's locales, a bare language maps
+  to the project's default locale for it, an unsupported one serves the base
+  locale, and no `Vary` is added for it.
 - **Snapshots use the one format every Langsys SDK reads.** A snapshot now
   carries the project's base locale and the flat catalog the SDK loads from
   `GET /translations`, and its checksum is computed over one canonical

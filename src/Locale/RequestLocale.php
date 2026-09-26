@@ -3,9 +3,12 @@
 namespace Langsys\SDK\Locale;
 
 /**
- * Chooses a request's locale (SRV-6): the first usable candidate from the URL,
- * then a cookie or session value, then `Accept-Language` negotiated against the
- * project's locales, and otherwise the project's base locale.
+ * Chooses a request's locale (SRV-6). A locale the framework or the app already
+ * resolved - Laravel's `App::getLocale()`, an app's own middleware - is the
+ * one served, mapped to the project's form. Only where nothing resolved it is
+ * it resolved here: the first usable candidate from the URL, then a cookie or
+ * session value, then `Accept-Language` negotiated against the project's
+ * locales, and otherwise the project's base locale.
  *
  * Every candidate is validated against the locales the project serves - its base
  * and target locales. An unsupported one is skipped and resolution falls through
@@ -13,9 +16,11 @@ namespace Langsys\SDK\Locale;
  * exactly, or by language when the project serves that language in one region
  * (`es` or `es-mx` for a project serving `es-es`).
  *
- * The result names the `Vary` header the choice requires: `Accept-Language` when
- * the header decided, `Cookie` when a cookie or a cookie-backed session did, and
- * none when the URL did, since the URL is already the cache key.
+ * The result names the `Vary` header this resolver's own choice requires:
+ * `Accept-Language` when the header decided, `Cookie` when a cookie or a
+ * cookie-backed session did, and none when the URL did, since the URL is
+ * already the cache key. A locale the framework resolved is the framework's
+ * and the app's to vary on, so it adds none.
  *
  * Framework-agnostic: the request is plain data, so a binding passes its own.
  */
@@ -38,32 +43,43 @@ final class RequestLocale
     /**
      * @param string[] $served The project's base and target locales
      * @param string $base The project's base locale
-     * @param array $request path, host, query, cookies, session, accept_language
+     * @param array $request framework (a locale already resolved), path, host,
+     *                       query, cookies, session, accept_language
      * @param array $options See DEFAULTS
+     * @param array<string, string> $defaultLocales language => the project's default locale for it
      * @return array{locale: string|null, source: string, vary: string|null}
      */
-    public static function resolve(array $served, $base, array $request, array $options = [])
+    public static function resolve(array $served, $base, array $request, array $options = [], array $defaultLocales = [])
     {
         $options = array_merge(self::DEFAULTS, $options);
         $served = array_values(array_unique(array_filter(array_map([LocaleDetector::class, 'normalize'], $served))));
+        $base = $base === null ? null : LocaleDetector::normalize($base);
+
+        // The framework's locale is the request's: validated, never overridden
+        // by the URL, a cookie or the header. An unsupported one serves the base.
+        if (isset($request['framework']) && is_string($request['framework']) && trim($request['framework']) !== '') {
+            $matched = self::match($request['framework'], $served, $defaultLocales);
+
+            return ['locale' => $matched !== null ? $matched : $base, 'source' => 'framework', 'vary' => null];
+        }
 
         if (is_callable($options['resolver'])) {
             $answer = call_user_func($options['resolver'], $request);
             $from = is_array($answer) && isset($answer['from']) && $answer['from'] === 'url' ? 'url' : 'cookie';
-            $matched = self::match(is_array($answer) ? (isset($answer['locale']) ? $answer['locale'] : null) : $answer, $served);
+            $matched = self::match(is_array($answer) ? (isset($answer['locale']) ? $answer['locale'] : null) : $answer, $served, $defaultLocales);
             if ($matched !== null) {
                 return ['locale' => $matched, 'source' => $from, 'vary' => $from === 'url' ? null : 'Cookie'];
             }
         } else {
             foreach (self::urlCandidates($request, $options) as $candidate) {
-                $matched = self::match($candidate, $served);
+                $matched = self::match($candidate, $served, $defaultLocales);
                 if ($matched !== null) {
                     return ['locale' => $matched, 'source' => 'url', 'vary' => null];
                 }
             }
 
             foreach (self::storedCandidates($request, $options) as $candidate) {
-                $matched = self::match($candidate, $served);
+                $matched = self::match($candidate, $served, $defaultLocales);
                 if ($matched !== null) {
                     return ['locale' => $matched, 'source' => 'cookie', 'vary' => 'Cookie'];
                 }
@@ -72,7 +88,7 @@ final class RequestLocale
 
         $header = isset($request['accept_language']) ? $request['accept_language'] : null;
         foreach (self::acceptLanguageTags($header) as $tag) {
-            $matched = self::match($tag, $served);
+            $matched = self::match($tag, $served, $defaultLocales);
             if ($matched !== null) {
                 return ['locale' => $matched, 'source' => 'accept-language', 'vary' => 'Accept-Language'];
             }
@@ -81,20 +97,21 @@ final class RequestLocale
         // The header was consulted and did not decide, but a different header
         // could have, so the response still varies on it.
         $vary = is_string($header) && trim($header) !== '' ? 'Accept-Language' : null;
-        $base = $base === null ? null : LocaleDetector::normalize($base);
 
         return ['locale' => $base, 'source' => 'base', 'vary' => $vary];
     }
 
     /**
-     * A served locale for a candidate: exact, else the one served locale of the
+     * A served locale for a candidate: exact; else, for a bare language, the
+     * project's default locale for it; else the one served locale of the
      * candidate's language.
      *
      * @param mixed $candidate
      * @param string[] $served
+     * @param array<string, string> $defaultLocales language => locale
      * @return string|null
      */
-    public static function match($candidate, array $served)
+    public static function match($candidate, array $served, array $defaultLocales = [])
     {
         if (!is_string($candidate) || !preg_match('/^[a-z]{2,3}([_-][a-z0-9]{2,8})?$/i', trim($candidate))) {
             return null;
@@ -107,6 +124,14 @@ final class RequestLocale
         }
 
         $language = explode('-', $candidate)[0];
+
+        if ($language === $candidate && isset($defaultLocales[$language])) {
+            $default = LocaleDetector::normalize((string) $defaultLocales[$language]);
+            if (in_array($default, $served, true)) {
+                return $default;
+            }
+        }
+
         $sameLanguage = array_values(array_filter($served, function ($locale) use ($language) {
             return explode('-', $locale)[0] === $language;
         }));

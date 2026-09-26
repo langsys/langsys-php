@@ -231,4 +231,66 @@ class RequestLocaleTest extends TestCase
         $this->assertSame('es-es', $client->getLocale());
         $this->assertSame([], $client->vary);
     }
+
+    // A locale the framework or the app already resolved
+
+    /**
+     * The spec's vector: the framework's locale is served whatever the URL,
+     * cookie and header say, and the SDK adds no Vary.
+     */
+    public function testTheFrameworksLocaleIsServedWhateverElseTheRequestSays(): void
+    {
+        $this->assertSame(
+            ['locale' => 'es-es', 'source' => 'framework', 'vary' => null],
+            $this->resolve(['framework' => 'es-ES', 'path' => '/fr/pricing', 'cookies' => ['locale' => 'fr-fr'], 'accept_language' => 'fr'])
+        );
+        $this->assertSame('es-es', $this->resolve(['framework' => 'es_ES'])['locale']);
+    }
+
+    public function testABareFrameworkLanguageIsTheProjectsDefaultLocaleForIt(): void
+    {
+        $served = ['en-us', 'es-es', 'es-mx'];
+
+        $this->assertSame('es-mx', RequestLocale::resolve($served, 'en-us', ['framework' => 'es'], [], ['es' => 'es-mx'])['locale']);
+        $this->assertSame('es-es', RequestLocale::resolve($served, 'en-us', ['framework' => 'es'], [], ['es' => 'es-es'])['locale']);
+    }
+
+    public function testAnUnsupportedFrameworkLocaleServesTheBase(): void
+    {
+        $this->assertSame(
+            ['locale' => 'en-us', 'source' => 'framework', 'vary' => null],
+            $this->resolve(['framework' => 'de-DE', 'query' => ['locale' => 'fr'], 'cookies' => ['locale' => 'es-es']]),
+            'the framework decided; the URL and cookie are not consulted'
+        );
+    }
+
+    public function testWithNothingResolvedTheResolverRunsAsBefore(): void
+    {
+        $this->assertSame('fr-fr', $this->resolve(['framework' => '', 'query' => ['locale' => 'fr']])['locale']);
+        $this->assertSame('fr-fr', $this->resolve(['framework' => null, 'cookies' => ['locale' => 'fr']])['locale']);
+    }
+
+    public function testTheClientMapsAFrameworkLanguageThroughAuthorizationsDefaults(): void
+    {
+        $http = new MockHttpClient();
+        $http->setResponse('GET', 'authorize-project/project-id', ['data' => [
+            'key_type' => 'read', 'write_enabled' => false, 'base_locale' => 'en-us',
+            'target_locales' => ['es-es', 'es-mx'], 'default_locales' => ['es' => 'es-mx'],
+        ]]);
+
+        $client = new class ('test-api-key', 'project-id', ['cache' => new NullCache()]) extends Client {
+            public $vary = [];
+
+            protected function sendVaryHeader($value)
+            {
+                $this->vary[] = $value;
+            }
+        };
+        $prop = new \ReflectionProperty(Client::class, 'http');
+        $prop->setAccessible(true);
+        $prop->setValue($client, $http);
+
+        $this->assertSame('es-mx', $client->resolveRequestLocale(['framework' => 'es', 'accept_language' => 'fr'])['locale']);
+        $this->assertSame([], $client->vary, 'the framework varies on its own choice');
+    }
 }

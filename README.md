@@ -148,8 +148,14 @@ echo $client->translatePage($html, 'homepage');
 
 ### Locale Detection
 
-With no locale set, `getLocale()` chooses the request's locale once per request,
-from the first usable source in this order:
+A locale your framework or app already resolved is the one served: pass it as
+`framework` in the request data to `resolveRequestLocale()` (a framework integration
+passes `App::getLocale()` and the like). It is mapped to the project's form, `es_ES` to
+`es-es` and a bare `es` to the project's default Spanish locale, and served as the base
+locale when the project doesn't serve it; the SDK adds no `Vary` for it.
+
+Where nothing resolved it, `getLocale()` (with no locale set) chooses the request's
+locale once per request, from the first usable source in this order:
 
 1. **The URL**: a `?locale=` query parameter, the first path segment (`/fr/pricing`)
    or the subdomain (`fr.example.com`).

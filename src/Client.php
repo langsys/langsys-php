@@ -1688,7 +1688,9 @@ class Client
      * binding that puts the returned `vary` on its own response - and never
      * writes a cookie.
      *
-     * @param array|null $request path, host, query, cookies, session,
+     * @param array|null $request framework (a locale the framework or app
+     *                            already resolved, which is then the one served),
+     *                            path, host, query, cookies, session,
      *                            accept_language; read from PHP's superglobals when null
      * @param array|null $options Overrides the `request_locale` option; takes
      *                            RequestLocale's keys plus `send_vary`
@@ -1711,15 +1713,19 @@ class Client
 
             $base = $this->snapshot->baseLocale();
             $served = array_merge([$base], $this->snapshot->locales());
+            $project = [];
         }
 
         $options = $options !== null ? $options : $this->requestLocaleOptions;
+
+        $defaultLocales = (isset($project['default_locales']) && is_array($project['default_locales'])) ? $project['default_locales'] : [];
 
         $result = RequestLocale::resolve(
             $served,
             $base,
             $request !== null ? $request : $this->currentRequest(),
-            $options
+            $options,
+            $defaultLocales
         );
 
         if ($result['vary'] !== null && !(isset($options['send_vary']) && $options['send_vary'] === false)) {
