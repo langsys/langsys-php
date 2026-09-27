@@ -153,6 +153,15 @@ class Client
     protected $liveCatalogs = [];
 
     /**
+     * Locales whose last catalog read this request failed, with none
+     * succeeding since. A miss cannot be decided against them, so nothing is
+     * queued, and a flush reports the skip (REG-10).
+     *
+     * @var array<string, true>
+     */
+    protected $unavailableCatalogs = [];
+
+    /**
      * Where the app keeps the request's locale (RequestLocale::DEFAULTS).
      *
      * @var array
@@ -711,6 +720,7 @@ class Client
         $this->writeEnabled = null;
         $this->requestLocale = null;
         $this->liveCatalogs = [];
+        $this->unavailableCatalogs = [];
         $this->translationsMemoryCache = [];
 
         return $this;
@@ -816,6 +826,7 @@ class Client
                 // Store in memory cache for this request
                 $this->translationsMemoryCache[$memoryKey] = $cached;
                 $this->liveCatalogs[$memoryKey] = true;
+                unset($this->unavailableCatalogs[$memoryKey]);
                 $this->logger->debug('Translations cache hit', [
                     'locale' => $locale,
                     'source' => 'persistent',
@@ -830,6 +841,7 @@ class Client
         // is that a failure produces no value at all.
         if (isset($this->translationFetchFailures[$memoryKey])
             && $this->currentTime() < $this->translationFetchFailures[$memoryKey]['until']) {
+            $this->unavailableCatalogs[$memoryKey] = true;
             throw new LangsysException(sprintf(
                 'Translations fetch for %s failed recently; retrying after its backoff window',
                 $locale
@@ -849,11 +861,13 @@ class Client
                 'failures' => $failures,
                 'until' => $this->currentTime() + $this->backoffDelay($failures),
             ];
+            $this->unavailableCatalogs[$memoryKey] = true;
             throw $e;
         }
 
         unset($this->translationFetchFailures[$memoryKey]);
         $this->liveCatalogs[$memoryKey] = true;
+        unset($this->unavailableCatalogs[$memoryKey]);
 
         // Store in both caches
         if ($useCache) {
@@ -2226,9 +2240,11 @@ class Client
 
             if ($marker !== null && $marker['kind'] === 'identity') {
                 // MARK-3: a stamped id is this host's custom_id. It renders from
-                // the catalog entry under that id, or stays source, and
-                // registers nothing - the renderer that stamped it registered it.
-                $this->replaceChildrenWithHtml($host, $this->renderStampedBlock($inner, $marker['id'], $hostCategory, $params));
+                // the catalog entry under that id. Inside a resolved scope a
+                // server rendered it from the catalog, so it registers nothing;
+                // outside one it registers its content under that id when the
+                // catalog lacks it.
+                $this->replaceChildrenWithHtml($host, $this->renderStampedBlock($inner, $marker['id'], $hostCategory, $params, !HtmlParser::isResolvedScope($host)));
                 $this->renderNestedHosts($host, $hostCategory, $params);
                 continue;
             }
@@ -2242,16 +2258,18 @@ class Client
 
     /**
      * Render a stamped block's content from the catalog entry filed under its
-     * stamped id, without registering anything; source text when the catalog
-     * holds no such entry or cannot be read.
+     * stamped id; source text when the catalog holds no such entry or cannot
+     * be read. A block that may register is queued under its stamped id when
+     * the live catalog lacks it.
      *
      * @param string $html
      * @param string $customId
      * @param string|null $category
      * @param array $params
+     * @param bool $mayRegister Whether the host is outside a resolved scope
      * @return string
      */
-    protected function renderStampedBlock($html, $customId, $category, array $params)
+    protected function renderStampedBlock($html, $customId, $category, array $params, $mayRegister)
     {
         $locale = $this->getLocale();
         $category = $this->normalizeCategory($category);
@@ -2266,6 +2284,12 @@ class Client
                 $translations = $this->getTranslations($locale);
                 if (isset($translations[$category][$customId]) && is_array($translations[$category][$customId])) {
                     $blockTranslations = $translations[$category][$customId];
+                } elseif ($mayRegister && !(isset($translations[$category]) && is_array($translations[$category]) && array_key_exists($customId, $translations[$category]))) {
+                    $parser = new HtmlParser($this->translatableItems->getTranslatableAttributes());
+                    $phrases = $parser->fragmentUnit($html)['tokens'];
+                    if ($phrases !== []) {
+                        $this->queueContentBlockForRegistration($html, $category, $customId, $phrases);
+                    }
                 }
             } catch (\Throwable $e) {
                 $this->logger->error('Content block lookup failed - returning source HTML', [
@@ -2842,7 +2866,14 @@ class Client
      * nothing will retry them) and 'retained' (still queued; a later flush can
      * send them). The two need opposite responses from a caller.
      *
-     * @return array ['phrases' => count, 'content_blocks' => count, 'skipped' => count, 'dropped' => count, 'retained' => count, 'success' => bool]
+     * 'reason' names why a flush did not succeed, and is null when it did:
+     * 'not_write_enabled' (this request may not write), 'catalog_unavailable'
+     * (the catalog could not be read, so no miss could be decided and nothing
+     * was queued), 'backing_off' (waiting after a failed send),
+     * 'decision_unavailable' (whether this request may write could not be
+     * read) or 'send_failed' (the API refused or never received the batch).
+     *
+     * @return array ['phrases' => count, 'content_blocks' => count, 'skipped' => count, 'dropped' => count, 'retained' => count, 'success' => bool, 'reason' => string|null]
      */
     public function flushPendingRegistrations()
     {
@@ -2853,10 +2884,20 @@ class Client
             'dropped' => 0,
             'retained' => 0,
             'success' => true,
+            'reason' => null,
         ];
 
-        // Skip if nothing to register
+        // Nothing to register. When that is because the catalog could not be
+        // read, no miss was decided: the write was skipped, and says so.
         if (empty($this->pendingPhrases) && empty($this->pendingContentBlocks)) {
+            // The locale this request already resolved; never resolved here,
+            // at the end of the request.
+            $locale = $this->locale !== null ? $this->locale : ($this->requestLocale !== null ? $this->requestLocale['locale'] : null);
+            if ($locale !== null && isset($this->unavailableCatalogs[$locale])) {
+                $result['success'] = false;
+                $result['reason'] = 'catalog_unavailable';
+            }
+
             return $result;
         }
 
@@ -2871,6 +2912,7 @@ class Client
             $result['skipped'] = $pendingCount;
             $result['retained'] = $pendingCount;
             $result['success'] = false;
+            $result['reason'] = 'backing_off';
             return $result;
         }
 
@@ -2893,6 +2935,7 @@ class Client
                 $result['skipped'] = $pendingCount;
                 $result['dropped'] = $pendingCount;
                 $result['success'] = false;
+                $result['reason'] = 'not_write_enabled';
                 return $result;
             }
         } catch (\Throwable $e) {
@@ -2905,6 +2948,7 @@ class Client
             $result['skipped'] = $pendingCount;
             $result['retained'] = $pendingCount;
             $result['success'] = false;
+            $result['reason'] = 'decision_unavailable';
             $this->noteSendFailure();
             return $result;
         }
@@ -2929,6 +2973,7 @@ class Client
                 $result['skipped'] += count($this->pendingPhrases);
                 $result['retained'] += count($this->pendingPhrases);
                 $result['success'] = false;
+                $result['reason'] = 'send_failed';
             }
         }
 
@@ -2947,6 +2992,7 @@ class Client
                 $result['skipped'] += count($this->pendingContentBlocks);
                 $result['retained'] += count($this->pendingContentBlocks);
                 $result['success'] = false;
+                $result['reason'] = 'send_failed';
             }
         }
 

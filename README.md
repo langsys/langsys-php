@@ -391,9 +391,11 @@ trimmed, case-insensitive):
 - **No value, `""`, `"true"`, `"1"` or `"yes"`** declares a block. The SDK registers the element
   as one content block and, when it renders it, sets the attribute to the block's id.
 - **`"false"` or `"0"`** opts out: the element is walked as ordinary markup.
-- **Any other value** is a block id that a renderer already stamped. The element renders from
-  the catalog entry under that id, or stays in the source language if the catalog holds none,
-  and nothing is registered for it.
+- **Any other value** is the block's id, stamped by a renderer or supplied by your app. The
+  element renders from the catalog entry under that id, or stays in the source language if the
+  catalog holds none. When the catalog lacks the id, the element's content is registered under
+  it, unless the element or an ancestor carries `data-ls-resolved`: a server rendered that
+  markup from the catalog, so nothing is registered for it.
 
 Every rendered block host carries `data-ls-contentblock="<id>"`, the id it was rendered from, so
 the block can be identified from the page in a browser inspector.
@@ -691,6 +693,16 @@ resets the wait. The wait belongs to the `Client`, so on a long-lived worker it
 carries across requests, and a failing endpoint is not asked again by every request.
 `retained` in the result counts what is still queued; `dropped` counts what nothing
 will send.
+
+**`reason` says why a flush did not succeed**, and is null when it did:
+
+| `reason` | Meaning |
+|---|---|
+| `not_write_enabled` | This request may not write; the queue is dropped. |
+| `catalog_unavailable` | The catalog could not be read, so no miss could be decided and nothing was queued. |
+| `backing_off` | Waiting after a failed send; the queue is kept. |
+| `decision_unavailable` | Whether this request may write could not be read; the queue is kept. |
+| `send_failed` | The API refused or never received the batch; the queue is kept. |
 
 **A phrase ending in an ellipsis** (`…` or `...`) is logged at debug level, since
 upstream code may have cut a longer text short. It is not registered only when a

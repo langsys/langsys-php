@@ -255,6 +255,132 @@ class RegistrationContractTest extends ContractTestCase
         $result = $client->flushPendingRegistrations();
 
         $this->assertFalse($result['success']);
+        $this->assertSame('not_write_enabled', $result['reason']);
         $this->assertSame([], $this->registeredPhrases());
+    }
+
+    /**
+     * REG-10: while the catalog cannot be read no miss is decided and nothing
+     * is queued; the flush reports that skip by name, distinct from a refused
+     * send and from a session that may not write.
+     */
+    public function testAFlushWhileTheCatalogIsUnavailableNamesIt(): void
+    {
+        $this->seedProject(['k-write' => ['type' => 'write']], [], [], [['method' => 'GET', 'path' => '/translations', 'status' => 500, 'times' => 5]]);
+
+        $client = $this->client('k-write');
+        $client->setLocale('es-es');
+        $client->translate('Undecided');
+        $result = $client->flushPendingRegistrations();
+
+        $this->assertFalse($result['success']);
+        $this->assertSame('catalog_unavailable', $result['reason']);
+        $this->assertSame([], $this->registeredPhrases());
+    }
+
+    /**
+     * Once a later read succeeds the catalog is available again, and a flush
+     * with nothing to send is a success.
+     */
+    public function testARecoveredCatalogIsNoLongerReportedUnavailable(): void
+    {
+        $this->seedProject(['k-write' => ['type' => 'write']], ['phrases' => [['phrase' => 'Known', 'translations' => ['es-es' => 'Conocido']]]], [], [['method' => 'GET', 'path' => '/translations', 'status' => 500, 'times' => 1]]);
+
+        $client = $this->clockedClient();
+
+        $this->assertSame('Known', $client->translate('Known'));
+        $this->assertSame('catalog_unavailable', $client->flushPendingRegistrations()['reason']);
+
+        $client->now += 3;
+        $this->assertSame('Conocido', $client->translate('Known'), 'the catalog is read again');
+        $result = $client->flushPendingRegistrations();
+
+        $this->assertTrue($result['success']);
+        $this->assertNull($result['reason']);
+    }
+
+    /**
+     * A catalog another request has since cached is available: reading it
+     * from the cache clears the mark as a fetch would.
+     */
+    public function testACatalogRecoveredThroughTheCacheIsNoLongerReportedUnavailable(): void
+    {
+        $this->seedProject(['k-write' => ['type' => 'write']], ['phrases' => [['phrase' => 'Known', 'translations' => ['es-es' => 'Conocido']]]], [], [['method' => 'GET', 'path' => '/translations', 'status' => 500, 'times' => 1]]);
+        $cache = $this->sharedCache();
+
+        $client = $this->client('k-write', $cache);
+        $client->setLocale('es-es');
+        $this->assertSame('Known', $client->translate('Known'));
+
+        $other = $this->client('k-write', $cache);
+        $other->setLocale('es-es');
+        $this->assertSame('Conocido', $other->translate('Known'), 'another request caches the catalog');
+
+        $this->assertSame('Conocido', $client->translate('Known'), 'read from the cache');
+        $this->assertTrue($client->flushPendingRegistrations()['success']);
+    }
+
+    /**
+     * A later request on a long-lived Client, inside the failed fetch's
+     * window, cannot read the catalog either, and reports it; a request that
+     * never reads the catalog reports nothing unavailable.
+     */
+    public function testTheMarkIsPerRequest(): void
+    {
+        $this->seedProject(['k-write' => ['type' => 'write']], [], [], [['method' => 'GET', 'path' => '/translations', 'status' => 500, 'times' => 1]]);
+
+        $client = $this->clockedClient();
+        $client->translate('Undecided');
+        $this->assertSame('catalog_unavailable', $client->flushPendingRegistrations()['reason']);
+
+        $client->resetRequestState();
+        $this->assertTrue($client->flushPendingRegistrations()['success'], 'this request read no catalog');
+
+        $client->resetRequestState();
+        $client->now += 1;
+        $client->translate('Undecided');
+        $this->assertSame('catalog_unavailable', $client->flushPendingRegistrations()['reason'], 'inside the window the catalog is still unavailable');
+    }
+
+    private function clockedClient()
+    {
+        $client = new class ('k-write', self::PROJECT, ['api_url' => self::$baseUrl, 'cache' => new \Langsys\SDK\Cache\NullCache()]) extends \Langsys\SDK\Client {
+            public $now = 1000.0;
+
+            protected function currentTime()
+            {
+                return $this->now;
+            }
+        };
+        $client->setLocale('es-es');
+
+        return $client;
+    }
+
+    public function testASendTheServerRefusesIsDistinctFromBothSkips(): void
+    {
+        $this->seedProject(['k-write' => ['type' => 'write']], [], [], [['method' => 'POST', 'path' => '/translatable-items', 'status' => 500]]);
+
+        $client = $this->client('k-write');
+        $client->setLocale('es-es');
+        $client->translate('Refused');
+
+        $this->assertSame('send_failed', $client->flushPendingRegistrations()['reason']);
+    }
+
+    public function testAWriteEnabledRegistrationSucceedsAndReachesTheNextCatalogRead(): void
+    {
+        $this->seedProject(['k-write' => ['type' => 'write']]);
+
+        $client = $this->client('k-write');
+        $client->setLocale('es-es');
+        $client->translate('Arrives');
+        $result = $client->flushPendingRegistrations();
+
+        $this->assertTrue($result['success']);
+        $this->assertNull($result['reason']);
+
+        $next = $this->client('k-write');
+        $this->assertArrayHasKey('Arrives', $next->translations()->getTranslationMap('es-es')['__uncategorized__']);
     }
 }

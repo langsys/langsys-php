@@ -245,8 +245,10 @@ its id or re-registers it.
   `data-ls-contentblock="<id>"`, as `translateContentBlock()` does, and a
   declaration marker (no value, `""`, `true`, `1` or `yes`) is set to the id when
   rendered. A content-block marker holding any other value is read as that
-  block's id: the element renders from the catalog entry under it and registers
-  nothing; before, such a value declared a new block under a derived id.
+  block's id: the element renders from the catalog entry under it, and when the
+  catalog lacks that id its content registers under it, unless the element or an
+  ancestor carries `data-ls-resolved`, in which case nothing registers. Before,
+  such a value declared a new block under a derived id.
 - **Warnings and errors are logged even with no log file configured.** Without
   a `log_path`, or with one whose directory cannot be written, they go to PHP's
   error log with a `[langsys]` prefix; nothing below warning is written there.
@@ -355,7 +357,11 @@ its id or re-registers it.
 - **`flushPendingRegistrations()` no longer reports success for work it did not
   do.** `success` now means every queued item was accepted, and the result
   carries `skipped`, split into `dropped` (gone) and `retained` (a later flush
-  can send them) — the two need opposite responses from a caller.
+  can send them) — the two need opposite responses from a caller. A result that
+  is not a success names its `reason`: `not_write_enabled`,
+  `catalog_unavailable`, `backing_off`, `decision_unavailable` or `send_failed`.
+  A flush after the catalog could not be read reports `catalog_unavailable`
+  rather than an empty success.
 
 ### Notes
 

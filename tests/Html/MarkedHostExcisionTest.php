@@ -99,17 +99,21 @@ class MarkedHostExcisionTest extends TestCase
     }
 
     /**
-     * A nested stamped host is excised too, and, being an identity (MARK-3),
-     * registers nothing of its own.
+     * A nested stamped host is excised too, and, being an identity outside a
+     * resolved scope (MARK-3), registers its own content under its stamped id.
      *
      * @dataProvider pathProvider
      */
-    public function testANestedStampedHostIsExcisedAndRegistersNothing($path): void
+    public function testANestedStampedHostIsExcisedAndRegistersUnderItsId($path): void
     {
         $this->assertSame([
             'phrases' => ['Buy {m0o}now{m0c}'],
-            'blocks' => [['Outer intro', 'outer outro']],
+            'blocks' => [['Inner one', 'two'], ['Outer intro', 'outer outro']],
         ], $this->registered($path, sprintf(self::UNIT, '9f2c')));
+
+        $client = $this->client();
+        $this->render($client, $path, sprintf(self::UNIT, '9f2c'));
+        $this->assertArrayHasKey('9f2c', $client->getPendingContentBlocks());
     }
 
     /**

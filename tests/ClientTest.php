@@ -1198,9 +1198,8 @@ class ClientTest extends TestCase
 
         // Queue against a HEALTHY API first. Driving this with an unreachable
         // API instead queues nothing - by design, since a failed lookup cannot
-        // tell a miss from a hit - and the flush then returns success trivially
-        // with an empty queue, asserting nothing. That was this test's first
-        // form and it passed for that reason.
+        // tell a miss from a hit - and the flush then reports the unavailable
+        // catalog without reaching the authorize call this test is about.
         $client->translate('Hello');
         $this->assertTrue($client->hasPendingRegistrations(), 'sanity: there is something to flush');
 
@@ -1217,6 +1216,7 @@ class ClientTest extends TestCase
         $result = $client->flushPendingRegistrations();
 
         $this->assertFalse($result['success']);
+        $this->assertSame('decision_unavailable', $result['reason']);
         $this->assertSame(1, $result['skipped'], 'the queued phrase is accounted for, not lost silently');
         $this->assertTrue($client->hasPendingRegistrations(), 'and left queued for a later retry');
     }

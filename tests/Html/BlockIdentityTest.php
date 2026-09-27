@@ -12,7 +12,8 @@ use PHPUnit\Framework\TestCase;
  * MARK-1: a rendered block host carries the custom_id it was rendered from.
  * MARK-3: a content-block marker declares a block (bare, empty, true, 1, yes),
  * opts out (false, 0), or is an identity - a stamped custom_id, recognised
- * rather than re-derived, rendered from and never registered.
+ * rather than re-derived and rendered from. An identity registers under its id
+ * when the catalog lacks it, unless it sits in a resolved scope.
  */
 class BlockIdentityTest extends TestCase
 {
@@ -178,9 +179,9 @@ class BlockIdentityTest extends TestCase
     }
 
     /**
-     * Any other value is the host's custom_id: nothing is registered, the
-     * host renders from the catalog entry filed under it, and the stamp is
-     * kept as written.
+     * Any other value is the host's custom_id: the host renders from the
+     * catalog entry filed under it, nothing is registered since the catalog
+     * holds it, and the stamp is kept as written.
      *
      * @dataProvider identityProvider
      */
@@ -202,18 +203,63 @@ class BlockIdentityTest extends TestCase
     }
 
     /**
-     * A stamped id the catalog does not hold renders source and still
-     * registers nothing: the renderer that stamped it registered it.
+     * Outside a resolved scope, a stamped id the catalog does not hold is the
+     * block's id to register under: the host renders source and registers its
+     * content under that id, not the one its content would derive.
      *
      * @dataProvider identityProvider
      */
-    public function testAnUnknownStampedIdRendersSourceAndRegistersNothing($path, $attribute): void
+    public function testAnUnknownStampedIdRegistersUnderThatId($path, $attribute): void
     {
         $client = $this->client();
         $rendered = $this->render($client, $path, '<div ' . $attribute . '="abc123"><p>Alpha</p><p>Beta</p></div>');
 
         $this->assertStringContainsString('<p>Alpha</p><p>Beta</p>', $rendered);
+        $this->assertStringContainsString($attribute . '="abc123"', $rendered);
+        $this->assertSame([], $client->getPendingPhrases());
+
+        $pending = $client->getPendingContentBlocks();
+        $this->assertSame(['abc123'], array_keys($pending));
+        $this->assertSame(['Alpha', 'Beta'], $pending['abc123']['phrases']);
+        $this->assertSame('<p>Alpha</p><p>Beta</p>', $pending['abc123']['html'], 'the host\'s content');
+    }
+
+    /**
+     * Inside a resolved scope - the resolved marker on the host itself, or
+     * only on an ancestor - a server rendered the stamped host from the
+     * catalog: it renders the entry under its id and registers nothing, and
+     * nothing when the catalog lacks the id either.
+     *
+     * @dataProvider resolvedScopeProvider
+     */
+    public function testAStampedHostInAResolvedScopeRegistersNothing($path, $attribute, $where): void
+    {
+        $host = '<div ' . $attribute . '="abc123"' . ($where === 'host' ? ' data-ls-resolved' : '') . '><p>Alpha</p><p>Beta</p></div>';
+        $markup = $where === 'ancestor' ? '<section data-ls-resolved>' . $host . '</section>' : $host;
+
+        $client = $this->client(['UI' => ['abc123' => ['Alpha' => 'Alfa', 'Beta' => 'Beta ES']]]);
+        $rendered = $this->render($client, $path, $markup);
+
+        $this->assertStringContainsString('<p>Alfa</p><p>Beta ES</p>', $rendered, 'renders the catalog entry under abc123');
         $this->assertFalse($client->hasPendingRegistrations());
+
+        $client = $this->client();
+        $rendered = $this->render($client, $path, $markup);
+
+        $this->assertStringContainsString('<p>Alpha</p><p>Beta</p>', $rendered);
+        $this->assertFalse($client->hasPendingRegistrations(), 'a resolved stamp never registers');
+    }
+
+    public function resolvedScopeProvider(): array
+    {
+        $rows = [];
+        foreach ($this->identityProvider() as $name => $row) {
+            foreach (['host', 'ancestor'] as $where) {
+                $rows[$name . ' resolved on ' . $where] = array_merge($row, [$where]);
+            }
+        }
+
+        return $rows;
     }
 
     public function identityProvider(): array
@@ -242,7 +288,9 @@ class BlockIdentityTest extends TestCase
 
     /**
      * A stamped id is the only id read for its host: a catalog entry under
-     * the id its content would derive, current or legacy, is not used.
+     * the id its content would derive, current or legacy, is not used to
+     * render it, and does not stand in for the stamped id's entry - the host
+     * still registers under its stamped id.
      *
      * @dataProvider pathProvider
      */
@@ -255,5 +303,6 @@ class BlockIdentityTest extends TestCase
 
         $this->assertStringContainsString('<p>Alpha</p><p>Beta</p>', $rendered);
         $this->assertStringNotContainsString('WRONG', $rendered);
+        $this->assertSame(['abc123'], array_keys($client->getPendingContentBlocks()));
     }
 }

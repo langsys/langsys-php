@@ -1468,14 +1468,20 @@ class PageTranslator
             $customId = $block['customId'];
             $cat = isset($block['category']) ? $block['category'] : '__uncategorized__';
 
-            // A stamped host was registered by the renderer that stamped it.
-            if (!empty($block['stamped'])) {
-                continue;
-            }
-
             // Check if already registered locally
             $catRegistered = isset($registeredItems[$cat]) ? $registeredItems[$cat] : ['phrases' => [], 'contentBlocks' => []];
             if (in_array($customId, $catRegistered['contentBlocks'], true)) {
+                continue;
+            }
+
+            // A stamped host outside a resolved scope registers under its
+            // stamped id when the catalog lacks that id; no other id is read
+            // for it (MARK-3).
+            if (!empty($block['stamped'])) {
+                $categoryTranslations = isset($translations[$cat]) ? $translations[$cat] : [];
+                if (!is_array($categoryTranslations) || !array_key_exists($customId, $categoryTranslations)) {
+                    $newBlocks[] = $block;
+                }
                 continue;
             }
 

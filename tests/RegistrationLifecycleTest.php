@@ -115,6 +115,7 @@ class RegistrationLifecycleTest extends TestCase
             $sendsBefore = $this->sends();
             $result = $client->flushPendingRegistrations();
             $this->assertFalse($result['success']);
+            $this->assertSame('send_failed', $result['reason']);
             $this->assertSame(1, $result['retained'], 'the failed item stays queued');
             $this->assertSame($sendsBefore + 1, $this->sends(), 'the attempt reached the endpoint');
 
@@ -122,6 +123,7 @@ class RegistrationLifecycleTest extends TestCase
             $deferred = $client->flushPendingRegistrations();
             $this->assertSame($sendsBefore + 1, $this->sends(), 'no request inside the ' . $wait . 's wait');
             $this->assertSame(1, $deferred['retained']);
+            $this->assertSame('backing_off', $deferred['reason']);
             $this->assertTrue($client->hasPendingRegistrations());
 
             $client->now += 0.5;
