@@ -107,6 +107,11 @@ class HttpClient
     /**
      * Get the default headers for requests.
      *
+     * `X-Langsys-Capabilities: icu` asks for raw ICU MessageFormat strings. Without it
+     * the API pre-flattens a plural to its CLDR `other` branch, so a count of 1 renders
+     * the plural form ("Tienes 1 mensajes nuevos."). The Interpolator resolves ICU, so
+     * this client can take it, like the JS, Python and Ruby SDKs.
+     *
      * @return array
      */
     protected function getHeaders()
@@ -114,6 +119,7 @@ class HttpClient
         $headers = [
             'Content-Type: application/json',
             'Accept: application/json',
+            'X-Langsys-Capabilities: icu',
         ];
 
         if ($this->config->hasApiKey()) {

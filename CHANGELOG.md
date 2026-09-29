@@ -5,6 +5,24 @@ All notable changes to the Langsys PHP SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Machine-generated plurals rendered their plural form for a count of 1.**
+  Langsys promotes a flat phrase to ICU in the target locales
+  (`You have {count} new messages.` becomes
+  `{count, plural, one {Tienes # mensaje nuevo.} other {Tienes # mensajes nuevos.}}`),
+  but the API only returns that ICU to clients that send
+  `X-Langsys-Capabilities: icu`. Everyone else gets it pre-flattened to the
+  `other` branch, `Tienes {count} mensajes nuevos.`, so a count of 1 rendered
+  "Tienes 1 mensajes nuevos.". This client never sent the header, although the
+  Interpolator has always resolved ICU; it now sends it on every request, as
+  the JS, Python and Ruby SDKs do.
+
+  Catalogs cached before upgrading still hold the flattened strings: call
+  `clearCache()` (or wait out the TTL, one hour by default) after deploying.
+
 ## [1.3.1] - 2026-08-16
 
 ### Fixed
