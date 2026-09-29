@@ -22,10 +22,14 @@ class BlockIdentityTest extends TestCase
      */
     private $http;
 
-    private function client(array $catalog = ['UI' => []])
+    /**
+     * @param array $project Authorization fields, e.g. a base locale so a
+     *                       non-base render marks its own root resolved
+     */
+    private function client(array $catalog = ['UI' => []], array $project = [])
     {
         $this->http = new MockHttpClient();
-        $this->http->setResponse('GET', 'authorize-project/project-id', ['data' => ['key_type' => 'write', 'write_enabled' => true]]);
+        $this->http->setResponse('GET', 'authorize-project/project-id', ['data' => ['key_type' => 'write', 'write_enabled' => true] + $project]);
         $this->http->setResponse('GET', 'translations', ['data' => $catalog]);
         $this->http->setResponse('POST', 'translatable-items', ['status' => true]);
 
@@ -248,6 +252,25 @@ class BlockIdentityTest extends TestCase
 
         $this->assertStringContainsString('<p>Alpha</p><p>Beta</p>', $rendered);
         $this->assertFalse($client->hasPendingRegistrations(), 'a resolved stamp never registers');
+    }
+
+    /**
+     * A render in a locale other than the base marks its own root resolved
+     * (GATE-10). That mark describes this render's output, not its input, so
+     * it never places a stamped host inside a resolved scope: the host still
+     * registers under its id.
+     */
+    public function testARendersOwnResolvedMarkDoesNotSilenceAStampedHost(): void
+    {
+        $client = $this->client(['UI' => []], ['base_locale' => 'en-us', 'target_locales' => ['es-es']]);
+        $rendered = $client->translatePage('<html><body><div data-ls-contentblock="abc123"><p>Alpha</p><p>Beta</p></div></body></html>', 'UI');
+
+        $this->assertStringContainsString('<html lang="es-es" data-ls-resolved="es-es">', $rendered, 'the render marked its own root');
+        $this->assertSame(1, substr_count($rendered, 'data-ls-resolved'), 'and that is the only resolved marker');
+
+        $pending = $client->getPendingContentBlocks();
+        $this->assertSame(['abc123'], array_keys($pending));
+        $this->assertSame('<p>Alpha</p><p>Beta</p>', $pending['abc123']['html']);
     }
 
     public function resolvedScopeProvider(): array
