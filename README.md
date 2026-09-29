@@ -627,6 +627,36 @@ which should still be discovered. Opt its mount point back out:
 
 The nearest marked ancestor decides, and only `false` or `0` opt out.
 
+#### Values from variables
+
+A sentence that shows a value — a user's name, a count — is one phrase however many
+values it is shown with. Rendered text alone can't say which part was a variable, so a
+template integration (such as the Laravel binding's Blade support) marks each value it
+prints:
+
+```html
+<p>Hello <!--ls:name-->Ana<!--/ls-->, welcome back</p>
+<!-- or, where comments can't be written: -->
+<p>Hello <span data-ls-param="name">Ana</span>, welcome back</p>
+```
+
+`translatePage()` and `translateContentBlock()` read either form as the phrase
+`Hello {name}, welcome back` with `name` = `Ana`. Every user's render registers that one
+phrase, a translation places the value where its `{name}` is, and the output keeps the
+marker around the value. A plural or select in the translation chooses on the value
+itself:
+
+| Markup | Registers |
+|---|---|
+| `<p>Hello <!--ls:name-->Ana<!--/ls--></p>` | the phrase `Hello {name}` |
+| `<p>Hi <b><!--ls:name-->Ana<!--/ls--></b>, you have <!--ls:count-->3<!--/ls--> messages</p>` | one block, `Hi` · `{name}` · `, you have {count} messages` |
+| `<td><!--ls:total-->89.00<!--/ls--> <!--ls:currency-->EUR<!--/ls--></td>` | nothing: it has no text of its own |
+| `<p>Hello <!--ls:Name-->Ana<!--/ls--></p>` | nothing: a name must match `[a-z][a-z0-9_]*`, and a value that can't be named is never registered (one debug notice) |
+
+A param you pass yourself under the same name wins over the marked value. A pair with an
+element inside it, an unclosed pair and any other comment are ordinary markup, read as
+they always were. Text without markers registers what it renders, as before.
+
 #### Plurals (ICU MessageFormat)
 
 Full ICU is supported, so plural categories are correct per language — Russian's

@@ -128,6 +128,13 @@ its id or re-registers it.
 
 ### Added
 
+- **A value marked as a variable is read as a placeholder.** `translatePage()`
+  and `translateContentBlock()` read `<!--ls:NAME-->VALUE<!--/ls-->` and
+  `<span data-ls-param="NAME">VALUE</span>` as `{NAME}` with the value as its
+  param, so a sentence registers once for every user, and render the value back
+  inside its marker. A plural or select in the translation chooses on the value.
+  A unit made only of markers, or holding a marker whose name is outside
+  `[a-z][a-z0-9_]*`, registers nothing. Unmarked markup reads exactly as before.
 - **A client can be seeded from a snapshot.** Pass `'snapshot' => $snapshot` or
   call `useSnapshot()`: phrases, blocks, pages and server messages the snapshot
   holds render from it with no API call; anything it lacks is read from the live

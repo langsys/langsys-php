@@ -91,6 +91,11 @@ class PageTranslator
     protected $currentLocale = null;
 
     /**
+     * @var ValueMarkers|null The value markers read from the current document.
+     */
+    protected $markers = null;
+
+    /**
      * @var LoggerInterface|null Defaulted in the CONSTRUCTOR, not here.
      *
      * PHP cannot `new` in a property initializer, so this is null on any
@@ -150,6 +155,7 @@ class PageTranslator
         // Per-call state; reset every time since the instance is reused.
         $this->params = $params;
         $this->currentLocale = $locale;
+        $this->markers = null;
 
         try {
             return $this->translateDocument($html, $locale, $defaultCategory, $selectorCategories, $params);
@@ -159,6 +165,7 @@ class PageTranslator
             // when it unwinds on an exception.
             $this->params = [];
             $this->currentLocale = null;
+            $this->markers = null;
         }
     }
 
@@ -181,6 +188,10 @@ class PageTranslator
         if ($doc === null) {
             return $html; // Return original on parse failure
         }
+
+        // Value markers read as placeholders before anything is tokenized
+        // (VAR-3); finish() puts the values back before the page is saved.
+        $this->markers = ValueMarkers::read($doc->documentElement);
 
         // Create selector matcher if selector categories provided
         $this->selectorMatcher = !empty($selectorCategories)
@@ -228,6 +239,7 @@ class PageTranslator
 
         if ($fromSeed) {
             $this->applyBodyTranslations($doc, $bodyPhrases, $contentBlocks, $translations, $defaultCategory);
+            $this->markers->finish($doc->documentElement);
             $this->markResolvedRoot($doc, $locale);
 
             return $this->saveHtml($doc);
@@ -253,14 +265,14 @@ class PageTranslator
             $registeredItems
         );
         $newBodyPhrases = $this->findNewPhrasesWithCategory(
-            $this->outsideResolvedScope($bodyPhrases),
+            $this->withText($this->outsideResolvedScope($bodyPhrases)),
             $translations,
             $registeredItems
         );
         $newPhrases = array_merge($newHeadPhrases, $newBodyPhrases);
 
         $newContentBlocks = $this->findNewContentBlocksWithCategory(
-            $this->outsideResolvedScope($contentBlocks),
+            $this->withText($this->outsideResolvedScope($contentBlocks)),
             $translations,
             $registeredItems
         );
@@ -288,6 +300,7 @@ class PageTranslator
 
         // Apply body translations
         $this->applyBodyTranslations($doc, $bodyPhrases, $contentBlocks, $translations, $defaultCategory);
+        $this->markers->finish($doc->documentElement);
 
         $this->markResolvedRoot($doc, $locale);
 
@@ -322,6 +335,36 @@ class PageTranslator
         }
 
         return true;
+    }
+
+    /**
+     * The units that may register: not one made only of value markers
+     * (VAR-3), nor one holding a value the reader cannot name (VAR-7).
+     *
+     * @param array $units Collected phrases or content blocks
+     * @return array
+     */
+    protected function withText(array $units)
+    {
+        $markers = $this->markers;
+        if ($markers === null || (!$markers->any() && !$markers->unnamedWithin())) {
+            return $units;
+        }
+
+        $logger = $this->logger;
+
+        return array_values(array_filter($units, function ($unit) use ($markers, $logger) {
+            // A value the reader cannot name is never registered (VAR-7).
+            if (isset($unit['element']) && $unit['element'] instanceof DOMNode && $markers->unnamedWithin($unit['element'])) {
+                if (ValueMarkers::firstNotice()) {
+                    $logger->debug('A value marker names its value outside [a-z][a-z0-9_]*, so text holding it is not registered');
+                }
+
+                return false;
+            }
+
+            return !$markers->markerOnly(isset($unit['phrases']) ? $unit['phrases'] : [$unit['text']]);
+        }));
     }
 
     /**
@@ -914,7 +957,7 @@ class PageTranslator
                 continue;
             }
 
-            $translated = $this->interp($this->lookupTranslation($originalText, $itemCategory, $translations));
+            $translated = $this->interp($this->lookupTranslation($originalText, $itemCategory, $translations), $phraseData['element']);
 
             if ($translated !== $originalText) {
                 // Replace text content while preserving structure (br tags, etc.)
@@ -947,7 +990,7 @@ class PageTranslator
         $translated = $this->lookupTranslation($phraseData['text'], $itemCategory, $translations);
 
         $tokenParams = $this->markupTokenizer->tokenParams(count($slots));
-        $merged = array_merge($this->params, $tokenParams);
+        $merged = array_merge($this->paramsFor($element, $translated), $tokenParams);
 
         $rendered = $this->client->getInterpolator()->interpolate($translated, $merged, $this->currentLocale);
 
@@ -1134,7 +1177,7 @@ class PageTranslator
                     $translated = $normalizedText;
                 }
 
-                $translated = $this->interp($translated);
+                $translated = $this->interp($translated, $node);
 
                 if ($translated !== $normalizedText) {
                     // Preserve whitespace pattern
@@ -1226,7 +1269,7 @@ class PageTranslator
      * @param string $text
      * @return string
      */
-    protected function interp($text)
+    protected function interp($text, DOMNode $scope = null)
     {
         // No early return on empty params: a translation can hold ICU the caller
         // knows nothing about - the backend promotes a plain {name} into a
@@ -1237,7 +1280,24 @@ class PageTranslator
             return $text;
         }
 
-        return $this->client->getInterpolator()->interpolate($text, $this->params, $this->currentLocale);
+        return $this->client->getInterpolator()->interpolate($text, $this->paramsFor($scope, $text), $this->currentLocale);
+    }
+
+    /**
+     * The params a render of $text inside $scope uses: the caller's, over the
+     * values of any value markers read there (VAR-3).
+     *
+     * @param DOMNode|null $scope
+     * @param string $text
+     * @return array
+     */
+    protected function paramsFor(DOMNode $scope = null, $text = '')
+    {
+        if ($scope === null || $this->markers === null || !$this->markers->any()) {
+            return $this->params;
+        }
+
+        return $this->markers->params($scope, $text, $this->params);
     }
 
     /**

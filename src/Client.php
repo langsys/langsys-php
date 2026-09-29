@@ -153,6 +153,14 @@ class Client
     protected $liveCatalogs = [];
 
     /**
+     * The value markers read from the block being rendered, while its walk
+     * runs (VAR-3).
+     *
+     * @var \Langsys\SDK\Html\ValueMarkers|null
+     */
+    protected $blockMarkers = null;
+
+    /**
      * Locales whose last catalog read this request failed, with none
      * succeeding since. A miss cannot be decided against them, so nothing is
      * queued, and a flush reports the skip (REG-10).
@@ -1368,7 +1376,7 @@ class Client
         // the case that can skip it. Returning early here shipped raw
         // MessageFormat source to the page. The interpolator has its own fast
         // path for text with no construct in it.
-        return $this->getInterpolator()->interpolate($text, $params, $locale);
+        return $this->getInterpolator()->interpolate($text, \Langsys\SDK\Html\ValueMarkers::forText($params, $text), $locale);
     }
 
     /**
@@ -1908,11 +1916,28 @@ class Client
             return $html; // No translatable content
         }
 
+        // A unit made only of value markers has no text of its own, and one
+        // holding a value the reader cannot name must not register it: either
+        // way nothing is looked up or registered (VAR-3, VAR-7).
+        $markers = $unit['markers'];
+        if ($markers !== null && $markers->unnamedWithin()) {
+            if (\Langsys\SDK\Html\ValueMarkers::firstNotice()) {
+                $this->logger->debug('A value marker names its value outside [a-z][a-z0-9_]*, so text holding it is not registered');
+            }
+
+            return $html;
+        }
+        if ($markers !== null && $markers->markerOnly($phrases)) {
+            return $html;
+        }
+
         // TOK-6: a fragment whose one token is its one text node is a phrase,
         // looked up, registered and rendered as one, and written back into
-        // that text node in place.
+        // that text node in place. A value read from a marker renders as the
+        // param of its name, under any the caller sets.
         if (!$declared && HtmlParser::isPhraseUnit($unit)) {
-            $rendered = $this->translateSource($phrases[0], $locale, $category, null, $params);
+            $runParams = $markers === null ? [] : $markers->sentinels();
+            $rendered = $this->translateSource($phrases[0], $locale, $category, null, array_merge($runParams, $params));
 
             return $this->replaceFragmentText($html, $phrases[0], $rendered);
         }
@@ -2286,8 +2311,9 @@ class Client
                     $blockTranslations = $translations[$category][$customId];
                 } elseif ($mayRegister && !(isset($translations[$category]) && is_array($translations[$category]) && array_key_exists($customId, $translations[$category]))) {
                     $parser = new HtmlParser($this->translatableItems->getTranslatableAttributes());
-                    $phrases = $parser->fragmentUnit($html)['tokens'];
-                    if ($phrases !== []) {
+                    $unit = $parser->fragmentUnit($html);
+                    $phrases = $unit['tokens'];
+                    if ($phrases !== [] && !($unit['markers'] !== null && ($unit['markers']->markerOnly($phrases) || $unit['markers']->unnamedWithin()))) {
                         $this->queueContentBlockForRegistration($html, $category, $customId, $phrases);
                     }
                 }
@@ -2353,11 +2379,12 @@ class Client
     protected function renderTokenizedHost(\DOMElement $host, $category, array $params)
     {
         $tokenizer = new \Langsys\SDK\Html\MarkupTokenizer();
+        $markers = \Langsys\SDK\Html\ValueMarkers::read($host);
         $encoded = $tokenizer->encode($host);
 
-        if ($encoded['text'] !== '') {
+        if ($encoded['text'] !== '' && !$markers->markerOnly([$encoded['text']]) && !$markers->unnamedWithin()) {
             $slots = $encoded['slots'];
-            $rendered = $this->translateSource($encoded['text'], null, $category, null, array_merge($params, $tokenizer->tokenParams(count($slots))));
+            $rendered = $this->translateSource($encoded['text'], null, $category, null, array_merge($markers->sentinels(), $params, $tokenizer->tokenParams(count($slots))));
 
             if ($tokenizer->hasTokens($rendered)) {
                 $rendered = (string) preg_replace('/\{m\d+[oc]\}/', '', $rendered);
@@ -2374,6 +2401,8 @@ class Client
                 $host->appendChild($node);
             }
         }
+
+        $markers->finish($host);
 
         $targets = [$host];
         $walk = function (\DOMElement $element) use (&$walk, &$targets) {
@@ -2484,6 +2513,8 @@ class Client
             return $html;
         }
 
+        $markers = \Langsys\SDK\Html\ValueMarkers::read($wrapper);
+
         $xpath = new \DOMXPath($doc);
         foreach ($xpath->query('.//text()', $wrapper) as $node) {
             if (\Langsys\SDK\Html\Canonical::phrase($node->textContent) !== $phrase || $this->insideMarkedHost($node, $wrapper)) {
@@ -2495,6 +2526,8 @@ class Client
             $node->textContent = $leading . $rendered . $trailing;
             break;
         }
+
+        $markers->finish($wrapper);
 
         $result = '';
         foreach ($wrapper->childNodes as $child) {
@@ -2517,8 +2550,17 @@ class Client
         libxml_clear_errors();
         libxml_use_internal_errors($internalErrors);
 
-        // Walk DOM and apply translations
-        $this->walkAndTranslateBlock($doc->documentElement, $translations, $parser->getTranslatableAttributes(), $params, $locale);
+        // Value markers read as placeholders, so each text node is looked up
+        // as it registered and renders with its own values (VAR-3).
+        $this->blockMarkers = \Langsys\SDK\Html\ValueMarkers::read($doc->documentElement);
+
+        try {
+            // Walk DOM and apply translations
+            $this->walkAndTranslateBlock($doc->documentElement, $translations, $parser->getTranslatableAttributes(), $params, $locale);
+            $this->blockMarkers->finish($doc->documentElement);
+        } finally {
+            $this->blockMarkers = null;
+        }
 
         // Extract inner HTML of the wrapper div
         $wrapper = $doc->getElementsByTagName('div')->item(0);
@@ -2563,7 +2605,10 @@ class Client
                     $translated = $normalizedText;
                 }
 
-                $translated = $this->interpolate($translated, $params, $locale);
+                $nodeParams = $this->blockMarkers !== null && $this->blockMarkers->any()
+                    ? $this->blockMarkers->params($node, $translated, $params)
+                    : $params;
+                $translated = $this->interpolate($translated, $nodeParams, $locale);
 
                 if ($translated !== $normalizedText) {
                     // Preserve whitespace pattern
@@ -2790,6 +2835,10 @@ class Client
         if (isset($this->pendingContentBlocks[$customId])) {
             return;
         }
+
+        // Registered with each value marker read as its placeholder (VAR-3):
+        // a user's value is never part of the source sent for translation.
+        $html = \Langsys\SDK\Html\ValueMarkers::placeholderHtml($html);
 
         // Resolve relative URLs before queuing
         $html = $this->resolveContentBlockUrls($html);

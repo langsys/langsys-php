@@ -188,7 +188,8 @@ class HtmlParser
         libxml_clear_errors();
         libxml_use_internal_errors($internalErrors);
 
-        // Walk through all nodes
+        // Value markers read as placeholders (VAR-3), then walk every node.
+        ValueMarkers::read($doc->documentElement);
         $this->walkNode($doc->documentElement, $phrases);
 
         return $phrases;
@@ -729,15 +730,18 @@ class HtmlParser
 
     /**
      * Tokenize an HTML fragment as one unit (TOK-6): the unit a
-     * translateContentBlock() call or a registered fragment wraps.
+     * translateContentBlock() call or a registered fragment wraps. Value
+     * markers are read first (VAR-3), and returned so a caller can tell a
+     * unit made only of markers.
      *
      * @param string $html
-     * @return array{tokens: string[], textNodes: int}
+     * @return array{tokens: string[], textNodes: int, markers: ValueMarkers|null}
      */
     public function fragmentUnit($html)
     {
         $tokens = [];
         $textNodes = 0;
+        $markers = null;
 
         if (is_string($html) && $html !== '') {
             $internalErrors = libxml_use_internal_errors(true);
@@ -748,10 +752,11 @@ class HtmlParser
             libxml_clear_errors();
             libxml_use_internal_errors($internalErrors);
 
+            $markers = ValueMarkers::read($doc->documentElement);
             $this->walkNode($doc->documentElement, $tokens, $textNodes);
         }
 
-        return ['tokens' => $tokens, 'textNodes' => $textNodes];
+        return ['tokens' => $tokens, 'textNodes' => $textNodes, 'markers' => $markers];
     }
 
     /**
