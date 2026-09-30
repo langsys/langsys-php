@@ -83,6 +83,39 @@ final class MessageCatalog
     }
 
     /**
+     * List a validation rule object for one field (FRM-2). A rule implementing
+     * HasMessageTemplate is listed from its template, with the label written
+     * in and its markers kept; one without it is listed from the message it
+     * filled, and reported, naming the interface - a value filled into that
+     * message would otherwise be part of the phrase.
+     *
+     * @param object $rule
+     * @param string $label The field's label
+     * @param string $filledMessage The message the rule produced for the field
+     * @param string $source
+     * @param string|null $field
+     * @return bool Whether it was listed from a template
+     */
+    public function addRule($rule, $label, $filledMessage, $source, $field = null)
+    {
+        $stated = RuleTemplate::forField($rule, $label);
+
+        if ($stated === null) {
+            list($issue, $fix) = RuleTemplate::missingTemplateProblem($filledMessage);
+            $this->problem($source, $issue, $fix, $field);
+            $this->add($filledMessage, $source, $field);
+
+            return false;
+        }
+
+        foreach ($stated['missing'] as $marker) {
+            $this->problem($source, "uses the marker {{$marker}} but has no public \$$marker property to fill it", "add a public \$$marker property", $field);
+        }
+
+        return $this->add($stated['template'], $source, $field) && $stated['missing'] === [];
+    }
+
+    /**
      * Report a message that cannot be listed: where it is, what is wrong, and the
      * fix - one line an agent or a person can act on.
      *

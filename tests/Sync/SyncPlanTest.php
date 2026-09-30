@@ -195,6 +195,26 @@ class SyncPlanTest extends TestCase
         $this->assertSame(['Note :done, {name}' => [null, 'with_translations', ['es-es' => 'Nota :done, {name}']]], $this->byPhrase($plan));
     }
 
+    /**
+     * The spec's test: a line holding a label placeholder registers nothing
+     * on its own - literal or key-style - and is listed as registering
+     * through the validation listing, which is not a strict failure.
+     */
+    public function testALineHoldingALabelPlaceholderRegistersOnlyThroughTheValidationListing(): void
+    {
+        $client = $this->client([], ['migration' => ['files' => [$this->file('en/forms.php', ['same' => 'The :attribute must match :other.', 'ratio' => 'Mix 1:values ratio'])]]]);
+
+        $plan = $client->planSync($this->hits("__('The :attribute is required.');\n__('The :attribute is required.', ['attribute' => \$a]);\n__('Ready');"));
+
+        $this->assertSame(['Ready', 'Mix 1:values ratio'], array_column($plan->items, 'phrase'), 'a time-like 1:values is not a placeholder');
+        $this->assertSame([
+            ['phrase' => 'The :attribute is required.', 'placeholder' => ':attribute', 'origin' => 'app.php:2'],
+            ['phrase' => 'The {attribute} is required.', 'placeholder' => ':attribute', 'origin' => 'app.php:3'],
+            ['phrase' => 'The {attribute} must match {other}.', 'placeholder' => ':attribute', 'origin' => 'forms.same'],
+        ], $plan->viaValidation);
+        $this->assertFalse($plan->failsStrict());
+    }
+
     public function testAReadKeyAppliesNothingAndSaysWhy(): void
     {
         $client = $this->client([], [], 'read');

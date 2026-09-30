@@ -1388,6 +1388,36 @@ human translations.
 With `'runtime_registration' => false`, `translate()` and `emitMessage()` register
 nothing; `translatePage()` and `translateContentBlock()` still discover what they render.
 
+A line that still holds a label placeholder — `:attribute`, `:other`, `:values` — is
+never registered on its own: at runtime the field's label is written in, so the raw line
+is never looked up. `$plan->viaValidation` lists each one; it registers through your
+validation listing, once per field.
+
+### Validation rule objects
+
+A rule object hands the validator a finished message, values filled in. Let it state its
+sentence instead, so the value stays a marker:
+
+```php
+use Langsys\SDK\Messages\HasMessageTemplate;
+
+class MaxWords implements ValidationRule, HasMessageTemplate
+{
+    public function __construct(public int $max) {}
+
+    public function template()
+    {
+        return 'The :attribute may not have more than {max} words.';
+    }
+}
+```
+
+`MessageCatalog::addRule($rule, $label, $filledMessage, $source, $field)` lists it once per
+field with the label written in — `The summary may not have more than {max} words.` — and
+`RuleTemplate::forField($rule, $label)` gives the same template and `['max' => 50]` for the
+runtime entry. A rule without the interface is listed from its filled message and
+reported, which fails `--strict`.
+
 ### Language files as the fallback
 
 ```php

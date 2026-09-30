@@ -29,6 +29,15 @@ final class SyncPlan
     public $reported;
 
     /**
+     * Lines that still hold a label placeholder (`:attribute`, `:other`,
+     * `:values`): they register only through the validation listing, once
+     * per field with its label written in, never on their own. Not a failure.
+     *
+     * @var array<int, array{phrase: string, placeholder: string, origin: string}>
+     */
+    public $viaValidation = [];
+
+    /**
      * Translations that could not be taken from a language file.
      *
      * @var array<int, array{key: string, locale: string, reason: string}>
@@ -40,11 +49,12 @@ final class SyncPlan
      * @param array $reported
      * @param array $skipped
      */
-    public function __construct(array $items, array $reported, array $skipped)
+    public function __construct(array $items, array $reported, array $skipped, array $viaValidation = [])
     {
         $this->items = $items;
         $this->reported = $reported;
         $this->skipped = $skipped;
+        $this->viaValidation = $viaValidation;
     }
 
     /**

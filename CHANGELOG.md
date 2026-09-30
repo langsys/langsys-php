@@ -128,6 +128,13 @@ its id or re-registers it.
 
 ### Added
 
+- **Validation rule objects can state their sentence.** A rule implementing
+  `HasMessageTemplate` returns its template with the label placeholder and
+  `{name}` markers for its public properties; `MessageCatalog::addRule()` lists
+  it once per field with the label written in, and `RuleTemplate` gives the
+  runtime entry the same template and values. A rule without it is listed from
+  its filled message and reported. `planSync()` no longer registers a line that
+  holds `:attribute`, `:other` or `:values`; it lists it in `viaValidation`.
 - **Pieces for a framework binding's own translate function.**
   `Sync\SourceScanner` and `planSync()`/`applySync()` register phrases from the
   app's literal calls and language files, with existing translations, against

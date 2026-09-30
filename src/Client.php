@@ -1568,11 +1568,23 @@ class Client
         $items = [];
         $reported = [];
         $skipped = [];
+        $viaValidation = [];
 
-        $add = function ($phrase, $category, array $translations, $origin) use (&$items) {
+        $add = function ($phrase, $category, array $translations, $origin) use (&$items, &$viaValidation) {
             $phrase = Canonical::phrase($phrase);
             if ($phrase === '') {
                 return;
+            }
+
+            // A line still holding a label placeholder registers only through
+            // the validation listing, once per field (FRM-2, MSG-3).
+            foreach (\Langsys\SDK\Messages\MessageCatalog::LABEL_PLACEHOLDERS as $placeholder) {
+                $name = substr($placeholder, 1);
+                if (preg_match('/(?<![\w:])' . preg_quote($placeholder, '/') . '(?![\w])|\{' . $name . '\}/', $phrase)) {
+                    $viaValidation[] = ['phrase' => $phrase, 'placeholder' => $placeholder, 'origin' => $origin];
+
+                    return;
+                }
             }
             $id = json_encode([$category, $phrase]);
             if (!isset($items[$id])) {
@@ -1633,7 +1645,7 @@ class Client
             }
         }
 
-        return new \Langsys\SDK\Sync\SyncPlan(array_values($items), $reported, $skipped);
+        return new \Langsys\SDK\Sync\SyncPlan(array_values($items), $reported, $skipped, $viaValidation);
     }
 
     /**
