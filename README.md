@@ -1381,7 +1381,8 @@ $client->applySync($plan); // registers what the catalog lacks
 Only a literal is a phrase: `__('Welcome back')` is collected, `__($message)` is reported
 and never registered. A key built inside a literal group, `__("validation.$key")`, is
 listed in `$plan->covered` instead: every line of that group in your base-language files
-registers anyway, so it doesn't fail `--strict`. A key your `migration` files hold registers as a lookup of it would,
+registers anyway, so it doesn't fail `--strict`. A group whose lines register another way — Laravel's
+`validation` — is named with `planSync($hits, $targets, ['covered_groups' => ['validation']])`. A key your `migration` files hold registers as a lookup of it would,
 under its group; any other literal registers as its call converts it, so
 `__('Hello :name', ['name' => $n])` registers `Hello {name}`. A phrase the catalog lacks
 but your other languages' files translate registers with those translations, stored as

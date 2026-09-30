@@ -130,7 +130,8 @@ its id or re-registers it.
 
 - **A key built inside a literal group is covered at sync.** `__("validation.$key")`
   and `__('auth.' . $key)` are listed in `SyncPlan::$covered` when the
-  base-language files hold that group, and no longer fail `--strict`.
+  base-language files hold that group, or when the binding names it in
+  `planSync()`'s `covered_groups` option, and no longer fail `--strict`.
   `translate()` and `resolve()` report a catalog they cannot read once per
   process at debug, where they logged an error on every call.
 - **Validation rule objects can state their sentence.** A rule implementing

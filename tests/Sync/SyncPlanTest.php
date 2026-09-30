@@ -237,6 +237,20 @@ class SyncPlanTest extends TestCase
         }
     }
 
+    /**
+     * A group the binding names as covered counts too - Laravel's
+     * validation lines stay out of the migration files, yet ship a base file.
+     */
+    public function testANamedCoveredGroupCovers(): void
+    {
+        $client = $this->client([]);
+
+        $plan = $client->planSync($this->hits("__(\"validation.\$key\");\n__(\"billing.\$key\");"), [], ['covered_groups' => ['validation']]);
+
+        $this->assertSame(['validation'], array_column($plan->covered, 'group'));
+        $this->assertSame([3], array_column($plan->reported, 'line'), 'a group nobody named is still reported');
+    }
+
     public function testAReadKeyAppliesNothingAndSaysWhy(): void
     {
         $client = $this->client([], [], 'read');

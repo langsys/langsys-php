@@ -1581,11 +1581,16 @@ class Client
      *
      * @param array[] $hits SourceScanner hits
      * @param array<string, array> $targets locale => migration configuration of that locale's files
+     * @param array $options `covered_groups`: groups whose base-language lines
+     *                       register another way, so a key built at runtime in
+     *                       one is covered even though the `migration` files
+     *                       do not hold it (Laravel's validation lines)
      * @return \Langsys\SDK\Sync\SyncPlan
      * @throws LangsysException When a locale is not a target of the project
      */
-    public function planSync(array $hits, array $targets = [])
+    public function planSync(array $hits, array $targets = [], array $options = [])
     {
+        $coveredGroups = isset($options['covered_groups']) && is_array($options['covered_groups']) ? array_map('strval', $options['covered_groups']) : [];
         $readers = $this->targetReaders($targets);
         $source = $this->getLegacyKeys();
         $items = [];
@@ -1623,7 +1628,8 @@ class Client
             if ($hit['text'] === null) {
                 // A key built at runtime inside a literal group is covered by
                 // that group's base-language lines, which register anyway.
-                if (isset($hit['group']) && $hit['group'] !== null && $this->groupRegisters($source, $hit['group'])) {
+                if (isset($hit['group']) && $hit['group'] !== null
+                    && (in_array($hit['group'], $coveredGroups, true) || $this->groupRegisters($source, $hit['group']))) {
                     $covered[] = ['file' => $hit['file'], 'line' => $hit['line'], 'entry_point' => $hit['entry_point'], 'group' => $hit['group']];
                     continue;
                 }
