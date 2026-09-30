@@ -185,6 +185,54 @@ class TranslatableItems
     }
 
     /**
+     * Register phrases with the translations already made for them (MIG-9).
+     *
+     * Each item is ['phrase', 'category', 'translations' => [locale => text]].
+     * The API stores the translations as human translations, which the
+     * machine translation queue then skips for those locales; past the plan's
+     * human-translated words for the period the rest are left for machine
+     * translation, and the counts say so.
+     *
+     * @param array $items
+     * @return array{human_translations_saved: int, human_translations_skipped: int}
+     */
+    public function importPhrases(array $items)
+    {
+        $wire = [];
+
+        foreach ($items as $item) {
+            $entry = [
+                'type' => 'phrase',
+                'phrase' => \Langsys\SDK\Html\Canonical::stripControls($item['phrase']),
+                'category' => $this->normalizeCategory(isset($item['category']) ? $item['category'] : null),
+                'translatable' => true,
+            ];
+
+            if (!empty($item['translations'])) {
+                $entry['translations'] = $item['translations'];
+            }
+
+            $wire[] = $entry;
+        }
+
+        $outcome = ['human_translations_saved' => 0, 'human_translations_skipped' => 0];
+
+        foreach (array_chunk($wire, $this->batchLimit) as $chunk) {
+            $response = $this->http->post('translatable-items', [
+                'project_id' => $this->projectId,
+                'translatable_items' => $chunk,
+            ]);
+
+            $data = (is_array($response) && isset($response['data']) && is_array($response['data'])) ? $response['data'] : [];
+            foreach (array_keys($outcome) as $field) {
+                $outcome[$field] += isset($data[$field]) ? (int) $data[$field] : 0;
+            }
+        }
+
+        return $outcome;
+    }
+
+    /**
      * Normalize a category for the wire.
      *
      * '__uncategorized__' is a local sentinel used to key the catalog; the API

@@ -1320,6 +1320,34 @@ echo $client->translate('checkout.submit'); // looks up "Place order" in your fi
 
 With no `migration` option nothing is read and nothing is looked up.
 
+### Import the translations you already have
+
+Before deleting your target-language files, import them once, so the work already
+done shows in Langsys immediately instead of being machine translated again:
+
+```php
+$result = $client->importLegacyTranslations([
+    'es-es' => ['files' => ['lang/es.json', 'lang/es/checkout.php']],
+    'fr-fr' => ['files' => ['lang/fr.json', 'lang/fr/checkout.php']],
+]);
+// ['success' => true, 'phrases' => 214, 'translations' => 401,
+//  'human_translations_saved' => 401, 'human_translations_skipped' => 0, 'skipped' => [...]]
+```
+
+Each locale's configuration has the `migration` option's shape. Every key your source
+files define registers the phrase a lookup of that key registers, together with each
+locale's translation of the same key, converted the same way; Langsys stores those as
+human translations and does not machine translate them.
+
+- A locale your project doesn't target is refused before anything is sent.
+- A translation that is missing, empty, or can't be converted is not imported: the
+  phrase still registers, that locale is machine translated, and `skipped` lists the
+  key, the locale and why.
+- Past your plan's human-translated words for the period, the rest are machine
+  translated; `human_translations_skipped` counts them.
+- The import needs a write key; with any other it returns `success: false` and
+  `reason: 'not_write_enabled'`, and a refused request returns `reason: 'send_failed'`.
+
 List what can't be migrated as it stands by adding
 `new Langsys\SDK\Migration\LegacyKeysSource($client->getLegacyKeys())` to the sources
 in your `langsys-messages.php`: it names each value it can't convert and each key

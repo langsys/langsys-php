@@ -164,6 +164,36 @@ final class LegacyKeys
     }
 
     /**
+     * Every key the configured files define, each once, in configuration
+     * order: the app's own files, then the fallback files, then each
+     * namespace's. A key resolve() answers is a key listed here.
+     *
+     * @return string[]
+     */
+    public function keys()
+    {
+        $groups = ['' => [$this->entries('files'), $this->entries('fallback_files')]];
+
+        foreach (array_keys($this->namespaces()) as $namespace) {
+            $groups[$namespace . '::'] = $this->namespaceTiers($namespace);
+        }
+
+        $keys = [];
+
+        foreach ($groups as $prefix => $tiers) {
+            foreach ($tiers as $files) {
+                foreach ($files as $entry) {
+                    foreach (array_keys($this->leaves($entry)) as $leaf) {
+                        $keys[$prefix . $leaf] = true;
+                    }
+                }
+            }
+        }
+
+        return array_map('strval', array_keys($keys));
+    }
+
+    /**
      * Keys held by more than one of an app's own files, with those files.
      *
      * @return array<string, string[]>

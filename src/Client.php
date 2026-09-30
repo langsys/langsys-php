@@ -1121,6 +1121,126 @@ class Client
     }
 
     /**
+     * Import the translations an app already has (MIG-9), once, before its
+     * target-language files are deleted.
+     *
+     * Every key the `migration` option's files define registers its source
+     * phrase, as a lookup of that key would, together with each target
+     * locale's translation of the same key, converted the same way. The API
+     * stores those as human translations, so work already done shows at once
+     * and is never re-machine-translated.
+     *
+     * A target file's value that is missing, empty or does not convert is
+     * not a translation: it is left for machine translation and listed in
+     * `skipped`. A locale the project does not target is refused before
+     * anything is sent.
+     *
+     * @param array<string, array> $targets locale => migration configuration
+     *                                      for that locale's files, in the
+     *                                      `migration` option's shape
+     * @return array{success: bool, reason: string|null, phrases: int, translations: int, human_translations_saved: int, human_translations_skipped: int, skipped: array}
+     * @throws LangsysException When the migration mode is off, or a locale is not a target of the project
+     */
+    public function importLegacyTranslations(array $targets)
+    {
+        $source = $this->getLegacyKeys();
+        if ($source === null) {
+            throw new LangsysException('Nothing to import: the migration option names no source-language files.');
+        }
+
+        $project = $this->getProject();
+        $targeted = array_map([LocaleDetector::class, 'normalize'], isset($project['target_locales']) && is_array($project['target_locales']) ? $project['target_locales'] : []);
+
+        $readers = [];
+        foreach ($targets as $locale => $config) {
+            $normalized = LocaleDetector::normalize($locale);
+            if (!in_array($normalized, $targeted, true)) {
+                throw new LangsysException(sprintf('The locale %s is not a target locale of this project, so its translations cannot be imported.', $locale));
+            }
+            $readers[$normalized] = new LegacyKeys(is_array($config) ? $config : []);
+        }
+
+        $result = [
+            'success' => false,
+            'reason' => null,
+            'phrases' => 0,
+            'translations' => 0,
+            'human_translations_saved' => 0,
+            'human_translations_skipped' => 0,
+            'skipped' => [],
+        ];
+
+        if (!$this->canWrite()) {
+            $result['reason'] = 'not_write_enabled';
+
+            return $result;
+        }
+
+        $items = [];
+
+        foreach ($source->keys() as $key) {
+            $entry = $this->resolveLegacyKey($key);
+            if ($entry === null) {
+                continue;
+            }
+
+            $phrase = Canonical::phrase($entry['phrase']);
+            if ($phrase === '') {
+                continue;
+            }
+
+            $id = json_encode([$entry['category'], $phrase]);
+            if (!isset($items[$id])) {
+                $items[$id] = ['phrase' => $phrase, 'category' => $entry['category'], 'translations' => []];
+            }
+
+            foreach ($readers as $locale => $reader) {
+                if (isset($items[$id]['translations'][$locale])) {
+                    continue;
+                }
+
+                $translated = $reader->resolve($key);
+                $reason = $translated === null ? 'missing'
+                    : (Canonical::phrase($translated['phrase']) === '' ? 'empty'
+                    : (!$translated['recognised'] ? 'not_converted' : null));
+
+                if ($reason !== null) {
+                    $result['skipped'][] = ['key' => $key, 'locale' => $locale, 'reason' => $reason];
+                    continue;
+                }
+
+                $items[$id]['translations'][$locale] = Canonical::phrase($translated['phrase']);
+            }
+        }
+
+        try {
+            $outcome = $this->translatableItems->importPhrases(array_values($items));
+        } catch (\Throwable $e) {
+            $this->logger->error('Import failed', ['error' => $e->getMessage()]);
+            $result['reason'] = 'send_failed';
+
+            return $result;
+        }
+
+        $result['success'] = true;
+        $result['phrases'] = count($items);
+        foreach ($items as $item) {
+            $result['translations'] += count($item['translations']);
+        }
+        $result['human_translations_saved'] = $outcome['human_translations_saved'];
+        $result['human_translations_skipped'] = $outcome['human_translations_skipped'];
+
+        $this->logger->info('Imported existing translations', [
+            'phrases' => $result['phrases'],
+            'translations' => $result['translations'],
+            'saved' => $result['human_translations_saved'],
+            'skipped_for_quota' => $result['human_translations_skipped'],
+        ]);
+
+        return $result;
+    }
+
+    /**
      * Render a server message entry (MSG-5, MSG-6).
      *
      * The entry's TEMPLATE is looked up under the messages category and the

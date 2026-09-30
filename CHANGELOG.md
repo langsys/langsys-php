@@ -128,6 +128,12 @@ its id or re-registers it.
 
 ### Added
 
+- **Existing translations can be imported with their phrases.**
+  `importLegacyTranslations([locale => files])` registers every key of the
+  `migration` files with each target locale's translation of the same key,
+  stored by Langsys as human translations. Non-target locales are refused
+  before anything is sent; values that are missing, empty or can't be
+  converted are listed and left for machine translation.
 - **A value marked as a variable is read as a placeholder.** `translatePage()`
   and `translateContentBlock()` read `<!--ls:NAME-->VALUE<!--/ls-->` and
   `<span data-ls-param="NAME">VALUE</span>` as `{NAME}` with the value as its
