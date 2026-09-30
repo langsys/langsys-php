@@ -164,6 +164,40 @@ final class LegacyKeys
     }
 
     /**
+     * The key's value as its file holds it, unconverted, with the file's
+     * format - for a caller that converts it by the call's own rules - or
+     * null when no file holds the key.
+     *
+     * @param string $key
+     * @return array{value: string|array, category: string|null, format: string, file: string}|null
+     */
+    public function raw($key)
+    {
+        if (!is_string($key) || $key === '') {
+            return null;
+        }
+
+        if (self::isPackageKey($key)) {
+            list($namespace, $rest) = explode('::', $key, 2);
+            $tiers = $this->namespaceTiers($namespace);
+            $key = $rest;
+        } else {
+            $tiers = [$this->entries('files'), $this->entries('fallback_files')];
+        }
+
+        foreach ($tiers === null ? [] : $tiers as $files) {
+            foreach ($files as $entry) {
+                $found = $this->lookup($entry, $key);
+                if ($found !== null) {
+                    return ['value' => $found[0], 'category' => $found[1], 'format' => $entry['format'], 'file' => $entry['path']];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Every key the configured files define, each once, in configuration
      * order: the app's own files, then the fallback files, then each
      * namespace's. A key resolve() answers is a key listed here.

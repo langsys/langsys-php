@@ -128,6 +128,17 @@ its id or re-registers it.
 
 ### Added
 
+- **Pieces for a framework binding's own translate function.**
+  `Sync\SourceScanner` and `planSync()`/`applySync()` register phrases from the
+  app's literal calls and language files, with existing translations, against
+  the catalog; `runtime_registration => false` stops `translate()` and
+  `emitMessage()` registering. `useMissFallback()` answers a catalog miss from
+  the framework's language files, and `resolve()` says whether text came from
+  the catalog, the fallback or the source. `translateRich()` renders a line with
+  inline markup by rebuilding only the source's own elements around escaped
+  translated text. Declared value sets (`TranslatableValues`, `#[TranslatesAs]`,
+  `value_sets`) register a sentence once per value with the value written in.
+  `markResolved()` marks a server-rendered page without re-serializing it.
 - **Existing translations can be imported with their phrases.**
   `importLegacyTranslations([locale => files])` registers every key of the
   `migration` files with each target locale's translation of the same key,

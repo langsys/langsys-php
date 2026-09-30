@@ -419,6 +419,21 @@ class ValueMarkersTest extends TestCase
     }
 
     /**
+     * A phrase host whose translation breaks its markup tokens loses the
+     * markup and keeps the text, and still keeps the value in its marker.
+     *
+     * @dataProvider pathProvider
+     */
+    public function testAPhraseHostThatLosesItsMarkupKeepsTheValue($path): void
+    {
+        $client = $this->client(['UI' => ['Buy {m0o}now{m0c}, {name}' => 'Compra {m0o}ya, {name}']]);
+
+        $rendered = $this->render($client, $path, '<div><span data-ls-phrase>Buy <b>now</b>, ' . self::comment('name', 'Ana') . '</span></div>');
+
+        $this->assertStringContainsString('Compra ya, ' . self::comment('name', 'Ana'), $rendered);
+    }
+
+    /**
      * Unmarked text reads exactly as before: no marker, no change.
      *
      * @dataProvider pathProvider

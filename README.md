@@ -1353,6 +1353,114 @@ List what can't be migrated as it stands by adding
 in your `langsys-messages.php`: it names each value it can't convert and each key
 defined in more than one of your files.
 
+## Behind a Framework's Translate Function
+
+These are the pieces a framework binding (such as the Laravel binding) builds its own
+`__()` on. With them an app keeps calling its framework's function, its language files
+keep working, and phrases register from a sync command instead of at runtime.
+
+### Sync: register from source, not at runtime
+
+```php
+use Langsys\SDK\Sync\SourceScanner;
+
+$scanner = new SourceScanner(); // __, trans, t, trans_choice, Lang::get, Lang::choice
+$hits = [];
+foreach ($files as $path) {
+    $hits = array_merge($hits, $scanner->scan(file_get_contents($path), $path));
+}
+
+$plan = $client->planSync($hits, ['es-es' => ['files' => ['lang/es.json']]]);
+$plan->counts();      // ['in_catalog' => 120, 'with_translations' => 14, 'new' => 3]
+$plan->reported;      // calls whose argument isn't a literal, with file and line
+$plan->failsStrict(); // true when any call was reported
+
+$client->applySync($plan); // registers what the catalog lacks
+```
+
+Only a literal is a phrase: `__('Welcome back')` is collected, `__($message)` is reported
+and never registered. A key your `migration` files hold registers as a lookup of it would,
+under its group; any other literal registers as its call converts it, so
+`__('Hello :name', ['name' => $n])` registers `Hello {name}`. A phrase the catalog lacks
+but your other languages' files translate registers with those translations, stored as
+human translations.
+
+With `'runtime_registration' => false`, `translate()` and `emitMessage()` register
+nothing; `translatePage()` and `translateContentBlock()` still discover what they render.
+
+### Language files as the fallback
+
+```php
+$client->useMissFallback(function ($phrase, $locale, $category, $argument) {
+    return $myFramework->line($argument, $locale); // the line, unfilled, or null
+});
+
+$client->resolve('Welcome, {name}', 'es-es', null, ['name' => 'Ana']);
+// ['text' => 'Bienvenido, Ana', 'from' => 'catalog' | 'fallback' | 'source']
+```
+
+A phrase resolves to the catalog's translation, then to your language file's line, then
+to the source, filled with its params either way. `from` says who wrote the text: print
+catalog text escaped wherever your framework prints raw.
+
+### Lines with links: `translateRich()`
+
+```php
+$client->translateRich('Read our <a href="/terms">terms</a>');
+// ['html' => 'Lee <a href="/terms">los términos</a>', 'from' => 'catalog']
+```
+
+The line registers as `Read our {m0o}terms{m0c}`. Rendering rebuilds only your source's
+elements, with their attributes as you wrote them, around the translated text: a tag or
+attribute in a translation comes out as text, so a translation can move your link but never
+add one, change its `href` or run script. A line from your language files comes back as
+written.
+
+### Declared value sets
+
+A sentence that names a status or a category is registered once per value, with the value
+written in — `The order is Shipped.` — so translators see the whole sentence. Declare the
+values:
+
+```php
+use Langsys\SDK\Messages\TranslatesAs;
+
+#[TranslatesAs('status')]
+enum OrderStatus: string
+{
+    case Shipped = 'shipped';
+
+    public function label(): string { return 'Shipped'; } // what readers see
+}
+
+class Category extends Model implements \Langsys\SDK\Messages\TranslatableValues
+{
+    public static function translatableValues()
+    {
+        return ['category' => static::pluck('name')->all()];
+    }
+}
+
+$client = new Client($key, $project, ['value_sets' => [OrderStatus::class, Category::class]]);
+$client->translate('The order is {status}.', null, null, null, ['status' => OrderStatus::Shipped]);
+// looks up "The order is Shipped."
+```
+
+A backed enum's word is its `label()`, else its `value` — define `label()` when the value is
+a slug. `planSync()` registers every sentence with every value. At runtime a value added
+since the last sync registers its sentence after the response; a value no declaration names
+for its placeholder never registers and renders as a placeholder.
+
+### Marking a server-rendered page
+
+```php
+$html = $client->markResolved($html, 'es-es');
+```
+
+Adds `data-ls-resolved="es-es"` to the page's `<html>` tag and changes nothing else, so a
+browser SDK hydrating the page registers none of its translated text. A page in your base
+language, or one already marked, is returned as it was.
+
 ## Catalog Snapshots
 
 A snapshot is your catalog for chosen languages and categories, saved to a file, for

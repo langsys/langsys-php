@@ -161,6 +161,30 @@ class Client
     protected $blockMarkers = null;
 
     /**
+     * Whether translate() and emitMessage() queue what the catalog lacks. Off
+     * where a sync command registers instead (FRM-2); the page walk collects
+     * either way.
+     *
+     * @var bool
+     */
+    protected $runtimeRegistration = true;
+
+    /**
+     * The app's declared value sets (FRM-7), or null when it declares none.
+     *
+     * @var \Langsys\SDK\Messages\ValueSets|null
+     */
+    protected $valueSets = null;
+
+    /**
+     * Answers a phrase the catalog has no translation for, before the source
+     * does (FRM-3): the framework's own language files.
+     *
+     * @var callable|null
+     */
+    protected $missFallback = null;
+
+    /**
      * Locales whose last catalog read this request failed, with none
      * succeeding since. A miss cannot be decided against them, so nothing is
      * queued, and a flush reports the skip (REG-10).
@@ -288,6 +312,14 @@ class Client
 
         if (isset($options['request_locale']) && is_array($options['request_locale'])) {
             $this->requestLocaleOptions = $options['request_locale'];
+        }
+
+        if (array_key_exists('runtime_registration', $options)) {
+            $this->runtimeRegistration = (bool) $options['runtime_registration'];
+        }
+
+        if (isset($options['value_sets']) && is_array($options['value_sets']) && $options['value_sets'] !== []) {
+            $this->valueSets = new \Langsys\SDK\Messages\ValueSets($options['value_sets']);
         }
 
         if (isset($options['snapshot']) && $options['snapshot'] instanceof Snapshot) {
@@ -909,6 +941,182 @@ class Client
      */
     public function translate($phrase, $locale = null, $category = '__uncategorized__', $contentBlockId = null, array $params = [])
     {
+        return $this->translateCall($phrase, $locale, $category, $contentBlockId, $params, $from);
+    }
+
+    /**
+     * Translate a phrase and say who wrote the text returned (FRM-8):
+     * `catalog` for a Langsys translation, `fallback` for the answer of the
+     * miss fallback (the framework's own language files), `source` for the
+     * phrase itself. A caller printing raw escapes catalog text and leaves
+     * the app's own text as the framework prints it.
+     *
+     * @param string $phrase
+     * @param string|null $locale
+     * @param string|null $category
+     * @param array $params
+     * @return array{text: string, from: string}
+     */
+    public function resolve($phrase, $locale = null, $category = '__uncategorized__', array $params = [])
+    {
+        $text = $this->translateCall($phrase, $locale, $category, null, $params, $from);
+
+        return ['text' => $text, 'from' => $from];
+    }
+
+    /**
+     * Translate a source line that carries inline markup, safely (FRM-8).
+     *
+     * The line's elements become markup tokens (`Read our {m0o}terms{m0c}`),
+     * the same rich-phrase encoding sync registers. A catalog translation is
+     * rendered by rebuilding the source's own elements - tags and attributes
+     * as the source wrote them - around the translated runs, every run a text
+     * node: a translation can place the source's tags but never add one,
+     * change an attribute or inject script, and a token the source lacks is
+     * dropped. A line from the miss fallback is the app's own and comes back
+     * as the framework prints it; with neither, the source line comes back
+     * with its values filled.
+     *
+     * @param string $sourceHtml
+     * @param string|null $locale
+     * @param string|null $category
+     * @param array $params
+     * @return array{html: string, from: string}
+     */
+    public function translateRich($sourceHtml, $locale = null, $category = '__uncategorized__', array $params = [])
+    {
+        $doc = $this->fragmentDocument((string) $sourceHtml);
+        $wrapper = $doc === null ? null : $doc->getElementsByTagName('div')->item(0);
+        if ($wrapper === null) {
+            return ['html' => (string) $sourceHtml, 'from' => 'source'];
+        }
+
+        $markers = \Langsys\SDK\Html\ValueMarkers::read($wrapper);
+        $tokenizer = new \Langsys\SDK\Html\MarkupTokenizer();
+        $encoded = $tokenizer->encode($wrapper);
+
+        if ($encoded['text'] === '') {
+            return ['html' => (string) $sourceHtml, 'from' => 'source'];
+        }
+
+        $slots = $encoded['slots'];
+        $rendered = $this->translateCall($encoded['text'], $locale, $category, null, array_merge($markers->sentinels(), $params, $tokenizer->tokenParams(count($slots))), $from);
+
+        if ($from === 'fallback') {
+            return ['html' => $rendered, 'from' => $from];
+        }
+
+        // Every token the source has is a param, so one still in the text
+        // names an element the source does not have: it is dropped, and the
+        // source's own elements are still rebuilt.
+        $rendered = (string) preg_replace('/\{m\d+[oc]\}/', '', $rendered);
+
+        while ($wrapper->firstChild !== null) {
+            $wrapper->removeChild($wrapper->firstChild);
+        }
+        foreach ($tokenizer->render($rendered, $slots, $doc) as $node) {
+            $wrapper->appendChild($node);
+        }
+        $markers->finish($wrapper);
+
+        $html = '';
+        foreach ($wrapper->childNodes as $child) {
+            $html .= $doc->saveHTML($child);
+        }
+
+        return ['html' => $html, 'from' => $from];
+    }
+
+    /**
+     * Mark a page rendered in a non-base locale as resolved (GATE-10), on the
+     * HTML as it is: `data-ls-resolved="<locale>"` is added to the first
+     * `<html>` start tag, or to the first start tag when there is none, and
+     * nothing else in the page changes. A page in the base locale, a page
+     * whose base locale is unknown, and a root already carrying the marker in
+     * either spelling are returned unchanged.
+     *
+     * @param string $html
+     * @param string|null $locale The locale the page was rendered in
+     * @return string
+     */
+    public function markResolved($html, $locale = null)
+    {
+        $html = (string) $html;
+        $locale = $locale === null ? $this->getLocale() : LocaleDetector::normalize($locale);
+
+        if ($locale === null || $locale === '') {
+            return $html;
+        }
+
+        try {
+            $project = $this->getProject();
+        } catch (\Throwable $e) {
+            return $html;
+        }
+
+        $base = (is_array($project) && isset($project['base_locale']) && is_string($project['base_locale']))
+            ? LocaleDetector::normalize($project['base_locale'])
+            : null;
+
+        if ($base === null || $base === '' || $base === $locale) {
+            return $html;
+        }
+
+        if (!preg_match('/<html(?=[\s>\/])[^>]*>/i', $html, $match, PREG_OFFSET_CAPTURE)
+            && !preg_match('/^(?:\s*(?:<!--.*?-->|<![^>]*>|<\?[^>]*>))*\s*<[a-zA-Z][^\s\/>]*[^>]*>/s', $html, $match, PREG_OFFSET_CAPTURE)) {
+            return $html;
+        }
+
+        list($tag, $offset) = $match[0];
+
+        // Only the start tag itself: a prolog before it is part of the match.
+        $start = strrpos($tag, '<');
+        $startTag = substr($tag, $start);
+
+        if (preg_match('/\sdata-(?:ls|langsys)-resolved(?=[\s=\/>])/i', $startTag)) {
+            return $html;
+        }
+
+        $close = substr($startTag, -2) === '/>' ? strlen($startTag) - 2 : strlen($startTag) - 1;
+        $marked = substr($startTag, 0, $close) . ' ' . HtmlParser::RESOLVED_MARKERS[0] . '="' . htmlspecialchars($locale, ENT_QUOTES) . '"' . substr($startTag, $close);
+
+        return substr($html, 0, $offset + $start) . $marked . substr($html, $offset + $start + strlen($startTag));
+    }
+
+    /**
+     * Answer a phrase the catalog has no translation for from the framework's
+     * own language files, before the source does (FRM-3). Called as
+     * `$fallback($phrase, $locale, $category, $argument)` - the Langsys
+     * phrase, the render locale, the category (null when none) and the
+     * argument as the caller wrote it, a key for a key-style call - and
+     * returns that line unfilled, or null. The core fills it with the call's
+     * params. Its answer is never registered and never cached as catalog.
+     *
+     * @param callable|null $fallback
+     * @return $this
+     */
+    public function useMissFallback(callable $fallback = null)
+    {
+        $this->missFallback = $fallback;
+
+        return $this;
+    }
+
+    /**
+     * translate()'s body, with the provenance of what it returns.
+     *
+     * @param mixed $phrase
+     * @param string|null $locale
+     * @param string|null $category
+     * @param string|null $contentBlockId
+     * @param array $params
+     * @param string|null $from Set to catalog, fallback or source
+     * @return string
+     */
+    protected function translateCall($phrase, $locale, $category, $contentBlockId, array $params, &$from)
+    {
+        $argument = $phrase;
+
         // Legacy-key mode (MIG-2): the argument is a key first. A hit makes the
         // key's source value the phrase - never the key - and its namespace the
         // category unless the caller chose one. A miss is literal source text,
@@ -921,6 +1129,8 @@ class Client
             if ($entry === null) {
                 if (LegacyKeys::isPackageKey($phrase)) {
                     $this->logger->debug('A package key is not in the migration source files; nothing is registered', ['argument' => $phrase]);
+
+                    $from = 'source';
 
                     return $phrase;
                 }
@@ -939,7 +1149,7 @@ class Client
             }
         }
 
-        return $this->translateSource($phrase, $locale, $category, $contentBlockId, $params);
+        return $this->translateSource($phrase, $locale, $category, $contentBlockId, $params, true, $from, $argument);
     }
 
     /**
@@ -952,10 +1162,16 @@ class Client
      * @param string|null $category
      * @param string|null $contentBlockId
      * @param array $params
+     * @param bool $fromCall Whether translate() or resolve() asked, which the
+     *                       runtime registration switch governs (FRM-2)
+     * @param string|null $from Set to catalog, fallback or source
+     * @param mixed $argument The argument as the caller wrote it
      * @return string
      */
-    protected function translateSource($phrase, $locale, $category, $contentBlockId, array $params)
+    protected function translateSource($phrase, $locale, $category, $contentBlockId, array $params, $fromCall = false, &$from = null, $argument = null)
     {
+        $from = 'source';
+
         // TOK-2: a code-registered key drops the C0 controls on lookup and on
         // register alike, as every DOM path does.
         if (is_string($phrase)) {
@@ -973,6 +1189,17 @@ class Client
 
         $category = $this->normalizeCategory($category);
 
+        // FRM-7: a value from a set declared for its placeholder is written
+        // in, and the written-in sentence is the phrase (MSG-3).
+        $template = null;
+        if ($contentBlockId === null && $this->valueSets !== null && is_string($phrase)) {
+            $written = $this->valueSets->writeIn($phrase, $params);
+            if ($written !== null) {
+                $template = $phrase;
+                list($phrase, $params) = $written;
+            }
+        }
+
         // A seeded snapshot answers a phrase it holds with no fetch and no
         // registration decision; a phrase it does not hold goes to the live
         // catalog, which decides (SNAP-2, REG-13).
@@ -981,7 +1208,13 @@ class Client
             && array_key_exists($phrase, $seed[$category]) && !is_array($seed[$category][$phrase])) {
             $value = $seed[$category][$phrase];
 
-            return $this->interpolate(($value === null || $value === '') ? $phrase : $value, $params, $locale);
+            if ($value !== null && $value !== '') {
+                $from = 'catalog';
+
+                return $this->interpolate($value, $params, $locale);
+            }
+
+            return $this->answerMiss($phrase, $locale, $category, $params, $from, $argument);
         }
 
         try {
@@ -1006,7 +1239,7 @@ class Client
                 'error' => $e->getMessage(),
             ]);
 
-            return $this->interpolate($phrase, $params, $locale);
+            return $this->answerMiss($phrase, $locale, $category, $params, $from, $argument);
         }
 
         $categoryTranslations = isset($translations[$category]) ? $translations[$category] : [];
@@ -1014,6 +1247,8 @@ class Client
         // Handle content block phrase lookup (don't queue - content block handles its own registration)
         if ($contentBlockId !== null) {
             if (isset($categoryTranslations[$contentBlockId][$phrase])) {
+                $from = 'catalog';
+
                 return $this->interpolate($categoryTranslations[$contentBlockId][$phrase], $params, $locale);
             }
             return $this->interpolate($phrase, $params, $locale);
@@ -1027,17 +1262,84 @@ class Client
                 return $this->interpolate($phrase, $params, $locale);
             }
             // A registered-but-untranslated phrase comes back present with a
-            // NULL value. Both null and '' mean "no translation yet", so fall
-            // back to the source phrase - returning the value would hand the
-            // caller null from a method that contracts to return a string.
-            return $this->interpolate(($value === null || $value === '') ? $phrase : $value, $params, $locale);
+            // NULL value. Both null and '' mean "no translation yet": the miss
+            // fallback answers, else the source phrase - returning the value
+            // would hand the caller null from a method that contracts to return
+            // a string.
+            if ($value !== null && $value !== '') {
+                $from = 'catalog';
+
+                return $this->interpolate($value, $params, $locale);
+            }
+
+            return $this->answerMiss($phrase, $locale, $category, $params, $from, $argument);
         }
 
         // Phrase not found - queue the RAW phrase (placeholders intact) for
         // registration, then interpolate only what we return to the caller.
-        $this->queuePhraseForRegistration($phrase, $category);
+        // Where a sync command registers (FRM-2), a translate() call registers
+        // nothing, except a declared value's sentence the last sync did not
+        // see (FRM-7).
+        if (!$fromCall || $this->runtimeRegistration || ($template !== null && $this->templateSynced($template, $phrase, $categoryTranslations))) {
+            $this->queuePhraseForRegistration($phrase, $category);
+        }
+
+        return $this->answerMiss($phrase, $locale, $category, $params, $from, $argument);
+    }
+
+    /**
+     * What a phrase with no catalog translation renders as (FRM-3): the miss
+     * fallback's line when it has one, else the source, filled either way.
+     *
+     * @param string $phrase
+     * @param string $locale
+     * @param string|null $category
+     * @param array $params
+     * @param string|null $from
+     * @param mixed $argument
+     * @return string
+     */
+    protected function answerMiss($phrase, $locale, $category, array $params, &$from, $argument)
+    {
+        if ($this->missFallback !== null) {
+            try {
+                $line = call_user_func($this->missFallback, $phrase, $locale, $category === self::UNCATEGORIZED ? null : $category, $argument === null ? $phrase : $argument);
+            } catch (\Throwable $e) {
+                $this->logger->error('The miss fallback failed - returning source phrase', ['phrase' => $phrase, 'error' => $e->getMessage()]);
+                $line = null;
+            }
+
+            if (is_string($line) && $line !== '') {
+                $from = 'fallback';
+
+                return $this->interpolate($line, $params, $locale);
+            }
+        }
+
+        $from = 'source';
 
         return $this->interpolate($phrase, $params, $locale);
+    }
+
+    /**
+     * Whether a sync registered a template's written-in sentences (FRM-7): the
+     * catalog holds one of them other than $phrase. The catalog is the record
+     * of what sync registered.
+     *
+     * @param string $template
+     * @param string $phrase
+     * @param array $categoryTranslations
+     * @return bool
+     */
+    protected function templateSynced($template, $phrase, array $categoryTranslations)
+    {
+        foreach ($this->valueSets->sentences($template) as $sentence) {
+            if ($sentence !== $phrase && array_key_exists($sentence, $categoryTranslations)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -1148,17 +1450,7 @@ class Client
             throw new LangsysException('Nothing to import: the migration option names no source-language files.');
         }
 
-        $project = $this->getProject();
-        $targeted = array_map([LocaleDetector::class, 'normalize'], isset($project['target_locales']) && is_array($project['target_locales']) ? $project['target_locales'] : []);
-
-        $readers = [];
-        foreach ($targets as $locale => $config) {
-            $normalized = LocaleDetector::normalize($locale);
-            if (!in_array($normalized, $targeted, true)) {
-                throw new LangsysException(sprintf('The locale %s is not a target locale of this project, so its translations cannot be imported.', $locale));
-            }
-            $readers[$normalized] = new LegacyKeys(is_array($config) ? $config : []);
-        }
+        $readers = $this->targetReaders($targets);
 
         $result = [
             'success' => false,
@@ -1194,23 +1486,7 @@ class Client
                 $items[$id] = ['phrase' => $phrase, 'category' => $entry['category'], 'translations' => []];
             }
 
-            foreach ($readers as $locale => $reader) {
-                if (isset($items[$id]['translations'][$locale])) {
-                    continue;
-                }
-
-                $translated = $reader->resolve($key);
-                $reason = $translated === null ? 'missing'
-                    : (Canonical::phrase($translated['phrase']) === '' ? 'empty'
-                    : (!$translated['recognised'] ? 'not_converted' : null));
-
-                if ($reason !== null) {
-                    $result['skipped'][] = ['key' => $key, 'locale' => $locale, 'reason' => $reason];
-                    continue;
-                }
-
-                $items[$id]['translations'][$locale] = Canonical::phrase($translated['phrase']);
-            }
+            $items[$id]['translations'] += $this->lineTranslations($key, $readers, $result['skipped']);
         }
 
         try {
@@ -1238,6 +1514,238 @@ class Client
         ]);
 
         return $result;
+    }
+
+    /**
+     * A reader for each target locale's language files, refusing a locale the
+     * project does not target before anything is read or sent.
+     *
+     * @param array<string, array> $targets locale => migration configuration
+     * @return array<string, LegacyKeys>
+     * @throws LangsysException
+     */
+    protected function targetReaders(array $targets)
+    {
+        $project = $this->getProject();
+        $targeted = array_map([LocaleDetector::class, 'normalize'], isset($project['target_locales']) && is_array($project['target_locales']) ? $project['target_locales'] : []);
+
+        $readers = [];
+        foreach ($targets as $locale => $config) {
+            $normalized = LocaleDetector::normalize($locale);
+            if (!in_array($normalized, $targeted, true)) {
+                throw new LangsysException(sprintf('The locale %s is not a target locale of this project, so its translations cannot be imported.', $locale));
+            }
+            $readers[$normalized] = new LegacyKeys(is_array($config) ? $config : []);
+        }
+
+        return $readers;
+    }
+
+    /**
+     * Plan a sync (FRM-2): every phrase the app's translate calls and its
+     * base language's files hold, each decided against a freshly read catalog
+     * as already there, new with the translations the language files hold,
+     * or new alone.
+     *
+     * A call's phrase is what the same call registers at runtime: a key the
+     * `migration` files hold is that key's line, converted by its file's
+     * format, under its group; any other literal is source text,
+     * uncategorised, converted by the call's own rules - only the
+     * placeholders it passes are placeholders, and `trans_choice` reads `|`
+     * as a plural (LegacyValue::fromCall). A call whose argument is not a
+     * literal is reported with its file and line. With declared value sets
+     * (FRM-7), a phrase naming one registers once per value, written in.
+     *
+     * @param array[] $hits SourceScanner hits
+     * @param array<string, array> $targets locale => migration configuration of that locale's files
+     * @return \Langsys\SDK\Sync\SyncPlan
+     * @throws LangsysException When a locale is not a target of the project
+     */
+    public function planSync(array $hits, array $targets = [])
+    {
+        $readers = $this->targetReaders($targets);
+        $source = $this->getLegacyKeys();
+        $items = [];
+        $reported = [];
+        $skipped = [];
+
+        $add = function ($phrase, $category, array $translations, $origin) use (&$items) {
+            $phrase = Canonical::phrase($phrase);
+            if ($phrase === '') {
+                return;
+            }
+            $id = json_encode([$category, $phrase]);
+            if (!isset($items[$id])) {
+                $items[$id] = ['phrase' => $phrase, 'category' => $category, 'status' => 'new', 'translations' => [], 'origins' => []];
+            }
+            $items[$id]['translations'] += $translations;
+            $items[$id]['origins'][] = $origin;
+        };
+
+        foreach ($hits as $hit) {
+            $origin = $hit['file'] . ':' . $hit['line'];
+            if ($hit['text'] === null) {
+                $reported[] = ['file' => $hit['file'], 'line' => $hit['line'], 'entry_point' => $hit['entry_point']];
+                continue;
+            }
+
+            // A key registers as a lookup of it does, whichever function
+            // called it; only a literal no file holds follows the call's rules.
+            $entry = $this->resolveLegacyKey($hit['text']);
+
+            if ($entry !== null) {
+                $phrase = $entry['phrase'];
+                $category = $entry['category'];
+                $translations = $this->lineTranslations($hit['text'], $readers, $skipped);
+            } else {
+                $replace = array_fill_keys(is_array($hit['replace_keys']) ? $hit['replace_keys'] : [], '');
+                $phrase = \Langsys\SDK\Migration\LegacyValue::fromCall($hit['text'], $replace, $hit['kind'], $hit['kind'] === 'trans_choice' ? 1 : null)['text'];
+                $category = null;
+                $translations = $this->lineTranslations($hit['text'], $readers, $skipped, $hit['kind'], $replace);
+            }
+            $sentences = $this->valueSets === null ? [$phrase] : $this->valueSets->sentences($phrase);
+
+            if ($sentences === [$phrase]) {
+                $add($phrase, $category, $translations, $origin);
+                continue;
+            }
+
+            foreach ($sentences as $sentence) {
+                $add($sentence, $category, [], $origin);
+            }
+        }
+
+        // A key a call already used merges into the same item: one phrase.
+        foreach ($source === null ? [] : $source->keys() as $key) {
+            $entry = $this->resolveLegacyKey($key);
+            if ($entry !== null) {
+                $add($entry['phrase'], $entry['category'], $this->lineTranslations($key, $readers, $skipped), $key);
+            }
+        }
+
+        $catalog = $this->syncCatalog();
+        foreach ($items as $id => $item) {
+            $category = $this->normalizeCategory($item['category']);
+            if (isset($catalog[$category]) && is_array($catalog[$category]) && array_key_exists($item['phrase'], $catalog[$category])) {
+                $items[$id]['status'] = 'in_catalog';
+            } elseif ($item['translations'] !== []) {
+                $items[$id]['status'] = 'with_translations';
+            }
+        }
+
+        return new \Langsys\SDK\Sync\SyncPlan(array_values($items), $reported, $skipped);
+    }
+
+    /**
+     * Carry out a sync plan: register every item it does not find in the
+     * catalog, with its translations where it has them.
+     *
+     * @param \Langsys\SDK\Sync\SyncPlan $plan
+     * @return array{success: bool, reason: string|null, registered: int, translations: int, human_translations_saved: int, human_translations_skipped: int}
+     */
+    public function applySync(\Langsys\SDK\Sync\SyncPlan $plan)
+    {
+        $items = $plan->toRegister();
+        $result = ['success' => false, 'reason' => null, 'registered' => 0, 'translations' => 0, 'human_translations_saved' => 0, 'human_translations_skipped' => 0];
+
+        if (!$this->canWrite()) {
+            $result['reason'] = 'not_write_enabled';
+
+            return $result;
+        }
+
+        if ($items !== []) {
+            try {
+                $outcome = $this->translatableItems->importPhrases($items);
+            } catch (\Throwable $e) {
+                $this->logger->error('Sync failed', ['error' => $e->getMessage()]);
+                $result['reason'] = 'send_failed';
+
+                return $result;
+            }
+
+            $result['human_translations_saved'] = $outcome['human_translations_saved'];
+            $result['human_translations_skipped'] = $outcome['human_translations_skipped'];
+        }
+
+        $result['success'] = true;
+        $result['registered'] = count($items);
+        foreach ($items as $item) {
+            $result['translations'] += count($item['translations']);
+        }
+
+        return $result;
+    }
+
+    /**
+     * The catalog a sync decides against, read fresh: the first target
+     * locale's, which lists every phrase the project holds.
+     *
+     * @return array
+     */
+    protected function syncCatalog()
+    {
+        $project = $this->getProject();
+        $locales = isset($project['target_locales']) && is_array($project['target_locales']) ? $project['target_locales'] : [];
+        $locale = $locales !== [] ? LocaleDetector::normalize(reset($locales)) : (isset($project['base_locale']) ? LocaleDetector::normalize($project['base_locale']) : null);
+
+        return $locale === null ? [] : $this->translations->getTranslationMap($locale);
+    }
+
+    /**
+     * Each target locale's translation of a key, converted as its phrase was;
+     * what is missing, empty or does not convert is listed instead.
+     *
+     * @param string $key
+     * @param array<string, LegacyKeys> $readers
+     * @param array $skipped
+     * @param string|null $kind The call's rules, or null for a file line
+     * @param array $replace
+     * @return array<string, string>
+     */
+    protected function lineTranslations($key, array $readers, array &$skipped, $kind = null, array $replace = [])
+    {
+        $translations = [];
+
+        foreach ($readers as $locale => $reader) {
+            $raw = $reader->raw($key);
+            $converted = $raw === null ? null : self::linePhrase($raw['value'], $raw['format'], $kind, $replace);
+            $reason = $converted === null ? 'missing'
+                : (Canonical::phrase($converted['text']) === '' ? 'empty'
+                : (!$converted['recognised'] ? 'not_converted' : null));
+
+            if ($reason !== null) {
+                $skipped[] = ['key' => $key, 'locale' => $locale, 'reason' => $reason];
+                continue;
+            }
+
+            $translations[$locale] = Canonical::phrase($converted['text']);
+        }
+
+        return $translations;
+    }
+
+    /**
+     * A language-file value as a phrase: by the call's rules where a Laravel
+     * call reads a Laravel file, else by the file's format.
+     *
+     * @param string|array $value
+     * @param string $format
+     * @param string|null $kind
+     * @param array $replace
+     * @return array{text: string, recognised: bool}
+     */
+    protected static function linePhrase($value, $format, $kind, array $replace)
+    {
+        if (is_array($value)) {
+            return \Langsys\SDK\Migration\LegacyValue::fromPluralForms($value);
+        }
+
+        if ($kind !== null && $format === 'laravel') {
+            return \Langsys\SDK\Migration\LegacyValue::fromCall($value, $replace, $kind, $kind === 'trans_choice' ? 1 : null);
+        }
+
+        return \Langsys\SDK\Migration\LegacyValue::convert($value, $format);
     }
 
     /**
@@ -1339,7 +1847,7 @@ class Client
         $category = $this->normalizeCategory($this->config->getMessagesCategory());
         $found = $this->lookupMessageTemplate($message->getTemplate(), $category, $locale);
 
-        if ($found !== null && !$found[0]) {
+        if ($found !== null && !$found[0] && $this->runtimeRegistration) {
             $this->queuePhraseForRegistration($message->getTemplate(), $category);
         }
 

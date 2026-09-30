@@ -39,9 +39,13 @@ final class ValueMarkers
     const RESERVED_PATTERN = '/^m\d+[oc]$/';
     const PARAM_ATTRIBUTE = 'data-ls-param';
 
-    /** Sentinel delimiters: private-use code points no source text carries. */
-    const OPEN = "\u{E000}";
-    const CLOSE = "\u{E001}";
+    /**
+     * Sentinel delimiters: private-use code points no source text carries,
+     * and apart from MarkupTokenizer's U+E000-U+E003, since a phrase host's
+     * render carries both kinds at once.
+     */
+    const OPEN = "\u{E010}";
+    const CLOSE = "\u{E011}";
 
     /** Subtrees whose text is not prose, or holds no comments (RCDATA). */
     const SKIPPED = ['script', 'style', 'template', 'noscript', 'math', 'title', 'textarea', 'head'];
