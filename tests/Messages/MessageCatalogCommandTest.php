@@ -135,6 +135,46 @@ class MessageCatalogCommandTest extends TestCase
         $this->assertSame(1, MessageCatalogCommand::run([$source], null, ['strict' => true], $this->out, $this->err));
     }
 
+    /**
+     * MSG-10: a validated field with no declared label is named as advice -
+     * printed apart from problems, and never failing the command, strict or
+     * not; the templates still register.
+     */
+    public function testAdviceIsPrintedAndNeverFails(): void
+    {
+        $source = new class implements MessageSource {
+            public function collect(MessageCatalog $catalog)
+            {
+                $catalog->add('The cc number is required.', 'SampleApp\\PayRequest', 'cc_number');
+                $catalog->advise('SampleApp\\PayRequest', 'has no declared label, so it shows as "cc number"', 'declare a label in attributes()', 'cc_number');
+            }
+        };
+
+        foreach ([[], ['strict' => true]] as $options) {
+            $this->out = fopen('php://memory', 'w+');
+            $this->err = fopen('php://memory', 'w+');
+
+            $this->assertSame(0, MessageCatalogCommand::run([$source], null, $options, $this->out, $this->err), json_encode($options));
+
+            $printed = $this->read($this->out) . $this->read($this->err);
+            $this->assertStringContainsString('Advice', $printed);
+            $this->assertStringContainsString('SampleApp\\PayRequest.cc_number: has no declared label, so it shows as "cc number" — declare a label in attributes()', $printed);
+            $this->assertStringNotContainsString('✗', $printed, 'advice is not a problem');
+            $this->assertStringContainsString('1 message templates', $this->read($this->out));
+        }
+    }
+
+    public function testAdviceIsKeptApartFromProblems(): void
+    {
+        $catalog = new MessageCatalog();
+        $catalog->advise('A', 'has no declared label', 'declare one', 'f');
+        $catalog->advise('A', 'has no declared label', 'declare one', 'f');
+
+        $this->assertSame(['A.f: has no declared label — declare one'], $catalog->advice(), 'once each');
+        $this->assertSame([], $catalog->problems());
+        $this->assertFalse($catalog->hasProblems());
+    }
+
     public function testRegisterFilesEveryTemplateUnderTheMessagesCategory(): void
     {
         $code = MessageCatalogCommand::run([new ListedSource(self::TEMPLATES)], $this->client(['Errors' => []]), ['register' => true], $this->out, $this->err);

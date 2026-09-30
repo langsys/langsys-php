@@ -36,6 +36,9 @@ final class MessageCatalog
     /** @var string[] */
     private $problems = [];
 
+    /** @var string[] */
+    private $advice = [];
+
     /**
      * List a template, or report why it cannot be listed.
      *
@@ -160,6 +163,36 @@ final class MessageCatalog
     public function problems()
     {
         return $this->problems;
+    }
+
+    /**
+     * Name something the app may want to change that is not a failure - a
+     * validated field with no declared label, which shows the name the
+     * framework derives (MSG-10). Formatted as a problem is, but never counted
+     * by hasProblems(), so it never fails a strict run.
+     *
+     * @param string $source
+     * @param string $issue
+     * @param string $fix
+     * @param string|null $field
+     * @return void
+     */
+    public function advise($source, $issue, $fix, $field = null)
+    {
+        $where = (string) $source . (($field === null || $field === '') ? '' : '.' . $field);
+        $line = $where . ': ' . $issue . ' — ' . $fix;
+
+        if (!in_array($line, $this->advice, true)) {
+            $this->advice[] = $line;
+        }
+    }
+
+    /**
+     * @return string[]
+     */
+    public function advice()
+    {
+        return $this->advice;
     }
 
     /**

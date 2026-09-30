@@ -128,6 +128,10 @@ its id or re-registers it.
 
 ### Added
 
+- **The messages listing gives advice that never fails it.**
+  `MessageCatalog::advise()` names something the app may want to change - a
+  validated field with no declared label - and the listing command prints it
+  under "Advice"; unlike a problem, it never fails `--strict`.
 - **A key built inside a literal group is covered at sync.** `__("validation.$key")`
   and `__('auth.' . $key)` are listed in `SyncPlan::$covered` when the
   base-language files hold that group, or when the binding names it in

@@ -122,6 +122,15 @@ final class MessageCatalogCommand
             fwrite($err, '✗ ' . $problem . "\n");
         }
 
+        // Advice names what the app may want to change, and never fails the
+        // command, strict or not (MSG-10).
+        if ($catalog->advice() !== []) {
+            fwrite($out, "Advice:\n");
+            foreach ($catalog->advice() as $advice) {
+                fwrite($out, '  · ' . $advice . "\n");
+            }
+        }
+
         // A message that cannot be listed still registers the first time it is
         // emitted (MSG-8), so it is reported, not failed - unless the app asks
         // for no untranslated error ever, with --strict (MSG-7).

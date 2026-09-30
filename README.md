@@ -1265,6 +1265,11 @@ each marker, and optionally a `CODE`, passed through as the entry's code. A temp
 that still holds a Laravel label placeholder (`:attribute`, `:other`, `:values`) is
 refused: write the label in.
 
+Some findings are advice rather than problems — a validated field with no declared label,
+which shows the name the framework derives. A source reports those with
+`$catalog->advise($source, $issue, $fix, $field)`; the command prints them under
+"Advice", and they never fail it, `--strict` included.
+
 ## Migrating from Key-Based Translation Files
 
 If your app calls translations by key (`checkout.submit`) and keeps its text in
