@@ -161,6 +161,48 @@ class FrameworkTranslateTest extends TestCase
         }
     }
 
+    /**
+     * FRM-3: a catalog that cannot be read counts as empty - the chain
+     * continues to the language files and the source, nothing reaches the
+     * caller, and the cause is reported once per process, at debug.
+     */
+    public function testAnUnavailableCatalogIsReportedOnceAtDebug(): void
+    {
+        $noticed = new \ReflectionProperty(Client::class, 'catalogUnavailableNoticed');
+        $noticed->setAccessible(true);
+        $noticed->setValue(null, false);
+
+        $logger = new \Langsys\SDK\Tests\Support\SpyLogger();
+        $client = new Client('test-api-key', 'project-id', ['cache' => new NullCache(), 'error_log' => false, 'logger' => $logger, 'api_url' => 'http://127.0.0.1:9/api']);
+        $client->setLocale('es-es');
+        $client->useMissFallback(self::langFile());
+
+        $this->assertSame(['text' => 'Bienvenido (archivo), Ana', 'from' => 'fallback'], $client->resolve('Welcome, {name}', null, null, ['name' => 'Ana']));
+        $this->assertSame(['text' => 'Neither', 'from' => 'source'], $client->resolve('Neither'));
+        $this->assertSame('Neither', $client->translate('Neither'));
+
+        $lookup = array_filter($logger->entries, function ($entry) {
+            return strpos($entry['message'], 'catalog') !== false || strpos($entry['message'], 'Translation lookup') !== false;
+        });
+        $this->assertSame(['debug'], array_values(array_unique(array_column($lookup, 'level'))));
+        $this->assertCount(1, $lookup, 'once per process');
+    }
+
+    /**
+     * Control: the quiet report is the framework function's. A fragment the
+     * page renders still logs the failed lookup as an error.
+     */
+    public function testControlAFragmentLookupStillLogsAnError(): void
+    {
+        $logger = new \Langsys\SDK\Tests\Support\SpyLogger();
+        $client = new Client('test-api-key', 'project-id', ['cache' => new NullCache(), 'error_log' => false, 'logger' => $logger, 'api_url' => 'http://127.0.0.1:9/api']);
+        $client->setLocale('es-es');
+
+        $client->translateContentBlock('<p>Fragment</p>');
+
+        $this->assertContains('Translation lookup failed - returning source phrase', $logger->messagesAt('error'));
+    }
+
     public function testAFailingFallbackReturnsTheSource(): void
     {
         $client = $this->client()->useMissFallback(function () {

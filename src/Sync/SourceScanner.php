@@ -77,6 +77,7 @@ final class SourceScanner
 
             $hits[] = [
                 'text' => $text,
+                'group' => $text === null && $args !== [] ? self::literalGroup($args[0]) : null,
                 'skipped' => $text === null ? 'non-literal' : null,
                 'entry_point' => $name,
                 'kind' => $kind,
@@ -221,6 +222,28 @@ final class SourceScanner
         }
 
         return null;
+    }
+
+    /**
+     * The group a key built at runtime is fixed to: the literal prefix of
+     * `"group.$key"` or `'group.' . $key`, when that prefix is a dotted key
+     * path. Null for anything else - a sentence built at runtime has none.
+     *
+     * @param array $arg
+     * @return string|null
+     */
+    private static function literalGroup(array $arg)
+    {
+        $prefix = null;
+
+        if (isset($arg[0], $arg[1], $arg[2]) && $arg[0] === '"' && is_array($arg[1]) && $arg[1][0] === T_ENCAPSED_AND_WHITESPACE
+            && is_array($arg[2]) && in_array($arg[2][0], [T_VARIABLE, T_CURLY_OPEN, T_DOLLAR_OPEN_CURLY_BRACES], true)) {
+            $prefix = $arg[1][1];
+        } elseif (isset($arg[0], $arg[1]) && is_array($arg[0]) && $arg[0][0] === T_CONSTANT_ENCAPSED_STRING && $arg[1] === '.') {
+            $prefix = self::literal([$arg[0]]);
+        }
+
+        return $prefix !== null && preg_match('/^([A-Za-z0-9_-]+)\.(?:[A-Za-z0-9_-]+\.)*$/', $prefix, $m) ? $m[1] : null;
     }
 
     /**

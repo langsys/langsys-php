@@ -215,6 +215,28 @@ class SyncPlanTest extends TestCase
         $this->assertFalse($plan->failsStrict());
     }
 
+    /**
+     * The spec's test: a key built at runtime inside a literal group whose
+     * base-language lines register anyway is covered - listed, not reported,
+     * and it passes strict; a group no base file holds, a non-literal group
+     * and a sentence built at runtime are reported and fail it.
+     */
+    public function testARuntimeKeyInACoveredGroupPassesStrict(): void
+    {
+        $client = $this->client([], ['migration' => ['files' => [$this->file('en/validation.php', ['required' => 'Required.'])]]]);
+
+        $covered = $client->planSync($this->hits("__(\"validation.\$key\");"));
+        $this->assertSame([['file' => 'app.php', 'line' => 2, 'entry_point' => '__', 'group' => 'validation']], $covered->covered);
+        $this->assertSame([], $covered->reported);
+        $this->assertFalse($covered->failsStrict());
+
+        foreach (["__(\"billing.\$key\");", '__($key);', "__(\"Hello \$name\");"] as $call) {
+            $plan = $client->planSync($this->hits($call));
+            $this->assertSame([], $plan->covered, $call);
+            $this->assertTrue($plan->failsStrict(), $call);
+        }
+    }
+
     public function testAReadKeyAppliesNothingAndSaysWhy(): void
     {
         $client = $this->client([], [], 'read');

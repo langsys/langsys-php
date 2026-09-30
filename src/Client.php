@@ -185,6 +185,14 @@ class Client
     protected $missFallback = null;
 
     /**
+     * Whether a translate() call has reported, this process, that it had no
+     * catalog to consult (FRM-3): once, at debug.
+     *
+     * @var bool
+     */
+    protected static $catalogUnavailableNoticed = false;
+
+    /**
      * Locales whose last catalog read this request failed, with none
      * succeeding since. A miss cannot be decided against them, so nothing is
      * queued, and a flush reports the skip (REG-10).
@@ -1232,12 +1240,27 @@ class Client
             // page into a 500. Nothing is queued: a failed catalog fetch cannot
             // tell a miss from a hit, and registering on a guess would turn every
             // outage into a write storm on the paths already failing.
-            $this->logger->error('Translation lookup failed - returning source phrase', [
-                'phrase' => $phrase,
-                'category' => $category,
-                'locale' => $locale,
-                'error' => $e->getMessage(),
-            ]);
+            //
+            // Behind the framework's own function (FRM-3) a catalog that
+            // cannot be read counts as empty, and the cause is reported once
+            // per process, at debug: an app's tests and CI run without the
+            // API, and every call would otherwise log an error.
+            if ($fromCall) {
+                if (!static::$catalogUnavailableNoticed) {
+                    static::$catalogUnavailableNoticed = true;
+                    $this->logger->debug('No catalog to consult - translate() continues to the language files, then the source', [
+                        'locale' => $locale,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            } else {
+                $this->logger->error('Translation lookup failed - returning source phrase', [
+                    'phrase' => $phrase,
+                    'category' => $category,
+                    'locale' => $locale,
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
             return $this->answerMiss($phrase, $locale, $category, $params, $from, $argument);
         }
@@ -1569,6 +1592,7 @@ class Client
         $reported = [];
         $skipped = [];
         $viaValidation = [];
+        $covered = [];
 
         $add = function ($phrase, $category, array $translations, $origin) use (&$items, &$viaValidation) {
             $phrase = Canonical::phrase($phrase);
@@ -1597,6 +1621,13 @@ class Client
         foreach ($hits as $hit) {
             $origin = $hit['file'] . ':' . $hit['line'];
             if ($hit['text'] === null) {
+                // A key built at runtime inside a literal group is covered by
+                // that group's base-language lines, which register anyway.
+                if (isset($hit['group']) && $hit['group'] !== null && $this->groupRegisters($source, $hit['group'])) {
+                    $covered[] = ['file' => $hit['file'], 'line' => $hit['line'], 'entry_point' => $hit['entry_point'], 'group' => $hit['group']];
+                    continue;
+                }
+
                 $reported[] = ['file' => $hit['file'], 'line' => $hit['line'], 'entry_point' => $hit['entry_point']];
                 continue;
             }
@@ -1645,7 +1676,30 @@ class Client
             }
         }
 
-        return new \Langsys\SDK\Sync\SyncPlan(array_values($items), $reported, $skipped, $viaValidation);
+        return new \Langsys\SDK\Sync\SyncPlan(array_values($items), $reported, $skipped, $viaValidation, $covered);
+    }
+
+    /**
+     * Whether the base-language files hold lines of a group, which a sync
+     * registers whatever key a call builds in it.
+     *
+     * @param LegacyKeys|null $source
+     * @param string $group
+     * @return bool
+     */
+    protected function groupRegisters($source, $group)
+    {
+        if ($source === null) {
+            return false;
+        }
+
+        foreach ($source->keys() as $key) {
+            if (strpos($key, $group . '.') === 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

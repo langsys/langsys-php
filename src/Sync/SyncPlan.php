@@ -38,6 +38,15 @@ final class SyncPlan
     public $viaValidation = [];
 
     /**
+     * Calls whose key is built at runtime inside a literal group the
+     * base-language files hold (`__("validation.$key")`): covered by that
+     * group's lines, which register anyway. Not a failure.
+     *
+     * @var array<int, array{file: string, line: int, entry_point: string, group: string}>
+     */
+    public $covered = [];
+
+    /**
      * Translations that could not be taken from a language file.
      *
      * @var array<int, array{key: string, locale: string, reason: string}>
@@ -49,8 +58,9 @@ final class SyncPlan
      * @param array $reported
      * @param array $skipped
      */
-    public function __construct(array $items, array $reported, array $skipped, array $viaValidation = [])
+    public function __construct(array $items, array $reported, array $skipped, array $viaValidation = [], array $covered = [])
     {
+        $this->covered = $covered;
         $this->items = $items;
         $this->reported = $reported;
         $this->skipped = $skipped;

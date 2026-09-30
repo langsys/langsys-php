@@ -53,6 +53,18 @@ class SourceScannerTest extends TestCase
     }
 
     /**
+     * A key built at runtime inside a literal group names its group, so a
+     * plan can tell it is covered; a sentence built at runtime names none.
+     */
+    public function testARuntimeKeyInALiteralGroupNamesTheGroup(): void
+    {
+        $hits = $this->scan("__(\"validation.\$key\"); __('auth.' . \$k); __(\"validation.custom.{\$f}.required\"); __(\"Hello \$name\"); __(\$key);");
+
+        $this->assertSame([null, null, null, null, null], array_column($hits, 'text'));
+        $this->assertSame(['validation', 'auth', 'validation', null, null], array_column($hits, 'group'));
+    }
+
+    /**
      * What is not a call to the function is never collected: a method, a
      * declaration, a string, a comment.
      */
