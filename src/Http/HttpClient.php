@@ -268,21 +268,54 @@ class HttpClient
         }
 
         if ($httpCode === 401) {
-            $message = isset($data['error']) ? $data['error'] : 'Unauthorized';
-            throw new AuthenticationException($message, $data);
+            throw new AuthenticationException($this->errorMessage($data, 'Unauthorized'), $data);
         }
 
         if ($httpCode === 422) {
-            $message = isset($data['error']) ? $data['error'] : 'Validation failed';
             $errors = isset($data['errors']) ? $data['errors'] : [];
-            throw new ValidationException($message, $errors, $data);
+            throw new ValidationException($this->errorMessage($data, 'Validation failed'), $errors, $data);
         }
 
         if ($httpCode >= 400) {
-            $message = isset($data['error']) ? $data['error'] : 'API error';
-            throw new ApiException($message, $httpCode, $data);
+            throw new ApiException($this->errorMessage($data, 'API error'), $httpCode, $data);
         }
 
         return $data;
+    }
+
+    /**
+     * The human-readable message from an error response.
+     *
+     * The API reports an error as an object — {"message", "code", "template"} — and older
+     * responses as a plain string. Exception's constructor accepts only a string, so passing
+     * the object through threw a TypeError: every API error, an invalid key included, escaped
+     * as a fatal instead of the LangsysException callers catch to fall back to source text.
+     *
+     * @param mixed  $data    Decoded response body
+     * @param string $default Message when the body carries none
+     * @return string
+     */
+    protected function errorMessage($data, $default)
+    {
+        $error = is_array($data) && isset($data['error']) ? $data['error'] : null;
+
+        if (is_string($error) && $error !== '') {
+            return $error;
+        }
+
+        if (is_array($error)) {
+            if (isset($error['message']) && is_string($error['message']) && $error['message'] !== '') {
+                return $error['message'];
+            }
+
+            $messages = array_filter($error, function ($item) {
+                return is_string($item) && $item !== '';
+            });
+            if ($messages && array_keys($error) === range(0, count($error) - 1)) {
+                return implode('; ', $messages);
+            }
+        }
+
+        return $default;
     }
 }

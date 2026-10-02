@@ -35,4 +35,21 @@ class LangsysException extends Exception
     {
         return $this->responseData;
     }
+
+    /**
+     * The API's machine-readable error code, e.g. "api_key_invalid".
+     *
+     * Present when the API reports the error as an object; null for responses that
+     * carry only a message.
+     *
+     * @return string|null
+     */
+    public function getErrorCode()
+    {
+        $error = is_array($this->responseData) && isset($this->responseData['error'])
+            ? $this->responseData['error']
+            : null;
+
+        return is_array($error) && isset($error['code']) && is_string($error['code']) ? $error['code'] : null;
+    }
 }
