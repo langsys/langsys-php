@@ -5,6 +5,25 @@ All notable changes to the Langsys PHP SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Every API error crashed the client with a `TypeError` instead of throwing a
+  `LangsysException`.** The API reports an error as an object —
+  `{"message": "Invalid API key", "code": "api_key_invalid", "template": "…"}` — and
+  `HttpClient::handleResponse()` passed that object as the exception message, which
+  PHP's `Exception` accepts only as a string. So an invalid or revoked key, a 422 or a
+  5xx took the page down with an HTTP 500, and nothing that degrades to source text on
+  `LangsysException` ever ran. The message is now read from the object (a plain string,
+  the older shape, still works; a list of strings is joined). Measured on the Laravel
+  demo with an invalid key: HTTP 500 before, the page in source text after.
+
+### Added
+
+- `LangsysException::getErrorCode()` — the API's machine-readable code
+  (`api_key_invalid`, …), or `null` when the response carries only a message.
+
 ## [1.3.1] - 2026-08-16
 
 ### Fixed
