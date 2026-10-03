@@ -2169,14 +2169,22 @@ class PageTranslatorTest extends TestCase
     /**
      * TOK-3 on the page path: every row of the shared canonicalization fixture,
      * run through translatePage(), registers exactly the fixture's tokens, and a
-     * row that is one block registers the fixture's id.
+     * row that is one block registers the fixture's id. A unit made only of
+     * value markers, or holding one whose name is outside the grammar,
+     * registers nothing by rule (VAR-3, VAR-7): a row that is one is
+     * checked to register nothing, its tokens read from the tokenizer, and a
+     * row whose page units include one is checked without that unit.
      */
     public function testThePagePathMatchesTheCanonicalizationFixture(): void
     {
         $fixture = json_decode(file_get_contents(dirname(__DIR__) . '/fixtures/canonicalization-reference.json'), true);
-        $this->assertCount(32, $fixture['cases']);
+        $this->assertCount(41, $fixture['cases']);
 
         foreach ($fixture['cases'] as $case) {
+            $unit = (new HtmlParser())->fragmentUnit($case['html']);
+            $markerOnly = $unit['markers'] !== null
+                && ($unit['markers']->markerOnly($unit['tokens']) || $unit['markers']->unnamedWithin());
+
             $this->setTranslations([]);
             $this->mockHttp->setResponse('POST', 'translatable-items', ['status' => true]);
 
@@ -2203,7 +2211,20 @@ class PageTranslatorTest extends TestCase
                 }
             }
 
+            if ($markerOnly) {
+                $this->assertSame([], $tokens, $case['id'] . ': a unit of only markers, or holding one it cannot name, registers nothing');
+                $this->assertSame($case['expected_tokens'], $unit['tokens'], $case['id'] . ': tokens');
+                continue;
+            }
+
+            // The page walks each element as its own unit, so a marker alone in
+            // one registers nothing there, as any unit of only markers.
             $expected = $case['expected_tokens'];
+            if ($unit['markers'] !== null && $blocks === []) {
+                $expected = array_values(array_filter($expected, function ($token) use ($unit) {
+                    return !$unit['markers']->markerOnly([$token]);
+                }));
+            }
             sort($expected);
             sort($tokens);
             $this->assertSame($expected, $tokens, $case['id'] . ': registered tokens');

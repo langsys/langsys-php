@@ -10,7 +10,7 @@ use PHPUnit\Framework\TestCase;
 /**
  * Tests that run against the shared contract fixture (CONF-2): the Langsys API
  * double in tests/contract-fixture/, vendored byte for byte from
- * langsys-js-typescript at tree 542f57f5ffcb9038db1b7411152b7e31b96cb269.
+ * langsys-js-typescript at tree d7f89b89f911a90a06fc511ac72f8e0e913d4af3.
  *
  * The double can refuse a request and holds state, so these tests assert on
  * what the server accepted - the state read back - never on what the SDK sent,
@@ -200,7 +200,7 @@ abstract class ContractTestCase extends TestCase
         return isset($state['hints']) ? $state['hints'] : [];
     }
 
-    private function fixture($method, $path, array $body = null)
+    protected function fixture($method, $path, array $body = null)
     {
         $context = stream_context_create(['http' => [
             'method' => $method,
