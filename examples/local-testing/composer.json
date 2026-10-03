@@ -1,0 +1,9 @@
+{
+    "description": "Installs this checkout as an app would, through a path repository, to run the local checks.",
+    "repositories": [
+        { "type": "path", "url": "../..", "options": { "symlink": true } }
+    ],
+    "require": { "langsys/langsys-php": "*@dev" },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}

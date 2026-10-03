@@ -27,6 +27,8 @@ composer require langsys/langsys-php
 ```
 
 Coming from v1.3.1? [UPGRADING.md](UPGRADING.md) lists what an existing app notices.
+To see each feature work locally, against an API double or a local Langsys, follow
+[TESTING.md](TESTING.md).
 
 ### Manual Installation (Without Composer)
 

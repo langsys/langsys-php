@@ -1,0 +1,12 @@
+{
+  "projects": [{
+    "id": "p1",
+    "base_locale": "en-us",
+    "target_locales": ["es-es"],
+    "phrases": [{ "phrase": "Hello", "translations": { "es-es": "Hola" } }]
+  }],
+  "keys": [
+    { "key": "local-write", "project": "p1", "type": "write" },
+    { "key": "local-read", "project": "p1", "type": "read" }
+  ]
+}
