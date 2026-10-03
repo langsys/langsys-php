@@ -1,12 +1,12 @@
 # Conformance — langsys/php-sdk
 
-Spec version implemented: **spec blob `f2be841f`** (`langsys2` @ `30b8f252`, spec 8.5.7,
-**committed and unpublished**; derived 2026-10-03T19:42:28Z via
-`git rev-parse 30b8f25234c7847428fb7c4588b5797116a158bb:docs/sdk-spec.mdx`)
+Spec version implemented: **spec blob `d893ecf6`** (`langsys2` @ `83e26af1`, spec 8.5.8,
+**committed and unpublished**; derived 2026-10-03T20:23:48Z via
+`git rev-parse 83e26af1fc41aa526f3ff96bc5b50c8d7fcb4e92:docs/sdk-spec.mdx`)
 
 | Field | Value |
 |---|---|
-| **Spec revision read** | langsys2 30b8f25234c7847428fb7c4588b5797116a158bb, docs/sdk-spec.mdx blob f2be841f5dcd5b98618b6f1c44e8333265960b8a |
+| **Spec revision read** | langsys2 83e26af1fc41aa526f3ff96bc5b50c8d7fcb4e92, docs/sdk-spec.mdx blob d893ecf6f0d81230d34a22aeedd46e7fc1c6facb |
 | **Profiles** | all, server |
 
 **Coverage: every one of the spec's rule ids is accounted for exactly once**, binding or not —
@@ -14,8 +14,8 @@ rules that do not bind this SDK are rowed `n/a` with the profile named, rather t
 The counts, the binding total and the grade tally live in the computed summary at the foot of
 this file and only there, because a number written twice is a number that disagrees with itself.
 
-**Which blob a row cites.** Every row is graded against the rule's text at blob `f2be841f`. A row
-that cites an earlier blob (`5c5c0723`, `f8ff6e1e`, `e2524fd6`, `af6532e4`, `9a003a37`, `24354e2d`, `754daa16`, `9e826c91`, `5fa32cb9`, `b786ea3e`, `286dcfe4`, `b9fd4b5b`, `5d7e6890`, `7eee2c10`, `379ee2bd`, `5f43b636`, `7c44877f`, `295974b4`, `68e3020a`) names the blob where its ruling
+**Which blob a row cites.** Every row is graded against the rule's text at blob `d893ecf6`. A row
+that cites an earlier blob (`5c5c0723`, `f8ff6e1e`, `e2524fd6`, `af6532e4`, `9a003a37`, `24354e2d`, `754daa16`, `9e826c91`, `5fa32cb9`, `b786ea3e`, `286dcfe4`, `b9fd4b5b`, `5d7e6890`, `7eee2c10`, `379ee2bd`, `5f43b636`, `7c44877f`, `295974b4`, `68e3020a`, `f2be841f`) names the blob where its ruling
 first appears.
 
 **Rebased from blob `042dedb5` (spec v8) to `5c5c0723` (spec 8.0.1).** 8.0.1 is a correction to
@@ -242,7 +242,7 @@ architecture `n/a` that does not say what would make it live; a status its tier 
 and an `implemented` row with no recorded mutation (CONF-3).
 
 ```
-rule ids at blob f2be841f          129
+rule ids at blob d893ecf6          129
 one row each                       129
 missing / duplicated               0 / 0
 implemented                        84
@@ -260,12 +260,12 @@ GREEN                              yes
 # Re-derive the blob and the tally together. The target is a COMMIT, not a branch: it is committed
 # and deliberately unpublished, and a branch can move under a file that cites it.
 #
-#   T=30b8f25234c7847428fb7c4588b5797116a158bb
+#   T=83e26af1fc41aa526f3ff96bc5b50c8d7fcb4e92
 #   cd ~/Documents/dev/langsys2 && git fetch -q origin \
 #     && git rev-parse "$T:docs/sdk-spec.mdx" \
 #     && git show "$T:docs/sdk-spec.mdx" > /tmp/spec.mdx
 #
-# Last run 2026-10-03T19:42:28Z against blob f2be841f (langsys2 @ 30b8f252): exit 0.
+# Last run 2026-10-03T20:23:48Z against blob d893ecf6 (langsys2 @ 83e26af1): exit 0.
 #
 # python3 - <<'EOF'   (from the repo root; spec at /tmp/spec.mdx)
 import re, sys, collections
@@ -444,7 +444,7 @@ line. `LIBXML_DOTTED_VERSION` is recorded in the parse-model fixture's provenanc
 
 ### C0 controls
 
-TOK-2 at `f2be841f` specifies the strip, and this SDK performs it at its one canonicalization site.
+TOK-2 at `d893ecf6` specifies the strip, and this SDK performs it at its one canonicalization site.
 
 | Item | Status | What it is |
 |---|---|---|
