@@ -26,6 +26,8 @@ Official PHP SDK for the [Langsys](https://langsys.dev) Translation API. Manage 
 composer require langsys/langsys-php
 ```
 
+Coming from v1.3.1? [UPGRADING.md](UPGRADING.md) lists what an existing app notices.
+
 ### Manual Installation (Without Composer)
 
 1. Download or clone the repository
