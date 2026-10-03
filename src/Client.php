@@ -1509,7 +1509,7 @@ class Client
                 $items[$id] = ['phrase' => $phrase, 'category' => $entry['category'], 'translations' => []];
             }
 
-            $items[$id]['translations'] += $this->lineTranslations($key, $readers, $result['skipped']);
+            $items[$id]['translations'] += \Langsys\SDK\Sync\Planner::lineTranslations($key, $readers, $result['skipped']);
         }
 
         try {
@@ -1570,14 +1570,10 @@ class Client
      * as already there, new with the translations the language files hold,
      * or new alone.
      *
-     * A call's phrase is what the same call registers at runtime: a key the
-     * `migration` files hold is that key's line, converted by its file's
-     * format, under its group; any other literal is source text,
-     * uncategorised, converted by the call's own rules - only the
-     * placeholders it passes are placeholders, and `trans_choice` reads `|`
-     * as a plural (LegacyValue::fromCall). A call whose argument is not a
-     * literal is reported with its file and line. With declared value sets
-     * (FRM-7), a phrase naming one registers once per value, written in.
+     * The base language's files are the `migration` option's, and the
+     * declared value sets the `value_sets` option's; Sync\Planner holds the
+     * rules, and plans offline - with no catalog and no key - through
+     * Planner::offline().
      *
      * @param array[] $hits SourceScanner hits
      * @param array<string, array> $targets locale => migration configuration of that locale's files
@@ -1590,122 +1586,9 @@ class Client
      */
     public function planSync(array $hits, array $targets = [], array $options = [])
     {
-        $coveredGroups = isset($options['covered_groups']) && is_array($options['covered_groups']) ? array_map('strval', $options['covered_groups']) : [];
-        $readers = $this->targetReaders($targets);
-        $source = $this->getLegacyKeys();
-        $items = [];
-        $reported = [];
-        $skipped = [];
-        $viaValidation = [];
-        $covered = [];
+        $planner = new \Langsys\SDK\Sync\Planner($this->getLegacyKeys(), $this->valueSets);
 
-        $add = function ($phrase, $category, array $translations, $origin) use (&$items, &$viaValidation) {
-            $phrase = Canonical::phrase($phrase);
-            if ($phrase === '') {
-                return;
-            }
-
-            // A line still holding a label placeholder registers only through
-            // the validation listing, once per field (FRM-2, MSG-3).
-            foreach (\Langsys\SDK\Messages\MessageCatalog::LABEL_PLACEHOLDERS as $placeholder) {
-                $name = substr($placeholder, 1);
-                if (preg_match('/(?<![\w:])' . preg_quote($placeholder, '/') . '(?![\w])|\{' . $name . '\}/', $phrase)) {
-                    $viaValidation[] = ['phrase' => $phrase, 'placeholder' => $placeholder, 'origin' => $origin];
-
-                    return;
-                }
-            }
-            $id = json_encode([$category, $phrase]);
-            if (!isset($items[$id])) {
-                $items[$id] = ['phrase' => $phrase, 'category' => $category, 'status' => 'new', 'translations' => [], 'origins' => []];
-            }
-            $items[$id]['translations'] += $translations;
-            $items[$id]['origins'][] = $origin;
-        };
-
-        foreach ($hits as $hit) {
-            $origin = $hit['file'] . ':' . $hit['line'];
-            if ($hit['text'] === null) {
-                // A key built at runtime inside a literal group is covered by
-                // that group's base-language lines, which register anyway.
-                if (isset($hit['group']) && $hit['group'] !== null
-                    && (in_array($hit['group'], $coveredGroups, true) || $this->groupRegisters($source, $hit['group']))) {
-                    $covered[] = ['file' => $hit['file'], 'line' => $hit['line'], 'entry_point' => $hit['entry_point'], 'group' => $hit['group']];
-                    continue;
-                }
-
-                $reported[] = ['file' => $hit['file'], 'line' => $hit['line'], 'entry_point' => $hit['entry_point']];
-                continue;
-            }
-
-            // A key registers as a lookup of it does, whichever function
-            // called it; only a literal no file holds follows the call's rules.
-            $entry = $this->resolveLegacyKey($hit['text']);
-
-            if ($entry !== null) {
-                $phrase = $entry['phrase'];
-                $category = $entry['category'];
-                $translations = $this->lineTranslations($hit['text'], $readers, $skipped);
-            } else {
-                $replace = array_fill_keys(is_array($hit['replace_keys']) ? $hit['replace_keys'] : [], '');
-                $phrase = \Langsys\SDK\Migration\LegacyValue::fromCall($hit['text'], $replace, $hit['kind'], $hit['kind'] === 'trans_choice' ? 1 : null)['text'];
-                $category = null;
-                $translations = $this->lineTranslations($hit['text'], $readers, $skipped, $hit['kind'], $replace);
-            }
-            $sentences = $this->valueSets === null ? [$phrase] : $this->valueSets->sentences($phrase);
-
-            if ($sentences === [$phrase]) {
-                $add($phrase, $category, $translations, $origin);
-                continue;
-            }
-
-            foreach ($sentences as $sentence) {
-                $add($sentence, $category, [], $origin);
-            }
-        }
-
-        // A key a call already used merges into the same item: one phrase.
-        foreach ($source === null ? [] : $source->keys() as $key) {
-            $entry = $this->resolveLegacyKey($key);
-            if ($entry !== null) {
-                $add($entry['phrase'], $entry['category'], $this->lineTranslations($key, $readers, $skipped), $key);
-            }
-        }
-
-        $catalog = $this->syncCatalog();
-        foreach ($items as $id => $item) {
-            $category = $this->normalizeCategory($item['category']);
-            if (isset($catalog[$category]) && is_array($catalog[$category]) && array_key_exists($item['phrase'], $catalog[$category])) {
-                $items[$id]['status'] = 'in_catalog';
-            } elseif ($item['translations'] !== []) {
-                $items[$id]['status'] = 'with_translations';
-            }
-        }
-
-        return new \Langsys\SDK\Sync\SyncPlan(array_values($items), $reported, $skipped, $viaValidation, $covered);
-    }
-
-    /**
-     * Whether the base-language files hold lines of a group, which a sync
-     * registers whatever key a call builds in it.
-     *
-     * @param LegacyKeys|null $source
-     * @param string $group
-     * @return bool
-     */
-    protected function groupRegisters($source, $group)
-    {
-        if ($source === null) {
-            return false;
-        }
-
-        foreach ($source->keys() as $key) {
-            if (strpos($key, $group . '.') === 0) {
-                return true;
-            }
-        }
-
-        return false;
+        return $planner->plan($hits, $this->targetReaders($targets), $this->syncCatalog(), $options);
     }
 
     /**
@@ -1762,62 +1645,6 @@ class Client
         $locale = $locales !== [] ? LocaleDetector::normalize(reset($locales)) : (isset($project['base_locale']) ? LocaleDetector::normalize($project['base_locale']) : null);
 
         return $locale === null ? [] : $this->translations->getTranslationMap($locale);
-    }
-
-    /**
-     * Each target locale's translation of a key, converted as its phrase was;
-     * what is missing, empty or does not convert is listed instead.
-     *
-     * @param string $key
-     * @param array<string, LegacyKeys> $readers
-     * @param array $skipped
-     * @param string|null $kind The call's rules, or null for a file line
-     * @param array $replace
-     * @return array<string, string>
-     */
-    protected function lineTranslations($key, array $readers, array &$skipped, $kind = null, array $replace = [])
-    {
-        $translations = [];
-
-        foreach ($readers as $locale => $reader) {
-            $raw = $reader->raw($key);
-            $converted = $raw === null ? null : self::linePhrase($raw['value'], $raw['format'], $kind, $replace);
-            $reason = $converted === null ? 'missing'
-                : (Canonical::phrase($converted['text']) === '' ? 'empty'
-                : (!$converted['recognised'] ? 'not_converted' : null));
-
-            if ($reason !== null) {
-                $skipped[] = ['key' => $key, 'locale' => $locale, 'reason' => $reason];
-                continue;
-            }
-
-            $translations[$locale] = Canonical::phrase($converted['text']);
-        }
-
-        return $translations;
-    }
-
-    /**
-     * A language-file value as a phrase: by the call's rules where a Laravel
-     * call reads a Laravel file, else by the file's format.
-     *
-     * @param string|array $value
-     * @param string $format
-     * @param string|null $kind
-     * @param array $replace
-     * @return array{text: string, recognised: bool}
-     */
-    protected static function linePhrase($value, $format, $kind, array $replace)
-    {
-        if (is_array($value)) {
-            return \Langsys\SDK\Migration\LegacyValue::fromPluralForms($value);
-        }
-
-        if ($kind !== null && $format === 'laravel') {
-            return \Langsys\SDK\Migration\LegacyValue::fromCall($value, $replace, $kind, $kind === 'trans_choice' ? 1 : null);
-        }
-
-        return \Langsys\SDK\Migration\LegacyValue::convert($value, $format);
     }
 
     /**

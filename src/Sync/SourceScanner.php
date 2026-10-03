@@ -45,8 +45,9 @@ final class SourceScanner
      * Each hit: `text` (the literal, or null), `skipped` (null, or
      * 'non-literal'), `entry_point` (the name as written), `kind` ('__' or
      * 'trans_choice'), `line` (in $code), `arg_count`, `replace_keys` (the
-     * literal keys of a replace array, or null when there is none or it is not
-     * a literal) and `file` ($label).
+     * keys of a replace array literal or the names a `compact()` passes, or
+     * null), `replace_dynamic` (whether replacements are passed that the
+     * source does not name, such as a variable) and `file` ($label).
      *
      * @param string $code PHP source, or a compiled view
      * @param string $label The file it came from, carried into each hit
@@ -74,6 +75,9 @@ final class SourceScanner
 
             $replaceIndex = $kind === 'trans_choice' ? 2 : 1;
             $replaceKeys = isset($args[$replaceIndex]) ? self::literalKeys($args[$replaceIndex]) : null;
+            if ($replaceKeys === null && isset($args[$replaceIndex])) {
+                $replaceKeys = self::compactKeys($args[$replaceIndex]);
+            }
 
             $hits[] = [
                 'text' => $text,
@@ -84,6 +88,7 @@ final class SourceScanner
                 'line' => $line,
                 'arg_count' => count($args),
                 'replace_keys' => $replaceKeys,
+                'replace_dynamic' => $replaceKeys === null && isset($args[$replaceIndex]),
                 'file' => (string) $label,
             ];
         }
@@ -244,6 +249,35 @@ final class SourceScanner
         }
 
         return $prefix !== null && preg_match('/^([A-Za-z0-9_-]+)\.(?:[A-Za-z0-9_-]+\.)*$/', $prefix, $m) ? $m[1] : null;
+    }
+
+    /**
+     * The names a `compact('a', 'b')` call passes, when every argument is a
+     * string literal; else null.
+     *
+     * @param array $arg
+     * @return string[]|null
+     */
+    private static function compactKeys(array $arg)
+    {
+        if (count($arg) < 3 || !is_array($arg[0]) || $arg[0][0] !== T_STRING || strtolower($arg[0][1]) !== 'compact'
+            || $arg[1] !== '(' || end($arg) !== ')') {
+            return null;
+        }
+
+        $names = [];
+        foreach (array_slice($arg, 2, -1) as $token) {
+            if ($token === ',') {
+                continue;
+            }
+            $name = self::literal([$token]);
+            if ($name === null) {
+                return null;
+            }
+            $names[] = $name;
+        }
+
+        return $names;
     }
 
     /**

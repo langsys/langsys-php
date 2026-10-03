@@ -81,6 +81,18 @@ class SourceScannerTest extends TestCase
         $this->assertSame([2, 3, 2, 1], array_column($hits, 'arg_count'));
     }
 
+    /**
+     * A compact() names its keys; any other replacements argument is
+     * dynamic - only the running call knows its keys.
+     */
+    public function testReplacementsTheSourceDoesNotSpellOut(): void
+    {
+        $hits = $this->scan("__('A :limit', compact('limit', 'max')); __('A :limit', \$params); __('A :limit', []); __('A :limit'); trans_choice('n :count', \$n, \$r);");
+
+        $this->assertSame([['limit', 'max'], null, [], null, null], array_column($hits, 'replace_keys'));
+        $this->assertSame([false, true, false, false, true], array_column($hits, 'replace_dynamic'));
+    }
+
     public function testLiteralsAreDecodedAsPhpReadsThem(): void
     {
         $this->assertSame(

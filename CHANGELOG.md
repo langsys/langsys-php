@@ -128,6 +128,11 @@ its id or re-registers it.
 
 ### Added
 
+- **A sync can be planned offline.** `Sync\Planner::offline()` plans without a
+  client or a key - every phrase new, non-literal calls, label lines and
+  covered groups reported - for a CI gate. A call passing its replacements as
+  `compact()` or a variable registers the placeholders the running call looks
+  up, rather than leaving them as `:name`.
 - **The messages listing gives advice that never fails it.**
   `MessageCatalog::advise()` names something the app may want to change - a
   validated field with no declared label - and the listing command prints it
