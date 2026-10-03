@@ -51,6 +51,21 @@ final class ServerMessage implements \JsonSerializable
     }
 
     /**
+     * The entry for a message the app defines itself (MSG-7): its code, its
+     * template, and the params its public properties hold - the template and
+     * code the listing registered, so the server sends what was registered.
+     *
+     * @param HasAppMessageTemplate $message
+     * @return self
+     */
+    public static function fromApp(HasAppMessageTemplate $message)
+    {
+        $template = (string) $message->template();
+
+        return self::make($message->code(), $template, MessageTemplate::paramsFrom($message, $template)['params']);
+    }
+
+    /**
      * Build an entry from a template and its params, as a server emits it.
      *
      * `message` is the template filled from the params (MSG-4). Params keep only

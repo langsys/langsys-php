@@ -128,6 +128,13 @@ its id or re-registers it.
 
 ### Added
 
+- **An app's own messages can state their sentence and code.** A class
+  implementing `HasAppMessageTemplate` returns its template with `{name}`
+  markers for its public properties and its code; `MessageCatalog::addMessage()`
+  lists it - an instance or its class name - once under the messages category
+  with that code, and `ServerMessage::fromApp()` builds the runtime entry from
+  the same template. A translate call inside its `template()` is listed in
+  `SyncPlan::$viaMessageListing` instead of registering on its own.
 - **A sync can be planned offline.** `Sync\Planner::offline()` plans without a
   client or a key - every phrase new, non-literal calls, label lines and
   covered groups reported - for a CI gate. A call passing its replacements as

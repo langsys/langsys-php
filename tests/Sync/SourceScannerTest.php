@@ -65,6 +65,32 @@ class SourceScannerTest extends TestCase
     }
 
     /**
+     * Each hit says where it sits: its class, that class's interfaces, and
+     * its method.
+     */
+    public function testAHitKnowsItsClassAndMethod(): void
+    {
+        $hits = $this->scan("__('Top');\nclass QuotaExceeded extends Base implements \\Langsys\\SDK\\Messages\\HasAppMessageTemplate, Countable {\n  public function template() { return __('You hit the limit.'); }\n  public function other() { if (true) { return __('Elsewhere'); } }\n}\n\$x = new class implements Foo { public function template() { return __('Anon'); } };");
+
+        $this->assertSame(['Top', 'You hit the limit.', 'Elsewhere', 'Anon'], array_column($hits, 'text'));
+        $this->assertSame([null, 'QuotaExceeded', 'QuotaExceeded', null], array_column($hits, 'class'));
+        $this->assertSame([[], ['HasAppMessageTemplate', 'Countable'], ['HasAppMessageTemplate', 'Countable'], ['Foo']], array_column($hits, 'implements'));
+        $this->assertSame([null, 'template', 'other', 'template'], array_column($hits, 'method'));
+    }
+
+    /**
+     * A method ends where its body does: a call after an anonymous class's
+     * method inside it is still the outer method's.
+     */
+    public function testAMethodEndsWithItsBody(): void
+    {
+        $hits = $this->scan("class Quota implements HasAppMessageTemplate {\n  public function template() {\n    \$h = new class { public function inner() { return 1; } };\n    return __('After the inner class.');\n  }\n}");
+
+        $this->assertSame(['template'], array_column($hits, 'method'));
+        $this->assertSame(['Quota'], array_column($hits, 'class'));
+    }
+
+    /**
      * What is not a call to the function is never collected: a method, a
      * declaration, a string, a comment.
      */

@@ -47,6 +47,15 @@ final class SyncPlan
     public $covered = [];
 
     /**
+     * Calls inside an app message's template method (MSG-7): its sentence,
+     * registered by the messages listing under the messages category, never
+     * as an uncategorised literal. Not a failure.
+     *
+     * @var array<int, array{file: string, line: int, entry_point: string, class: string|null}>
+     */
+    public $viaMessageListing = [];
+
+    /**
      * Translations that could not be taken from a language file.
      *
      * @var array<int, array{key: string, locale: string, reason: string}>
@@ -58,8 +67,9 @@ final class SyncPlan
      * @param array $reported
      * @param array $skipped
      */
-    public function __construct(array $items, array $reported, array $skipped, array $viaValidation = [], array $covered = [])
+    public function __construct(array $items, array $reported, array $skipped, array $viaValidation = [], array $covered = [], array $viaMessageListing = [])
     {
+        $this->viaMessageListing = $viaMessageListing;
         $this->covered = $covered;
         $this->items = $items;
         $this->reported = $reported;

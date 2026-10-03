@@ -47,7 +47,9 @@ final class SourceScanner
      * 'trans_choice'), `line` (in $code), `arg_count`, `replace_keys` (the
      * keys of a replace array literal or the names a `compact()` passes, or
      * null), `replace_dynamic` (whether replacements are passed that the
-     * source does not name, such as a variable) and `file` ($label).
+     * source does not name, such as a variable), `file` ($label), and where
+     * the call sits: `class` (null outside one, or in an anonymous class),
+     * `implements` (the short names of that class's interfaces) and `method`.
      *
      * @param string $code PHP source, or a compiled view
      * @param string $label The file it came from, carried into each hit
@@ -61,6 +63,7 @@ final class SourceScanner
 
         $hits = [];
         $count = count($tokens);
+        $context = self::context($tokens);
 
         for ($i = 0; $i < $count; $i++) {
             $call = $this->callAt($tokens, $i);
@@ -90,10 +93,92 @@ final class SourceScanner
                 'replace_keys' => $replaceKeys,
                 'replace_dynamic' => $replaceKeys === null && isset($args[$replaceIndex]),
                 'file' => (string) $label,
+                'class' => $context[$i]['class'],
+                'implements' => $context[$i]['implements'],
+                'method' => $context[$i]['method'],
             ];
         }
 
         return $hits;
+    }
+
+    /**
+     * The class and method each token sits in.
+     *
+     * @param array $tokens
+     * @return array<int, array{class: string|null, implements: string[], method: string|null}>
+     */
+    private static function context(array $tokens)
+    {
+        $out = [];
+        $depth = 0;
+        $classes = [];
+        $methods = [];
+        $pendingClass = null;
+        $pendingMethod = null;
+        $count = count($tokens);
+
+        for ($i = 0; $i < $count; $i++) {
+            $token = $tokens[$i];
+            $text = is_array($token) ? $token[1] : $token;
+            $type = is_array($token) ? $token[0] : null;
+
+            if ($type === T_CLASS && !($i > 0 && is_array($tokens[$i - 1]) && $tokens[$i - 1][0] === T_DOUBLE_COLON)) {
+                $name = isset($tokens[$i + 1]) && is_array($tokens[$i + 1]) && $tokens[$i + 1][0] === T_STRING ? $tokens[$i + 1][1] : null;
+                $implements = [];
+                for ($j = $i + 1; $j < $count && $tokens[$j] !== '{'; $j++) {
+                    if (is_array($tokens[$j]) && $tokens[$j][0] === T_IMPLEMENTS) {
+                        for ($k = $j + 1; $k < $count && $tokens[$k] !== '{'; $k++) {
+                            if (is_array($tokens[$k]) && in_array($tokens[$k][0], self::nameTokens(), true)) {
+                                $implements[] = substr('\\' . $tokens[$k][1], strrpos('\\' . $tokens[$k][1], '\\') + 1);
+                            }
+                        }
+                        break;
+                    }
+                }
+                $pendingClass = ['class' => $name, 'implements' => $implements];
+            } elseif ($type === T_FUNCTION && isset($tokens[$i + 1]) && is_array($tokens[$i + 1]) && $tokens[$i + 1][0] === T_STRING && $classes !== []) {
+                $pendingMethod = $tokens[$i + 1][1];
+            }
+
+            if ($text === '{' || $type === T_CURLY_OPEN || $type === T_DOLLAR_OPEN_CURLY_BRACES) {
+                $depth++;
+                if ($text === '{' && $pendingClass !== null) {
+                    $classes[] = $pendingClass + ['depth' => $depth];
+                    $pendingClass = null;
+                } elseif ($text === '{' && $pendingMethod !== null) {
+                    $methods[] = ['method' => $pendingMethod, 'depth' => $depth];
+                    $pendingMethod = null;
+                }
+            } elseif ($text === '}') {
+                if ($methods !== [] && end($methods)['depth'] === $depth) {
+                    array_pop($methods);
+                } elseif ($classes !== [] && end($classes)['depth'] === $depth) {
+                    array_pop($classes);
+                }
+                $depth--;
+            } elseif ($text === ';' && $pendingMethod !== null) {
+                $pendingMethod = null;
+            }
+
+            $class = $classes === [] ? null : end($classes);
+            $method = $methods === [] ? null : end($methods);
+            $out[$i] = [
+                'class' => $class === null ? null : $class['class'],
+                'implements' => $class === null ? [] : $class['implements'],
+                'method' => ($method !== null && $class !== null && $method['depth'] > $class['depth']) ? $method['method'] : null,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return int[] The token types a class or interface name can be
+     */
+    private static function nameTokens()
+    {
+        return array_values(array_filter([T_STRING, defined('T_NAME_QUALIFIED') ? T_NAME_QUALIFIED : null, defined('T_NAME_FULLY_QUALIFIED') ? T_NAME_FULLY_QUALIFIED : null]));
     }
 
     /**

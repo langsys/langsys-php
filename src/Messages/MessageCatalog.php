@@ -39,6 +39,9 @@ final class MessageCatalog
     /** @var string[] */
     private $advice = [];
 
+    /** @var array<string, string> template => the code its first source gave it */
+    private $codes = [];
+
     /**
      * List a template, or report why it cannot be listed.
      *
@@ -119,6 +122,67 @@ final class MessageCatalog
     }
 
     /**
+     * List a message the app defines itself (MSG-7) from its template, with
+     * its code, once. A listing has no runtime values, so a class name is
+     * instantiated without its constructor, and each `{name}` marker is
+     * checked against the class's declared public properties rather than
+     * their values; a `template()` that needs constructor state is reported.
+     * A class that is also a validation rule is listed per field by
+     * addRule(), never here.
+     *
+     * @param HasAppMessageTemplate|string $message An instance, or its class name
+     * @param string $source
+     * @return bool Whether it was listed cleanly
+     */
+    public function addMessage($message, $source)
+    {
+        $class = is_object($message) ? get_class($message) : ltrim((string) $message, '\\');
+
+        if (!is_object($message)) {
+            if (!class_exists($class) || !is_subclass_of($class, HasAppMessageTemplate::class)) {
+                $this->problem($source, 'is not a loadable class implementing ' . HasAppMessageTemplate::class, 'check the class name and its autoloading');
+
+                return false;
+            }
+
+            $message = (new \ReflectionClass($class))->newInstanceWithoutConstructor();
+        }
+
+        if ($message instanceof HasMessageTemplate) {
+            return false;
+        }
+
+        try {
+            $template = (string) $message->template();
+            $code = $message->code();
+        } catch (\Throwable $e) {
+            $this->problem($source, 'builds its template from constructor state, so it cannot be listed ahead of time (' . $e->getMessage() . ')', 'return the sentence from template() as a literal with {name} markers');
+
+            return false;
+        }
+
+        $declared = [];
+        foreach ((new \ReflectionClass($message))->getProperties(\ReflectionProperty::IS_PUBLIC) as $property) {
+            if (!$property->isStatic()) {
+                $declared[] = $property->getName();
+            }
+        }
+
+        $missing = array_values(array_diff(MessageTemplate::markers($template), $declared));
+        foreach ($missing as $marker) {
+            $this->problem($source, "uses the marker {{$marker}} but has no public \$$marker property to fill it", "add a public \$$marker property");
+        }
+
+        $listed = $this->add($template, $source);
+
+        if ($listed && $code !== null && $code !== '' && !isset($this->codes[$template])) {
+            $this->codes[$template] = (string) $code;
+        }
+
+        return $listed && $missing === [];
+    }
+
+    /**
      * Report a message that cannot be listed: where it is, what is wrong, and the
      * fix - one line an agent or a person can act on.
      *
@@ -151,7 +215,11 @@ final class MessageCatalog
         $out = [];
 
         foreach ($templates as $template => $source) {
-            $out[] = ['template' => (string) $template, 'source' => $source];
+            $entry = ['template' => (string) $template, 'source' => $source];
+            if (isset($this->codes[$template])) {
+                $entry['code'] = $this->codes[$template];
+            }
+            $out[] = $entry;
         }
 
         return $out;

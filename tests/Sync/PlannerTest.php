@@ -89,6 +89,26 @@ class PlannerTest extends TestCase
         $this->assertTrue($plan->failsStrict());
     }
 
+    /**
+     * MSG-7: a translate call inside an app message's template method is
+     * that message's sentence, registered by the messages listing - never as
+     * an uncategorised literal. The same call anywhere else is a phrase.
+     */
+    public function testACallInAnAppMessagesTemplateIsTheListings(): void
+    {
+        $plan = Planner::offline($this->hits(
+            "class Quota implements HasAppMessageTemplate {\n"
+            . "  public function template() { return __('You hit the limit.'); }\n"
+            . "  public function hint() { return __('Upgrade your plan.'); }\n"
+            . "}\n"
+            . "class Plain { public function template() { return __('Not a message.'); } }"
+        ));
+
+        $this->assertSame([['file' => 'app.php', 'line' => 3, 'entry_point' => '__', 'class' => 'Quota']], $plan->viaMessageListing);
+        $this->assertSame(['Upgrade your plan.', 'Not a message.'], array_column($plan->items, 'phrase'));
+        $this->assertFalse($plan->failsStrict());
+    }
+
     public function testDeclaredValueSetsExpandOffline(): void
     {
         \Langsys\SDK\Tests\Frm\Fixtures\Category::$rows = ['Books', 'Music'];

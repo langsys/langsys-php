@@ -23,16 +23,7 @@ final class RuleTemplate
             return [];
         }
 
-        $public = get_object_vars($rule);
-        $params = [];
-
-        foreach (MessageTemplate::markers((string) $rule->template()) as $marker) {
-            if (array_key_exists($marker, $public)) {
-                $params[$marker] = $public[$marker];
-            }
-        }
-
-        return $params;
+        return MessageTemplate::paramsFrom($rule, (string) $rule->template())['params'];
     }
 
     /**
@@ -62,18 +53,7 @@ final class RuleTemplate
         }
 
         $template = str_replace(':attribute', (string) $label, (string) $rule->template());
-        $public = get_object_vars($rule);
-        $params = [];
-        $missing = [];
 
-        foreach (MessageTemplate::markers($template) as $marker) {
-            if (array_key_exists($marker, $public)) {
-                $params[$marker] = $public[$marker];
-            } else {
-                $missing[] = $marker;
-            }
-        }
-
-        return ['template' => $template, 'params' => $params, 'missing' => $missing];
+        return ['template' => $template] + MessageTemplate::paramsFrom($rule, $template);
     }
 }

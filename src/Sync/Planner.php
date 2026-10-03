@@ -22,7 +22,8 @@ use Langsys\SDK\Migration\LegacyValue;
  * text holds. A call whose argument is not a literal is reported, unless its
  * key is built inside a literal group whose lines register anyway. A line
  * still holding a label placeholder registers only through the validation
- * listing. With declared value sets (FRM-7), a phrase naming one registers
+ * listing, and a call inside an app message's template method through the
+ * messages listing. With declared value sets (FRM-7), a phrase naming one registers
  * once per value, written in.
  *
  * Given a catalog, each phrase is decided against it - already there, new
@@ -85,6 +86,7 @@ final class Planner
         $skipped = [];
         $viaValidation = [];
         $covered = [];
+        $viaMessageListing = [];
 
         $add = function ($phrase, $category, array $translations, $origin) use (&$items, &$viaValidation) {
             $phrase = Canonical::phrase($phrase);
@@ -113,6 +115,15 @@ final class Planner
 
         foreach ($hits as $hit) {
             $origin = $hit['file'] . ':' . $hit['line'];
+
+            // A call inside an app message's template method is that
+            // message's sentence, which its listing registers under the
+            // messages category (MSG-7).
+            if (isset($hit['method']) && $hit['method'] === 'template'
+                && in_array('HasAppMessageTemplate', isset($hit['implements']) ? $hit['implements'] : [], true)) {
+                $viaMessageListing[] = ['file' => $hit['file'], 'line' => $hit['line'], 'entry_point' => $hit['entry_point'], 'class' => $hit['class']];
+                continue;
+            }
 
             if ($hit['text'] === null) {
                 // A key built at runtime inside a literal group is covered by
@@ -171,7 +182,7 @@ final class Planner
             }
         }
 
-        return new SyncPlan(array_values($items), $reported, $skipped, $viaValidation, $covered);
+        return new SyncPlan(array_values($items), $reported, $skipped, $viaValidation, $covered, $viaMessageListing);
     }
 
     /**

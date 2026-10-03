@@ -39,6 +39,32 @@ final class MessageTemplate
     }
 
     /**
+     * The values an object's template is filled with: the public property
+     * named by each of its `{name}` markers, and the markers no public
+     * property fills.
+     *
+     * @param object $object
+     * @param string $template
+     * @return array{params: array, missing: string[]}
+     */
+    public static function paramsFrom($object, $template)
+    {
+        $public = get_object_vars($object);
+        $params = [];
+        $missing = [];
+
+        foreach (self::markers($template) as $marker) {
+            if (array_key_exists($marker, $public)) {
+                $params[$marker] = $public[$marker];
+            } else {
+                $missing[] = $marker;
+            }
+        }
+
+        return ['params' => $params, 'missing' => $missing];
+    }
+
+    /**
      * Fill a template's markers from params.
      *
      * A marker with no param is left as its literal marker rather than blanked,

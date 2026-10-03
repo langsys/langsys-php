@@ -1267,6 +1267,31 @@ each marker, and optionally a `CODE`, passed through as the entry's code. A temp
 that still holds a Laravel label placeholder (`:attribute`, `:other`, `:values`) is
 refused: write the label in.
 
+A message your app defines itself — an API error, a system notice — declares its sentence
+and code by implementing `HasAppMessageTemplate`:
+
+```php
+use Langsys\SDK\Messages\HasAppMessageTemplate;
+use Langsys\SDK\Messages\ServerMessage;
+
+final class QuotaExceeded implements HasAppMessageTemplate
+{
+    public function __construct(public int $limit) {}
+
+    public function template() { return 'You have used all {limit} of this month\'s requests.'; }
+    public function code() { return 'quota_exceeded'; }
+}
+
+$catalog->addMessage(QuotaExceeded::class, 'app/Errors');  // listed once, with its code
+$entry = ServerMessage::fromApp(new QuotaExceeded(500));    // what you send at runtime
+```
+
+It is registered under the messages category with its code; each `{name}` marker is filled
+from the public property of the same name. Listing a class builds it without its
+constructor, so `template()` must return the sentence itself rather than build it from
+constructor arguments. A translate call inside `template()` belongs to that listing:
+`planSync()` lists it in `$plan->viaMessageListing` instead of registering it.
+
 Some findings are advice rather than problems — a validated field with no declared label,
 which shows the name the framework derives. A source reports those with
 `$catalog->advise($source, $issue, $fix, $field)`; the command prints them under
