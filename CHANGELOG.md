@@ -133,7 +133,9 @@ its id or re-registers it.
   markers for its public properties and its code; `MessageCatalog::addMessage()`
   lists it - an instance or its class name - once under the messages category
   with that code, and `ServerMessage::fromApp()` builds the runtime entry from
-  the same template. A translate call inside its `template()` is listed in
+  the same template. A translate call inside its `template()` - including an
+  enum's, and one in a class named in `message_classes` - and any call whose
+  sentence is among the `listed_templates` is listed in
   `SyncPlan::$viaMessageListing` instead of registering on its own.
 - **A sync can be planned offline.** `Sync\Planner::offline()` plans without a
   client or a key - every phrase new, non-literal calls, label lines and

@@ -104,8 +104,57 @@ class PlannerTest extends TestCase
             . "class Plain { public function template() { return __('Not a message.'); } }"
         ));
 
-        $this->assertSame([['file' => 'app.php', 'line' => 3, 'entry_point' => '__', 'class' => 'Quota']], $plan->viaMessageListing);
+        $this->assertSame([['file' => 'app.php', 'line' => 3, 'entry_point' => '__', 'class' => 'Quota', 'phrase' => 'You hit the limit.']], $plan->viaMessageListing);
         $this->assertSame(['Upgrade your plan.', 'Not a message.'], array_column($plan->items, 'phrase'));
+        $this->assertFalse($plan->failsStrict());
+    }
+
+    /**
+     * Langsys's shapes: a call in an enum's template() match arm, and one
+     * nested in a helper call with a $locale argument, in a class that
+     * inherits the contract - found through the classes the binding names,
+     * since no scan sees an inherited interface.
+     */
+    public function testEveryShapeOfATemplateMethodCallIsTheListings(): void
+    {
+        $code = "namespace App\\Errors;\n"
+            . "enum ApiErrors: string implements HasAppMessageTemplate {\n"
+            . "  case Key = 'key';\n"
+            . "  public function template(string \$locale = 'en'): string { return match (\$this) { self::Key => __('Invalid API key', [], \$locale) }; }\n"
+            . "}\n"
+            . "class ProjectLimitReachedError extends ApiError {\n"
+            . "  public function template(string \$locale = 'en') { return self::source(__('You reached the :limit project limit.', ['limit' => ':limit'], \$locale)); }\n"
+            . "  public function other() { return __('Not a template.'); }\n"
+            . "}";
+
+        $plan = Planner::offline($this->hits($code), null, [], ['message_classes' => ['\\App\\Errors\\ProjectLimitReachedError']]);
+
+        $this->assertSame(['Invalid API key', 'You reached the :limit project limit.'], array_column($plan->viaMessageListing, 'phrase'));
+        $this->assertSame(['ApiErrors', 'ProjectLimitReachedError'], array_column($plan->viaMessageListing, 'class'));
+        $this->assertSame(['Not a template.'], array_column($plan->items, 'phrase'));
+
+        $unnamed = Planner::offline($this->hits($code));
+        $this->assertSame(['ApiErrors'], array_column($unnamed->viaMessageListing, 'class'), 'without the list, an inherited contract is not seen');
+    }
+
+    /**
+     * FRM-2: a call whose sentence the messages listing lists is covered by
+     * it wherever it sits - a rule-side error class a rule's template reads -
+     * and never registers uncategorised beside it. A literal with no listed
+     * twin still registers, uncategorised.
+     */
+    public function testASentenceTheListingListsIsCoveredWhereverItSits(): void
+    {
+        $plan = Planner::offline($this->hits(
+            "class FieldErrors { const REQ = 1; public static function required() { return __('Enter the :field.', ['field' => \$f]); } }\n"
+            . "function helper() { return __('Too many requests.'); }\n"
+            . "__('Welcome back');"
+        ), null, [], ['listed_templates' => ['Enter the {field}.', 'Too many requests.', 'The email is required.']]);
+
+        $this->assertSame(['Enter the {field}.', 'Too many requests.'], array_column($plan->viaMessageListing, 'phrase'));
+        $this->assertSame([[null, 'Welcome back']], array_map(function ($item) {
+            return [$item['category'], $item['phrase']];
+        }, $plan->items));
         $this->assertFalse($plan->failsStrict());
     }
 

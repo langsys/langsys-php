@@ -1290,7 +1290,12 @@ It is registered under the messages category with its code; each `{name}` marker
 from the public property of the same name. Listing a class builds it without its
 constructor, so `template()` must return the sentence itself rather than build it from
 constructor arguments. A translate call inside `template()` belongs to that listing:
-`planSync()` lists it in `$plan->viaMessageListing` instead of registering it.
+`planSync()` lists it in `$plan->viaMessageListing` instead of registering it. Pass the
+classes your framework discovered as `['message_classes' => [...]]`, so one that inherits
+the interface is recognised too, and the listed templates as
+`['listed_templates' => array_column($catalog->templates(), 'template')]`, so a sentence the
+listing already registers isn't registered a second time, uncategorised, from wherever else
+it is called.
 
 Some findings are advice rather than problems — a validated field with no declared label,
 which shows the name the framework derives. A source reports those with

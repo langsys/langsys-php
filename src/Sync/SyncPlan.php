@@ -47,11 +47,12 @@ final class SyncPlan
     public $covered = [];
 
     /**
-     * Calls inside an app message's template method (MSG-7): its sentence,
-     * registered by the messages listing under the messages category, never
-     * as an uncategorised literal. Not a failure.
+     * Calls the messages listing covers (MSG-7, FRM-2): one inside an app
+     * message's template method, and one whose sentence the listing lists,
+     * wherever it sits. Registered by the listing under the messages
+     * category, never as an uncategorised literal. Not a failure.
      *
-     * @var array<int, array{file: string, line: int, entry_point: string, class: string|null}>
+     * @var array<int, array{file: string, line: int, entry_point: string, class: string|null, phrase: string|null}>
      */
     public $viaMessageListing = [];
 

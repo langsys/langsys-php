@@ -79,6 +79,19 @@ class SourceScannerTest extends TestCase
     }
 
     /**
+     * An enum is a class scope, and a hit carries its class's namespace.
+     */
+    public function testAnEnumIsAClassAndHitsKnowTheirNamespace(): void
+    {
+        $hits = $this->scan("namespace App\\Errors;\nenum ApiErrors: string implements HasAppMessageTemplate {\n  case Key = 'key';\n  public function template(string \$locale = 'en'): string { return match (\$this) { self::Key => __('Invalid API key', [], \$locale) }; }\n}\nclass Plain { public function x() { return __('Plain'); } }");
+
+        $this->assertSame(['ApiErrors', 'Plain'], array_column($hits, 'class'));
+        $this->assertSame(['App\\Errors\\ApiErrors', 'App\\Errors\\Plain'], array_column($hits, 'class_fqcn'));
+        $this->assertSame([['HasAppMessageTemplate'], []], array_column($hits, 'implements'));
+        $this->assertSame(['template', 'x'], array_column($hits, 'method'));
+    }
+
+    /**
      * A method ends where its body does: a call after an anonymous class's
      * method inside it is still the outer method's.
      */

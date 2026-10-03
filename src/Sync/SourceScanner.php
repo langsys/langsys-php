@@ -48,8 +48,10 @@ final class SourceScanner
      * keys of a replace array literal or the names a `compact()` passes, or
      * null), `replace_dynamic` (whether replacements are passed that the
      * source does not name, such as a variable), `file` ($label), and where
-     * the call sits: `class` (null outside one, or in an anonymous class),
-     * `implements` (the short names of that class's interfaces) and `method`.
+     * the call sits: `class` (null outside one, or in an anonymous class) and
+     * `class_fqcn` (with its namespace) - an enum counts as a class -
+     * `implements` (the short names of the interfaces it names itself) and
+     * `method`.
      *
      * @param string $code PHP source, or a compiled view
      * @param string $label The file it came from, carried into each hit
@@ -94,6 +96,7 @@ final class SourceScanner
                 'replace_dynamic' => $replaceKeys === null && isset($args[$replaceIndex]),
                 'file' => (string) $label,
                 'class' => $context[$i]['class'],
+                'class_fqcn' => $context[$i]['class_fqcn'],
                 'implements' => $context[$i]['implements'],
                 'method' => $context[$i]['method'],
             ];
@@ -106,7 +109,7 @@ final class SourceScanner
      * The class and method each token sits in.
      *
      * @param array $tokens
-     * @return array<int, array{class: string|null, implements: string[], method: string|null}>
+     * @return array<int, array{class: string|null, class_fqcn: string|null, implements: string[], method: string|null}>
      */
     private static function context(array $tokens)
     {
@@ -116,6 +119,7 @@ final class SourceScanner
         $methods = [];
         $pendingClass = null;
         $pendingMethod = null;
+        $namespace = '';
         $count = count($tokens);
 
         for ($i = 0; $i < $count; $i++) {
@@ -123,7 +127,20 @@ final class SourceScanner
             $text = is_array($token) ? $token[1] : $token;
             $type = is_array($token) ? $token[0] : null;
 
-            if ($type === T_CLASS && !($i > 0 && is_array($tokens[$i - 1]) && $tokens[$i - 1][0] === T_DOUBLE_COLON)) {
+            if ($type === T_NAMESPACE && !(isset($tokens[$i + 1]) && is_array($tokens[$i + 1]) && $tokens[$i + 1][0] === T_NS_SEPARATOR)) {
+                $namespace = '';
+                for ($j = $i + 1; $j < $count && $tokens[$j] !== ';' && $tokens[$j] !== '{'; $j++) {
+                    $namespace .= is_array($tokens[$j]) ? $tokens[$j][1] : $tokens[$j];
+                }
+                $namespace = trim($namespace, '\\');
+            }
+
+            // An enum is a class scope too; before PHP 8.1 it reads as the
+            // word "enum" followed by its name.
+            $isEnum = (defined('T_ENUM') && $type === T_ENUM)
+                || ($type === T_STRING && strtolower($text) === 'enum' && isset($tokens[$i + 1]) && is_array($tokens[$i + 1]) && $tokens[$i + 1][0] === T_STRING);
+
+            if (($type === T_CLASS || $isEnum) && !($i > 0 && is_array($tokens[$i - 1]) && $tokens[$i - 1][0] === T_DOUBLE_COLON)) {
                 $name = isset($tokens[$i + 1]) && is_array($tokens[$i + 1]) && $tokens[$i + 1][0] === T_STRING ? $tokens[$i + 1][1] : null;
                 $implements = [];
                 for ($j = $i + 1; $j < $count && $tokens[$j] !== '{'; $j++) {
@@ -136,7 +153,7 @@ final class SourceScanner
                         break;
                     }
                 }
-                $pendingClass = ['class' => $name, 'implements' => $implements];
+                $pendingClass = ['class' => $name, 'fqcn' => $name === null ? null : ($namespace === '' ? $name : $namespace . '\\' . $name), 'implements' => $implements];
             } elseif ($type === T_FUNCTION && isset($tokens[$i + 1]) && is_array($tokens[$i + 1]) && $tokens[$i + 1][0] === T_STRING && $classes !== []) {
                 $pendingMethod = $tokens[$i + 1][1];
             }
@@ -165,6 +182,7 @@ final class SourceScanner
             $method = $methods === [] ? null : end($methods);
             $out[$i] = [
                 'class' => $class === null ? null : $class['class'],
+                'class_fqcn' => $class === null ? null : $class['fqcn'],
                 'implements' => $class === null ? [] : $class['implements'],
                 'method' => ($method !== null && $class !== null && $method['depth'] > $class['depth']) ? $method['method'] : null,
             ];

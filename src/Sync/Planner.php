@@ -75,12 +75,27 @@ final class Planner
      * @param array|null $catalog category => entries, or null when there is none to decide against
      * @param array $options `covered_groups`: groups whose base-language lines
      *                       register another way, so a key built at runtime in
-     *                       one is covered (Laravel's validation lines)
+     *                       one is covered (Laravel's validation lines);
+     *                       `message_classes`: the app-message classes the
+     *                       binding found, by fully-qualified name - one that
+     *                       inherits the contract names it nowhere a scan
+     *                       can see; `listed_templates`: the templates the
+     *                       messages listing lists (MessageCatalog::templates()),
+     *                       whose sentences a call anywhere is covered by
      * @return SyncPlan
      */
     public function plan(array $hits, array $readers = [], array $catalog = null, array $options = [])
     {
         $coveredGroups = isset($options['covered_groups']) && is_array($options['covered_groups']) ? array_map('strval', $options['covered_groups']) : [];
+        $messageClasses = isset($options['message_classes']) && is_array($options['message_classes'])
+            ? array_map(function ($class) {
+                return ltrim((string) $class, '\\');
+            }, $options['message_classes'])
+            : [];
+        $listed = [];
+        foreach (isset($options['listed_templates']) && is_array($options['listed_templates']) ? $options['listed_templates'] : [] as $template) {
+            $listed[Canonical::phrase((string) $template)] = true;
+        }
         $items = [];
         $reported = [];
         $skipped = [];
@@ -120,8 +135,9 @@ final class Planner
             // message's sentence, which its listing registers under the
             // messages category (MSG-7).
             if (isset($hit['method']) && $hit['method'] === 'template'
-                && in_array('HasAppMessageTemplate', isset($hit['implements']) ? $hit['implements'] : [], true)) {
-                $viaMessageListing[] = ['file' => $hit['file'], 'line' => $hit['line'], 'entry_point' => $hit['entry_point'], 'class' => $hit['class']];
+                && (in_array('HasAppMessageTemplate', isset($hit['implements']) ? $hit['implements'] : [], true)
+                    || (isset($hit['class_fqcn']) && in_array($hit['class_fqcn'], $messageClasses, true)))) {
+                $viaMessageListing[] = ['file' => $hit['file'], 'line' => $hit['line'], 'entry_point' => $hit['entry_point'], 'class' => $hit['class'], 'phrase' => $hit['text']];
                 continue;
             }
 
@@ -151,6 +167,14 @@ final class Planner
                 $phrase = LegacyValue::fromCall($hit['text'], $replace, $hit['kind'], $hit['kind'] === 'trans_choice' ? 1 : null)['text'];
                 $category = null;
                 $translations = self::lineTranslations($hit['text'], $readers, $skipped, $hit['kind'], $replace);
+            }
+
+            // A sentence the messages listing lists is covered by it,
+            // wherever the call sits, and never registers uncategorised
+            // beside it (FRM-2).
+            if (isset($listed[Canonical::phrase($phrase)])) {
+                $viaMessageListing[] = ['file' => $hit['file'], 'line' => $hit['line'], 'entry_point' => $hit['entry_point'], 'class' => isset($hit['class']) ? $hit['class'] : null, 'phrase' => Canonical::phrase($phrase)];
+                continue;
             }
 
             $sentences = $this->valueSets === null ? [$phrase] : $this->valueSets->sentences($phrase);
