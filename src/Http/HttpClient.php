@@ -5,6 +5,7 @@ namespace Langsys\SDK\Http;
 use Langsys\SDK\Config;
 use Langsys\SDK\Exception\ApiException;
 use Langsys\SDK\Exception\AuthenticationException;
+use Langsys\SDK\Exception\ConfigurationException;
 use Langsys\SDK\Exception\ValidationException;
 use Langsys\SDK\Log\LoggerInterface;
 use Langsys\SDK\Log\NullLogger;
@@ -143,6 +144,12 @@ class HttpClient
      */
     protected function request($method, $url, $data = null)
     {
+        // A client without an API key or project id sends nothing, by any
+        // route (WIRE-4), including the resources a Client exposes.
+        if (!$this->config->hasApiKey() || !$this->config->hasProjectId()) {
+            throw new ConfigurationException('Cannot call the Langsys API: the client is not configured. Set LANGSYS_API_KEY and LANGSYS_PROJECT_ID, or pass them to the constructor.');
+        }
+
         $startTime = microtime(true);
 
         // Encode POST body and track size

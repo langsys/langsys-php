@@ -70,8 +70,8 @@ Set these environment variables to configure the SDK:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `LANGSYS_API_KEY` | Yes | - | Your Langsys API key |
-| `LANGSYS_PROJECT_ID` | Yes | - | Your project UUID |
+| `LANGSYS_API_KEY` | Yes | - | Your Langsys API key. Without it the client is unconfigured (see *Without credentials*) |
+| `LANGSYS_PROJECT_ID` | Yes | - | Your project UUID. Without it the client is unconfigured |
 | `LANGSYS_API_URL` | No | `https://api.langsys.dev/api` | API base URL |
 | `LANGSYS_CACHE_DRIVER` | No | `file` | Cache driver: `file`, `redis`, or `none` |
 | `LANGSYS_CACHE_PATH` | No | System temp dir | Directory for file cache |
@@ -99,9 +99,31 @@ $client = new Client(
         'log_path' => '/var/log/langsys.log', // Enable logging
         'log_level' => 'info',                // Minimum level to log
         'messages_category' => 'Errors',      // Category for server message templates
+        'require_credentials' => false,       // Throw at first use when the key or project ID is missing
     ]
 );
 ```
+
+### Without credentials
+
+A client built without an API key or a project ID is *unconfigured*, so an app's tests, CI
+and a fresh clone run without secrets. Every phrase and content block renders as its source
+text with its values filled, a page comes back as given, nothing is fetched or queued, and
+one warning per process names the missing settings. The miss fallback, a loaded snapshot
+and the migration mode's language files still answer. An explicit write
+(`registerPhrases()`, `registerContentBlock()`, a sync or an import) throws a
+`ConfigurationException` saying the client is not configured, and `isConfigured()` reports
+the state:
+
+```php
+$client = new Client();           // LANGSYS_API_KEY and LANGSYS_PROJECT_ID unset
+$client->isConfigured();          // false
+$client->translate('Hello, {name}', 'es-es', null, null, ['name' => 'Ana']); // "Hello, Ana"
+```
+
+For production, pass `'require_credentials' => true`. The client still builds, so a
+framework can create it while it boots without secrets, and its first use throws the
+`ConfigurationException` naming the missing setting.
 
 ## API Key Types
 

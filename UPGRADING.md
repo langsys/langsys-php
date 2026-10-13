@@ -50,6 +50,11 @@ and it is never registered again.
   `$client->getInterpolator()->interpolate($text, $params, $locale)`. A catalog cached
   before upgrading keeps the flattened text until `cache_ttl` runs out; call
   `clearCache()` after deploying to switch at once.
+- **`new Client()` without an API key or project ID** no longer throws. It builds an
+  unconfigured client that renders source text and sends nothing, and an explicit write
+  throws a `ConfigurationException` (a `LangsysException`). An app that relies on the
+  exception to fail fast passes `'require_credentials' => true`; the exception then comes
+  from the client's first use rather than from the constructor.
 - **Registration is decided by the server.** A key registers only when authorization
   answers `write_enabled: true`. An address-restricted write key used from outside its
   allow-list registers nothing; it registered before.

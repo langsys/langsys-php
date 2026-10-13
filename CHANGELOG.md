@@ -264,6 +264,18 @@ its id or re-registers it.
 
 ### Fixed
 
+- **A client built without credentials renders source text instead of throwing.**
+  Without an API key or a project ID, `new Client()` threw, and whatever built it
+  went down with it: an app's tests, CI, a fresh clone or an image build. Such a
+  client is now unconfigured: every phrase and content block renders its source
+  text with its values filled and a page comes back as given, through the path a
+  catalog that failed to load takes; nothing is fetched or queued, and one warning per process names the missing settings. An
+  explicit write (`registerPhrases()`, `registerContentBlock()`, `sync()`,
+  `planSync()`, `applySync()`, `importLegacyTranslations()`) throws the new
+  `ConfigurationException`, and `isConfigured()` reports the state. The
+  `require_credentials` option, off by default, makes the client's first use
+  throw instead.
+
 - **A plural Langsys generates for a target locale renders its singular.**
   Langsys turns a flat phrase into a plural or select in the target locales
   that need one (`You have {count} new messages.` is stored for Spanish as

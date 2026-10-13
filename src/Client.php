@@ -6,6 +6,7 @@ use Langsys\SDK\Cache\CacheInterface;
 use Langsys\SDK\Cache\FileCache;
 use Langsys\SDK\Cache\NullCache;
 use Langsys\SDK\Cache\RedisCache;
+use Langsys\SDK\Exception\ConfigurationException;
 use Langsys\SDK\Exception\LangsysException;
 use Langsys\SDK\Format\Interpolator;
 use Langsys\SDK\Html\Canonical;
@@ -193,6 +194,22 @@ class Client
     protected static $catalogUnavailableNoticed = false;
 
     /**
+     * The settings this client was built without, named in its warning and
+     * its exceptions: empty when it has an API key and a project id.
+     *
+     * @var string[]
+     */
+    protected $missingSettings = [];
+
+    /**
+     * Whether a client built without credentials has said so, this process
+     * (WIRE-4): once, however many clients are built.
+     *
+     * @var bool
+     */
+    protected static $unconfiguredWarned = false;
+
+    /**
      * Locales whose last catalog read this request failed, with none
      * succeeding since. A miss cannot be decided against them, so nothing is
      * queued, and a flush reports the skip (REG-10).
@@ -277,8 +294,12 @@ class Client
      *
      * @param string|null $apiKey API key (or null to use env var)
      * @param string|null $projectId Project ID (or null to use env var)
+     * Without an API key or project ID the client is unconfigured: its reads
+     * render source text and its writes throw (WIRE-4). `require_credentials`
+     * makes its first use throw instead.
+     *
      * @param array $options Additional options
-     * @throws LangsysException
+     * @throws LangsysException When a migration file is in a format this SDK does not read
      */
     public function __construct($apiKey = null, $projectId = null, array $options = [])
     {
@@ -295,13 +316,16 @@ class Client
 
         $this->config = new Config($configOptions);
 
-        // Validate required config
+        // WIRE-4: missing credentials make an unconfigured client, not an
+        // exception. Its reads render source text through the path a catalog
+        // that failed to load takes, and its writes throw. With
+        // `require_credentials` on, its first use throws instead.
         if (!$this->config->hasApiKey()) {
-            throw new LangsysException('API key is required. Set LANGSYS_API_KEY environment variable or pass it to the constructor.');
+            $this->missingSettings[] = 'API key (LANGSYS_API_KEY)';
         }
 
         if (!$this->config->hasProjectId()) {
-            throw new LangsysException('Project ID is required. Set LANGSYS_PROJECT_ID environment variable or pass it to the constructor.');
+            $this->missingSettings[] = 'project ID (LANGSYS_PROJECT_ID)';
         }
 
         // Initialize logger
@@ -339,6 +363,7 @@ class Client
         }
 
         $this->checkRuntimeRequirements();
+        $this->warnUnconfigured();
 
         // Initialize HTTP client
         $this->http = new HttpClient($this->config, $this->logger);
@@ -356,6 +381,108 @@ class Client
         $this->translations = new Translations($this->http, $this->config->getProjectId(), $this->logger);
         $this->translatableItems = new TranslatableItems($this->http, $this->config->getProjectId(), $this->logger);
         $this->utilities = new Utilities($this->http, $this->config->getProjectId(), $this->logger);
+    }
+
+    /**
+     * Whether this client has an API key and a project id. One without either
+     * renders source text, fetches nothing and refuses every write.
+     *
+     * @return bool
+     */
+    public function isConfigured()
+    {
+        return $this->missingSettings === [];
+    }
+
+    /**
+     * Say once per process that the client has no credentials, naming what is
+     * missing. A framework builds a client on every request, so a warning per
+     * client would bury the one line saying what to set. With
+     * `require_credentials` on, the exception at first use says it instead.
+     *
+     * @return void
+     */
+    protected function warnUnconfigured()
+    {
+        if ($this->isConfigured() || $this->config->requiresCredentials() || self::$unconfiguredWarned) {
+            return;
+        }
+
+        self::$unconfiguredWarned = true;
+
+        $this->warnRequirement(
+            'Langsys is not configured: missing ' . implode(' and ', $this->missingSettings)
+                . '. Every translation renders its source text, and nothing is fetched from or sent to Langsys.',
+            ['missing' => $this->missingSettings]
+        );
+    }
+
+    /**
+     * The exception for a client without credentials. With
+     * `require_credentials` on it is the one the constructor raised when
+     * credentials were mandatory; otherwise it names what was refused and why.
+     *
+     * @param string $action What was refused, e.g. "register phrases"
+     * @return ConfigurationException
+     */
+    protected function notConfigured($action)
+    {
+        if ($this->config->requiresCredentials()) {
+            return new ConfigurationException($this->config->hasApiKey()
+                ? 'Project ID is required. Set LANGSYS_PROJECT_ID environment variable or pass it to the constructor.'
+                : 'API key is required. Set LANGSYS_API_KEY environment variable or pass it to the constructor.');
+        }
+
+        return new ConfigurationException('Cannot ' . $action . ': the client is not configured (missing '
+            . implode(' and ', $this->missingSettings) . '). '
+            . (count($this->missingSettings) === 1 ? 'Set it in the environment or pass it' : 'Set them in the environment or pass them')
+            . ' to the constructor.');
+    }
+
+    /**
+     * With `require_credentials` on, a read on a client without credentials
+     * throws: the exception comes at first use, not when the client is built,
+     * so a framework can build one while it boots without secrets.
+     *
+     * @return void
+     * @throws ConfigurationException
+     */
+    protected function requireCredentialsAtUse()
+    {
+        if (!$this->isConfigured() && $this->config->requiresCredentials()) {
+            throw $this->notConfigured('translate');
+        }
+    }
+
+    /**
+     * An explicit write on a client without credentials throws, saying why: the
+     * caller expects it to happen.
+     *
+     * @param string $action
+     * @return void
+     * @throws ConfigurationException
+     */
+    protected function assertConfigured($action)
+    {
+        if (!$this->isConfigured()) {
+            throw $this->notConfigured($action);
+        }
+    }
+
+    /**
+     * Log a read that failed and degraded to source. A client without
+     * credentials is not logged per read: its warning said why, once.
+     *
+     * @param string $message
+     * @param array $context
+     * @param \Throwable $e
+     * @return void
+     */
+    protected function logDegradedRead($message, array $context, \Throwable $e)
+    {
+        if (!$e instanceof ConfigurationException) {
+            $this->logger->error($message, $context);
+        }
     }
 
     /**
@@ -519,6 +646,12 @@ class Client
      */
     public function authorize($force = false)
     {
+        // No key to authorize. Callers degrade as they do when the API cannot
+        // be reached, and a write refuses.
+        if (!$this->isConfigured()) {
+            throw $this->notConfigured('authorize the project');
+        }
+
         if ($this->projectData !== null && !$force) {
             $this->logger->debug('Authorization from memory', [
                 'project_id' => $this->config->getProjectId(),
@@ -691,6 +824,10 @@ class Client
      */
     public function canWrite()
     {
+        if (!$this->isConfigured()) {
+            return false;
+        }
+
         if ($this->writeEnabled === null) {
             $this->resolveWriteDecision();
         }
@@ -833,6 +970,15 @@ class Client
         $locale = LocaleDetector::normalize($locale);
         $memoryKey = $locale;
         $cacheKey = 'translations_' . $this->config->getProjectId() . '_' . $locale;
+
+        // Unconfigured, the catalog cannot be read: the read paths render
+        // source and queue nothing, as for a fetch that failed, and a flush
+        // reports the skip. No cache is consulted, so what such a client
+        // renders never depends on what another process left there.
+        if (!$this->isConfigured()) {
+            $this->unavailableCatalogs[$memoryKey] = true;
+            throw $this->notConfigured('read the catalog');
+        }
 
         // Check in-memory cache first (fastest, includes queued items)
         if ($useCache && isset($this->translationsMemoryCache[$memoryKey])) {
@@ -1123,6 +1269,8 @@ class Client
      */
     protected function translateCall($phrase, $locale, $category, $contentBlockId, array $params, &$from)
     {
+        $this->requireCredentialsAtUse();
+
         $argument = $phrase;
 
         // Legacy-key mode (MIG-2): the argument is a key first. A hit makes the
@@ -1246,7 +1394,7 @@ class Client
             // per process, at debug: an app's tests and CI run without the
             // API, and every call would otherwise log an error.
             if ($fromCall) {
-                if (!static::$catalogUnavailableNoticed) {
+                if (!static::$catalogUnavailableNoticed && !$e instanceof ConfigurationException) {
                     static::$catalogUnavailableNoticed = true;
                     $this->logger->debug('No catalog to consult - translate() continues to the language files, then the source', [
                         'locale' => $locale,
@@ -1254,12 +1402,12 @@ class Client
                     ]);
                 }
             } else {
-                $this->logger->error('Translation lookup failed - returning source phrase', [
+                $this->logDegradedRead('Translation lookup failed - returning source phrase', [
                     'phrase' => $phrase,
                     'category' => $category,
                     'locale' => $locale,
                     'error' => $e->getMessage(),
-                ]);
+                ], $e);
             }
 
             return $this->answerMiss($phrase, $locale, $category, $params, $from, $argument);
@@ -1468,6 +1616,8 @@ class Client
      */
     public function importLegacyTranslations(array $targets)
     {
+        $this->assertConfigured('import translations');
+
         $source = $this->getLegacyKeys();
         if ($source === null) {
             throw new LangsysException('Nothing to import: the migration option names no source-language files.');
@@ -1586,6 +1736,8 @@ class Client
      */
     public function planSync(array $hits, array $targets = [], array $options = [])
     {
+        $this->assertConfigured('plan a sync');
+
         $planner = new \Langsys\SDK\Sync\Planner($this->getLegacyKeys(), $this->valueSets);
 
         return $planner->plan($hits, $this->targetReaders($targets), $this->syncCatalog(), $options);
@@ -1600,6 +1752,8 @@ class Client
      */
     public function applySync(\Langsys\SDK\Sync\SyncPlan $plan)
     {
+        $this->assertConfigured('apply a sync');
+
         $items = $plan->toRegister();
         $result = ['success' => false, 'reason' => null, 'registered' => 0, 'translations' => 0, 'human_translations_saved' => 0, 'human_translations_skipped' => 0];
 
@@ -1667,6 +1821,8 @@ class Client
      */
     public function translateMessage($entry, $locale = null)
     {
+        $this->requireCredentialsAtUse();
+
         if (is_array($entry)) {
             $parsed = ServerMessage::fromArray($entry);
 
@@ -1733,6 +1889,8 @@ class Client
      */
     public function emitMessage(ServerMessage $message)
     {
+        $this->requireCredentialsAtUse();
+
         if ($message->getTemplate() === null) {
             return $message;
         }
@@ -1851,12 +2009,12 @@ class Client
         try {
             $translations = $this->getTranslations($locale);
         } catch (\Throwable $e) {
-            $this->logger->error('Server message lookup failed - using the message the server sent', [
+            $this->logDegradedRead('Server message lookup failed - using the message the server sent', [
                 'template' => $template,
                 'category' => $category,
                 'locale' => $locale,
                 'error' => $e->getMessage(),
-            ]);
+            ], $e);
 
             return null;
         }
@@ -1911,10 +2069,13 @@ class Client
      *
      * @param array $phrases Array of phrases (strings or arrays with phrase, category, translatable)
      * @return array API response
+     * @throws ConfigurationException If the client is not configured
      * @throws LangsysException If API key doesn't have write permissions
      */
     public function registerPhrases(array $phrases)
     {
+        $this->assertConfigured('register phrases');
+
         if (!$this->canWrite()) {
             throw new LangsysException('Cannot register phrases: API key does not have write permissions');
         }
@@ -1934,10 +2095,13 @@ class Client
      * @param string|null $label Human-readable label for the content block
      * @param string|null $customId Custom ID (auto-generated from content hash if null)
      * @return array API response
+     * @throws ConfigurationException If the client is not configured
      * @throws LangsysException If API key doesn't have write permissions
      */
     public function registerContentBlock($content, $category = null, $label = null, $customId = null)
     {
+        $this->assertConfigured('register a content block');
+
         if (!$this->canWrite()) {
             throw new LangsysException('Cannot register content block: API key does not have write permissions');
         }
@@ -1980,6 +2144,8 @@ class Client
      */
     public function sync(array $localPhrases, $locale)
     {
+        $this->assertConfigured('sync');
+
         // Get existing translations
         $translations = $this->getTranslations($locale, false);
 
@@ -2256,6 +2422,8 @@ class Client
      */
     public function resolveRequestLocale(array $request = null, array $options = null)
     {
+        $this->requireCredentialsAtUse();
+
         try {
             $project = $this->getProject();
             $base = isset($project['base_locale']) ? $project['base_locale'] : null;
@@ -2264,7 +2432,7 @@ class Client
             // Offline, a loaded snapshot answers for authorization: its base
             // and locales are the served set until authorization answers.
             if ($this->snapshot === null) {
-                $this->logger->error('Could not read the project\'s locales to choose the request locale', ['error' => $e->getMessage()]);
+                $this->logDegradedRead('Could not read the project\'s locales to choose the request locale', ['error' => $e->getMessage()], $e);
 
                 return ['locale' => null, 'source' => 'none', 'vary' => null];
             }
@@ -2351,6 +2519,8 @@ class Client
      */
     public function translatePage($html, $category = null, array $selectorCategories = [], array $params = [])
     {
+        $this->requireCredentialsAtUse();
+
         $locale = $this->getLocale();
         if ($locale === null) {
             // No locale - return original HTML
@@ -2385,6 +2555,8 @@ class Client
      */
     public function translateContentBlock($html, $category = '__uncategorized__', array $params = [])
     {
+        $this->requireCredentialsAtUse();
+
         if (empty($html)) {
             return $html;
         }
@@ -2490,12 +2662,12 @@ class Client
             $translations = $this->getTranslations($locale);
         } catch (\Throwable $e) {
             // \Throwable for the same reason as translate() - see the note there.
-            $this->logger->error('Content block lookup failed - returning source HTML', [
+            $this->logDegradedRead('Content block lookup failed - returning source HTML', [
                 'custom_id' => $customId,
                 'category' => $category,
                 'locale' => $locale,
                 'error' => $e->getMessage(),
-            ]);
+            ], $e);
 
             // Deliberately NOT stamped: the lookup failed, so we do not know
             // that this id is the one the catalog holds. Stamping a guess would
@@ -2845,11 +3017,11 @@ class Client
                     }
                 }
             } catch (\Throwable $e) {
-                $this->logger->error('Content block lookup failed - returning source HTML', [
+                $this->logDegradedRead('Content block lookup failed - returning source HTML', [
                     'custom_id' => $customId,
                     'category' => $category,
                     'error' => $e->getMessage(),
-                ]);
+                ], $e);
             }
         }
 
@@ -3248,6 +3420,11 @@ class Client
      */
     public function queuePhraseForRegistration($phrase, $category)
     {
+        // Nothing could ever send it (WIRE-4).
+        if (!$this->isConfigured()) {
+            return;
+        }
+
         $phrase = Canonical::stripControls($phrase);
         $key = $category . '::' . $phrase;
 
@@ -3358,6 +3535,11 @@ class Client
      */
     public function queueContentBlockForRegistration($html, $category, $customId, array $phrases)
     {
+        // Nothing could ever send it (WIRE-4).
+        if (!$this->isConfigured()) {
+            return;
+        }
+
         // Skip if already queued
         if (isset($this->pendingContentBlocks[$customId])) {
             return;

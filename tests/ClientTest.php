@@ -75,20 +75,28 @@ class ClientTest extends TestCase
         $this->assertEquals('env-project-id', $client->getConfig()->getProjectId());
     }
 
-    public function testConstructorMissingApiKey()
+    /**
+     * Missing credentials build an unconfigured client (UnconfiguredClientTest).
+     * With `require_credentials` on, the exception comes at first use.
+     */
+    public function testMissingApiKeyWithRequireCredentialsThrowsAtFirstUse()
     {
+        $client = new Client(null, 'project-id', ['cache' => new NullCache(), 'require_credentials' => true]);
+
         $this->expectException(LangsysException::class);
         $this->expectExceptionMessage('API key is required');
 
-        new Client(null, 'project-id');
+        $client->translate('Hello', 'es-es');
     }
 
-    public function testConstructorMissingProjectId()
+    public function testMissingProjectIdWithRequireCredentialsThrowsAtFirstUse()
     {
+        $client = new Client('api-key', null, ['cache' => new NullCache(), 'require_credentials' => true]);
+
         $this->expectException(LangsysException::class);
         $this->expectExceptionMessage('Project ID is required');
 
-        new Client('api-key', null);
+        $client->translate('Hello', 'es-es');
     }
 
     public function testGetCacheReturnsCache()

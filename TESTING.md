@@ -48,14 +48,17 @@ Hola
 {"text":"Welcome, Ana","from":"source"}
 {"text":"Bienvenida, Ana","from":"fallback"}
 {"text":"Not in the files","from":"source"}
-no key: API key is required. Set LANGSYS_API_KEY environment variable or pass it to the constructor.
+no key: Welcome, Ana
+no key, a write: Cannot register phrases: the client is not configured (missing API key (LANGSYS_API_KEY)). Set it in the environment or pass it to the constructor.
+no key, required: API key is required. Set LANGSYS_API_KEY environment variable or pass it to the constructor.
 ```
 
 `translate()` answers from the catalog. `resolve()` says who wrote its text. With the API
 unreachable, a call goes to the miss fallback — your framework's language files — and then
-the source, and never throws. A `Client` built with no key is refused when it is created; a
-framework integration builds none without a key, so its translate function is the
-framework's own. README: *Language files as the fallback*.
+the source, and never throws. A `Client` built with no key is unconfigured: it renders the
+source with its values filled and sends nothing, and a write says why it cannot. With
+`require_credentials` on, its first use throws. README: *Language files as the fallback*,
+*Without credentials*.
 
 ### 2. The page walk and block identities
 

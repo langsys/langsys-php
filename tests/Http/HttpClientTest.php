@@ -147,6 +147,52 @@ class HttpClientTest extends TestCase
         $this->assertSame('icu', $reads[0]['capabilities']);
     }
 
+    /**
+     * WIRE-4: a client built without credentials sends nothing, on every path,
+     * asserted on what the stand-in API received. The control is the same
+     * calls with credentials, which do arrive.
+     *
+     * @dataProvider credentialsProvider
+     */
+    public function testAClientWithoutCredentialsSendsNothing($apiKey, $projectId)
+    {
+        $drive = function ($apiKey, $projectId) {
+            return function ($base) use ($apiKey, $projectId) {
+                $client = new \Langsys\SDK\Client($apiKey, $projectId, [
+                    'cache' => new \Langsys\SDK\Cache\NullCache(),
+                    'api_url' => $base,
+                    'warn_runtime_requirements' => false,
+                    'runtime_registration' => true,
+                ]);
+                $client->setLocale('es-es');
+
+                $client->translate('Hello, {name}', null, 'UI', null, ['name' => 'Sarah']);
+                $client->translateContentBlock('<div><p>One</p><p>Two</p></div>', 'UI');
+                $client->translatePage('<html><body><p>Page text</p></body></html>');
+                $client->resolveRequestLocale([], ['send_vary' => false]);
+                $client->flushPendingRegistrations();
+
+                try {
+                    $client->translations()->getFlat('es-es');
+                } catch (\Langsys\SDK\Exception\LangsysException $e) {
+                    // Refused without credentials; answered with them.
+                }
+            };
+        };
+
+        $this->assertSame([], $this->requestsReceivedBy($drive($apiKey, $projectId)));
+        $this->assertNotEmpty($this->requestsReceivedBy($drive('test-api-key', 'project-wire4')), 'control: with credentials the same calls reach the API');
+    }
+
+    public function credentialsProvider()
+    {
+        return [
+            'neither' => ['', ''],
+            'no API key' => ['', 'project-wire4'],
+            'no project id' => ['test-api-key', ''],
+        ];
+    }
+
     // =========================================================================
     // WIRE-5 — an integrator must be able to point the SDK at a double
     // =========================================================================

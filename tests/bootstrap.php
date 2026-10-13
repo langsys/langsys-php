@@ -26,3 +26,12 @@ require_once $autoloadFile;
 $warnedFlag = new \ReflectionProperty(\Langsys\SDK\Client::class, 'requirementsWarned');
 $warnedFlag->setAccessible(true);
 $warnedFlag->setValue(null, true);
+
+/**
+ * The same for the once-per-process warning that a client has no credentials:
+ * a test building one would otherwise write it to the PHP error log.
+ * UnconfiguredClientTest resets it to exercise the warning itself.
+ */
+$unconfiguredFlag = new \ReflectionProperty(\Langsys\SDK\Client::class, 'unconfiguredWarned');
+$unconfiguredFlag->setAccessible(true);
+$unconfiguredFlag->setValue(null, true);

@@ -80,6 +80,11 @@ class Config
     protected $migration;
 
     /**
+     * @var bool Whether a client built without an API key or project id throws at first use
+     */
+    protected $requireCredentials;
+
+    /**
      * Create a new Config instance.
      *
      * @param array $options
@@ -130,6 +135,9 @@ class Config
             && (!empty($options['migration']['files']) || !empty($options['migration']['fallback_files']) || !empty($options['migration']['namespaces'])))
             ? $options['migration']
             : null;
+
+        $this->requireCredentials = isset($options['require_credentials'])
+            && filter_var($options['require_credentials'], FILTER_VALIDATE_BOOLEAN);
     }
 
     /**
@@ -317,6 +325,17 @@ class Config
     public function getMigration()
     {
         return $this->migration;
+    }
+
+    /**
+     * Whether a client without an API key or project id throws at first use,
+     * rather than rendering source text.
+     *
+     * @return bool
+     */
+    public function requiresCredentials()
+    {
+        return $this->requireCredentials;
     }
 
     /**
