@@ -116,6 +116,37 @@ class HttpClientTest extends TestCase
         $this->assertContains('X-Authorization: test-api-key', $method->invoke($client));
     }
 
+    /**
+     * Langsys can turn a flat phrase into a plural or select in a target locale,
+     * and the API flattens it to its `other` branch for a client that does not
+     * send `X-Langsys-Capabilities: icu`: a count of 1 then renders the plural
+     * ("Tienes 1 mensajes nuevos."). Asserted on the catalog read the stand-in
+     * API received.
+     */
+    public function testACatalogReadAsksForRawIcu()
+    {
+        $catalog = null;
+
+        $requests = $this->requestsReceivedBy(function ($base) use (&$catalog) {
+            $client = new \Langsys\SDK\Client('test-api-key', 'project-icu', [
+                'cache' => new \Langsys\SDK\Cache\NullCache(),
+                'api_url' => $base,
+            ]);
+
+            $catalog = $client->getTranslations('es-es');
+        });
+
+        $this->assertSame([], $catalog, 'the catalog read must complete');
+
+        $reads = array_values(array_filter($requests, function ($request) {
+            return parse_url($request['uri'], PHP_URL_PATH) === '/translations';
+        }));
+
+        $this->assertCount(1, $reads, 'getTranslations() must read the catalog');
+        $this->assertSame('GET', $reads[0]['method']);
+        $this->assertSame('icu', $reads[0]['capabilities']);
+    }
+
     // =========================================================================
     // WIRE-5 — an integrator must be able to point the SDK at a double
     // =========================================================================
@@ -134,6 +165,71 @@ class HttpClientTest extends TestCase
      * @dataProvider redirectionMechanismProvider
      */
     public function testRedirectedRequestsActuallyArriveAtTheDouble($mechanism)
+    {
+        $projectId = 'project-' . $mechanism;
+        $base = null;
+
+        $requests = $this->requestsReceivedBy(function ($url) use ($mechanism, $projectId, &$base) {
+            $base = $url;
+
+            // An explicit NullCache instance, and the reason is worth recording.
+            // `'cache' => 'memory'` is not a thing: initializeCache() only takes
+            // a CacheInterface INSTANCE by that key and otherwise falls back to
+            // the cache_driver setting, whose default is a FileCache in the
+            // system temp directory. So the string silently bought a real
+            // ON-DISK cache, shared across runs - the first run passed, cached
+            // the authorize response, and every run after it asserted on a cache
+            // hit that issued no request at all. A test that passes once and
+            // then can never fail again.
+            $cache = new \Langsys\SDK\Cache\NullCache();
+
+            // The integration is UNTOUCHED in the env-var case - that is the
+            // load-bearing half of the rule. A constructor option requires
+            // editing the caller; an env var does not.
+            try {
+                if ($mechanism === 'env') {
+                    putenv('LANGSYS_API_URL=' . $base);
+                    $client = new \Langsys\SDK\Client('test-api-key', $projectId, ['cache' => $cache]);
+                } else {
+                    $client = new \Langsys\SDK\Client('test-api-key', $projectId, [
+                        'cache' => $cache,
+                        'api_url' => $base,
+                    ]);
+                }
+
+                $client->authorize();
+            } finally {
+                if ($mechanism === 'env') {
+                    putenv('LANGSYS_API_URL');
+                }
+            }
+        });
+
+        $this->assertNotEmpty($requests, 'no request reached the double - the redirection did not take effect');
+
+        $request = reset($requests);
+        $this->assertSame('GET', $request['method']);
+        $this->assertStringContainsString('authorize-project/' . $projectId, $request['uri']);
+        $this->assertSame(parse_url($base, PHP_URL_HOST) . ':' . parse_url($base, PHP_URL_PORT), $request['host'], 'the Host header must follow the redirect too');
+        $this->assertTrue($request['has_auth'], 'credentials must still be sent to the redirected host');
+    }
+
+    public function redirectionMechanismProvider()
+    {
+        return [
+            'constructor option' => ['option'],
+            'environment variable' => ['env'],
+        ];
+    }
+
+    /**
+     * Run $drive against a stand-in API on a loopback port, and return the
+     * requests the API received, oldest first. $drive is passed the base URL to
+     * point a Client at.
+     *
+     * @return array[]
+     */
+    private function requestsReceivedBy(callable $drive)
     {
         $log = tempnam(sys_get_temp_dir(), 'langsys-wire5-');
         $port = $this->freePort();
@@ -164,48 +260,14 @@ class HttpClientTest extends TestCase
                 'the stand-in API never accepted a connection: ' . stream_get_contents($pipes[2])
             );
 
-            $base = 'http://127.0.0.1:' . $port;
-
-            $projectId = 'project-' . $mechanism;
-
-            // An explicit NullCache instance, and the reason is worth recording.
-            // `'cache' => 'memory'` is not a thing: initializeCache() only takes
-            // a CacheInterface INSTANCE by that key and otherwise falls back to
-            // the cache_driver setting, whose default is a FileCache in the
-            // system temp directory. So the string silently bought a real
-            // ON-DISK cache, shared across runs - the first run passed, cached
-            // the authorize response, and every run after it asserted on a cache
-            // hit that issued no request at all. A test that passes once and
-            // then can never fail again.
-            $cache = new \Langsys\SDK\Cache\NullCache();
-
-            // The integration is UNTOUCHED in the env-var case - that is the
-            // load-bearing half of the rule. A constructor option requires
-            // editing the caller; an env var does not.
-            if ($mechanism === 'env') {
-                putenv('LANGSYS_API_URL=' . $base);
-                $client = new \Langsys\SDK\Client('test-api-key', $projectId, ['cache' => $cache]);
-            } else {
-                $client = new \Langsys\SDK\Client('test-api-key', $projectId, [
-                    'cache' => $cache,
-                    'api_url' => $base,
-                ]);
-            }
-
-            $client->authorize();
+            $drive('http://127.0.0.1:' . $port);
 
             $lines = array_filter(explode("\n", (string) file_get_contents($log)));
-            $this->assertNotEmpty($lines, 'no request reached the double - the redirection did not take effect');
 
-            $request = json_decode(reset($lines), true);
-            $this->assertSame('GET', $request['method']);
-            $this->assertStringContainsString('authorize-project/' . $projectId, $request['uri']);
-            $this->assertSame('127.0.0.1:' . $port, $request['host'], 'the Host header must follow the redirect too');
-            $this->assertTrue($request['has_auth'], 'credentials must still be sent to the redirected host');
+            return array_values(array_map(function ($line) {
+                return json_decode($line, true);
+            }, $lines));
         } finally {
-            if ($mechanism === 'env') {
-                putenv('LANGSYS_API_URL');
-            }
             foreach ($pipes as $pipe) {
                 if (is_resource($pipe)) {
                     fclose($pipe);
@@ -215,14 +277,6 @@ class HttpClientTest extends TestCase
             proc_close($server);
             @unlink($log);
         }
-    }
-
-    public function redirectionMechanismProvider()
-    {
-        return [
-            'constructor option' => ['option'],
-            'environment variable' => ['env'],
-        ];
     }
 
     private function freePort()

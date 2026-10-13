@@ -42,6 +42,14 @@ and it is never registered again.
   and while a failed fetch's backoff window is open, where they returned `[]`.
   `translate()`, `translatePage()` and `translateContentBlock()` catch this and render the
   source; wrap direct calls in `try`.
+- **`Client::getTranslations()` and `Translations::getTranslationMap()`** return a plural
+  or select Langsys generated for a target locale as ICU MessageFormat
+  (`{count, plural, one {…} other {…}}`), where they returned its `other` branch.
+  `translate()`, `translatePage()` and `translateContentBlock()` format it; code that
+  renders those strings itself should pass them through
+  `$client->getInterpolator()->interpolate($text, $params, $locale)`. A catalog cached
+  before upgrading keeps the flattened text until `cache_ttl` runs out; call
+  `clearCache()` after deploying to switch at once.
 - **Registration is decided by the server.** A key registers only when authorization
   answers `write_enabled: true`. An address-restricted write key used from outside its
   allow-list registers nothing; it registered before.

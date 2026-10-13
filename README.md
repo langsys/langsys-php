@@ -673,6 +673,12 @@ $client->translate(
 );
 ```
 
+Langsys also turns a flat phrase into a plural where a target locale needs one:
+`You have {count} new messages.` is stored for Spanish as
+`{count, plural, one {Tienes # mensaje nuevo.} other {Tienes # mensajes nuevos.}}`.
+The client asks the API for that ICU form (`X-Langsys-Capabilities: icu`) on every
+request, so a call that passes `count` renders the right form with no change.
+
 Requires the `intl` extension. If `intl` is disabled at runtime the SDK logs a
 warning naming the phrase and falls back to simple `{name}` substitution rather
 than failing the render. Malformed ICU also falls back rather than throwing.

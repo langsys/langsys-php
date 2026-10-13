@@ -107,6 +107,12 @@ class HttpClient
     /**
      * Get the default headers for requests.
      *
+     * `X-Langsys-Capabilities: icu` asks for raw ICU MessageFormat. Langsys turns a
+     * flat phrase into a plural or select in the target locales that need one, and
+     * without the header the API flattens it to its `other` branch, so a count of 1
+     * would render the plural ("Tienes 1 mensajes nuevos."). The Interpolator
+     * formats ICU, so every request asks for it.
+     *
      * @return array
      */
     protected function getHeaders()
@@ -114,6 +120,7 @@ class HttpClient
         $headers = [
             'Content-Type: application/json',
             'Accept: application/json',
+            'X-Langsys-Capabilities: icu',
         ];
 
         if ($this->config->hasApiKey()) {

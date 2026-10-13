@@ -264,6 +264,17 @@ its id or re-registers it.
 
 ### Fixed
 
+- **A plural Langsys generates for a target locale renders its singular.**
+  Langsys turns a flat phrase into a plural or select in the target locales
+  that need one (`You have {count} new messages.` is stored for Spanish as
+  `{count, plural, one {Tienes # mensaje nuevo.} other {Tienes # mensajes nuevos.}}`),
+  and the API returns that form only to a client that sends
+  `X-Langsys-Capabilities: icu`; any other client gets the `other` branch, so a
+  count of 1 rendered "Tienes 1 mensajes nuevos.". Every request now sends the
+  header, and the Interpolator formats what comes back. A catalog cached before
+  upgrading keeps the flattened text until `cache_ttl` runs out (one hour by
+  default) or `clearCache()` is called.
+
 - **A locale the framework already resolved is served as is.** Passed as
   `framework` in the request data, it wins over the URL, cookie and
   `Accept-Language`, which are consulted only when nothing resolved the
