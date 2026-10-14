@@ -76,6 +76,23 @@ class ClientInterpolationTest extends TestCase
     }
 
     /**
+     * ICU-5: a plural Langsys promoted for a target locale renders its
+     * singular at a count of 1 through the translate call.
+     */
+    public function testAPromotedPluralRendersItsSingularThroughTranslate()
+    {
+        $client = $this->makeClient([
+            '__uncategorized__' => [
+                'You have {count} new messages.' => '{count, plural, one {Tienes # mensaje nuevo.} other {Tienes # mensajes nuevos.}}',
+            ],
+        ]);
+        $client->setLocale('es-es');
+
+        $this->assertSame('Tienes 1 mensaje nuevo.', $client->translate('You have {count} new messages.', null, '__uncategorized__', null, ['count' => 1]));
+        $this->assertSame('Tienes 3 mensajes nuevos.', $client->translate('You have {count} new messages.', null, '__uncategorized__', null, ['count' => 3]));
+    }
+
+    /**
      * A brand-new phrase must still render with placeholders resolved,
      * otherwise end users see raw {name} until registration round-trips.
      */

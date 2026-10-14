@@ -334,6 +334,43 @@ class ValueMarkersTest extends TestCase
         $this->assertStringContainsString('<b>{name}</b>', $pending[0]['html']);
     }
 
+    public function storedFormProvider(): array
+    {
+        $forms = [
+            'a marked run' => ['<p>Hello <b>' . self::comment('name', 'Ana') . '</b> again</p>', '<p>Hello <b>{name}</b> again</p>'],
+            'a marker inside translate="no"' => ['<p>Hello <span translate="no">' . self::comment('name', 'Ana') . '</span> again</p>', '<p>Hello <span translate="no">{name}</span> again</p>'],
+            'the attribute form' => ['<p>Hello <b>' . self::span('name', 'Ana') . '</b> again</p>', '<p>Hello <b>{name}</b> again</p>'],
+        ];
+
+        $cases = [];
+        foreach ($this->pathProvider() as $path => list($route)) {
+            foreach ($forms as $form => list($html, $stored)) {
+                // A page registers its host's content; a fragment, itself.
+                $cases["$path, $form"] = [$route, $html, $route === 'page' ? preg_replace('#^<p>|</p>$#', '', $stored) : $stored];
+            }
+        }
+
+        return $cases;
+    }
+
+    /**
+     * The spec's test: a block's stored content holds each marked value as
+     * `{NAME}` text with the marker removed, whichever form marked it and
+     * inside a `translate="no"` element too - the one string every core
+     * stores for the block.
+     *
+     * @dataProvider storedFormProvider
+     */
+    public function testABlockStoresEachMarkedValueAsItsPlaceholderWithNoMarker($path, $html, $stored): void
+    {
+        $client = $this->client();
+        $this->render($client, $path, $html);
+
+        $pending = array_values($client->getPendingContentBlocks());
+        $this->assertCount(1, $pending);
+        $this->assertSame($stored, $pending[0]['html']);
+    }
+
     /**
      * A param the caller names itself wins over the marked value.
      *
