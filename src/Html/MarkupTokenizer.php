@@ -125,6 +125,38 @@ class MarkupTokenizer
     }
 
     /**
+     * A source line with inline markup, read as it registers (FRM-8): its
+     * fragment, the values marked in it, and its encoding, whose text is the
+     * phrase. translateRich() renders from these, and a sync registers the
+     * text, so the two agree on every line by construction.
+     *
+     * @param string $html
+     * @return array{doc: DOMDocument, root: DOMElement, markers: ValueMarkers, tokenizer: self, encoded: array}|null
+     *         Null when the line cannot be parsed
+     */
+    public static function readLine($html)
+    {
+        $internalErrors = libxml_use_internal_errors(true);
+
+        $doc = new DOMDocument();
+        $doc->encoding = 'UTF-8';
+        $loaded = $doc->loadHTML('<?xml encoding="UTF-8"><div>' . $html . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+
+        libxml_clear_errors();
+        libxml_use_internal_errors($internalErrors);
+
+        $root = $loaded ? $doc->getElementsByTagName('div')->item(0) : null;
+        if (!$root instanceof DOMElement) {
+            return null;
+        }
+
+        $markers = ValueMarkers::read($root);
+        $tokenizer = new self();
+
+        return ['doc' => $doc, 'root' => $root, 'markers' => $markers, 'tokenizer' => $tokenizer, 'encoded' => $tokenizer->encode($root, $markers)];
+    }
+
+    /**
      * Whether a phrase has text of its own: anything once its markup tokens
      * and whitespace are gone. One made only of elements kept whole has none,
      * and registers nothing (TOK-1).

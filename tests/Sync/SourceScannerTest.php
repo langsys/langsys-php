@@ -42,6 +42,22 @@ class SourceScannerTest extends TestCase
         $this->assertSame(['__', '__', 'trans_choice'], array_column($hits, 'kind'));
     }
 
+    /**
+     * FRM-8: where a binding prints a line raw, `@lang` and `@t` compile to
+     * the translator's `getHtml()`, read as `get()` is - key, replace,
+     * locale - and marked rich. Every other call is not.
+     */
+    public function testARawPrintedLineIsReadAsGetAndMarkedRich(): void
+    {
+        $hits = $this->scan("echo app('translator')->getHtml('Read our <a href=\"/terms\">terms</a>', ['name' => \$n]); echo app('translator')->get('checkout.submit'); echo e(__('Save')); echo app('translator')->choice('cart.apples', 3);");
+
+        $this->assertSame(['Read our <a href="/terms">terms</a>', 'checkout.submit', 'Save', 'cart.apples'], array_column($hits, 'text'));
+        $this->assertSame(['Lang::get', 'Lang::get', '__', 'Lang::choice'], array_column($hits, 'entry_point'));
+        $this->assertSame(['__', '__', '__', 'trans_choice'], array_column($hits, 'kind'));
+        $this->assertSame(['name'], $hits[0]['replace_keys']);
+        $this->assertSame([true, false, false, false], array_column($hits, 'rich'));
+    }
+
     public function testANonLiteralCallIsReportedWithItsLine(): void
     {
         $hits = $this->scan("\n\n__(\$dynamic);\n__('Prefix ' . \$x);\n__(\"Hi {\$name}\");");

@@ -137,6 +137,15 @@ its id or re-registers it.
   enum's, and one in a class named in `message_classes` - and any call whose
   sentence is among the `listed_templates` is listed in
   `SyncPlan::$viaMessageListing` instead of registering on its own.
+- **A line printed raw registers as the page looks it up.** `Sync\SourceScanner`
+  reads `app('translator')->getHtml(...)`, what a binding compiles `@lang` and
+  `@t` to, as `->get(...)` and marks the hit `rich`; the planner registers its
+  line with inline markup as tokens (`Read our {m0o}terms{m0c} today`), read by
+  the same `MarkupTokenizer::readLine()` `translateRich()` uses, never as raw
+  HTML. Translations carried from other languages' files are tokenized the same
+  way, and one whose elements don't line up with the source's is listed in
+  `SyncPlan::$skipped` as `not_converted`. A key only rich lines reach gets no
+  raw copy from the base-language lines.
 - **A sync can be planned offline.** `Sync\Planner::offline()` plans without a
   client or a key - every phrase new, non-literal calls, label lines and
   covered groups reported - for a CI gate. A call passing its replacements as

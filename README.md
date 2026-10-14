@@ -1472,6 +1472,15 @@ placeholder in the text, as the running call would. A phrase the catalog lacks
 but your other languages' files translate registers with those translations, stored as
 human translations.
 
+A line a binding prints raw — `@lang` and `@t` compile to `app('translator')->getHtml(...)`
+— registers with its inline markup as tokens, `Read our {m0o}terms{m0c}`, the phrase
+`translateRich()` looks up, and its translations from your other languages' files are
+tokenized the same way. One whose elements don't line up with your source's (another
+count, another tag) is listed in `$plan->skipped` as `not_converted`, and your language
+file keeps serving that line. Once the catalog answers, the page rebuilds your source's own
+elements, so an attribute a translated file changed, such as a localized `href`, gives way
+to the source's.
+
 With `'runtime_registration' => false`, `translate()` and `emitMessage()` register
 nothing; `translatePage()` and `translateContentBlock()` still discover what they render.
 

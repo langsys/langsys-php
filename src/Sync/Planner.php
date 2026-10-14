@@ -3,6 +3,7 @@
 namespace Langsys\SDK\Sync;
 
 use Langsys\SDK\Html\Canonical;
+use Langsys\SDK\Html\MarkupTokenizer;
 use Langsys\SDK\Messages\MessageCatalog;
 use Langsys\SDK\Messages\ValueSets;
 use Langsys\SDK\Migration\LegacyKeys;
@@ -24,7 +25,10 @@ use Langsys\SDK\Migration\LegacyValue;
  * still holding a label placeholder registers only through the validation
  * listing, and a call inside an app message's template method through the
  * messages listing. With declared value sets (FRM-7), a phrase naming one registers
- * once per value, written in.
+ * once per value, written in. A line a call prints raw (`@lang`, `@t`) registers
+ * with its inline markup as tokens, read as translateRich() reads it, and so do
+ * the translations carried for it; a key every literal call reaches that way
+ * has no raw line of its own (FRM-8).
  *
  * Given a catalog, each phrase is decided against it - already there, new
  * with the translations the other languages' files hold, or new alone.
@@ -156,6 +160,7 @@ final class Planner
 
             // A key registers as a lookup of it does, whichever function
             // called it; only a literal no file holds follows the call's rules.
+            $skippedBefore = count($skipped);
             $entry = $this->source === null ? null : $this->source->resolve($hit['text']);
 
             if ($entry !== null) {
@@ -167,6 +172,21 @@ final class Planner
                 $phrase = LegacyValue::fromCall($hit['text'], $replace, $hit['kind'], $hit['kind'] === 'trans_choice' ? 1 : null)['text'];
                 $category = null;
                 $translations = self::lineTranslations($hit['text'], $readers, $skipped, $hit['kind'], $replace);
+            }
+
+            // A line the call prints raw registers with its inline markup as
+            // tokens, read exactly as translateRich() reads it at runtime, and
+            // so do the translations carried for it (FRM-8). One with no text
+            // of its own registers nothing there, and nothing here.
+            if (!empty($hit['rich'])) {
+                $line = MarkupTokenizer::readLine($phrase);
+                if ($line === null || !$line['tokenizer']->hasText($line['encoded']['text'])) {
+                    array_splice($skipped, $skippedBefore);
+                    continue;
+                }
+
+                $translations = self::richTranslations($line, $hit['text'], $translations, $skipped);
+                $phrase = $line['encoded']['text'];
             }
 
             // A sentence the messages listing lists is covered by it,
@@ -190,7 +210,25 @@ final class Planner
         }
 
         // A key a call already used merges into the same item: one phrase.
+        // A key a rich line reaches registers in that form, and a plain call
+        // to it registers its raw line itself, so the lines here add no raw
+        // copy of it - a phrase nothing would look up - unless a key built at
+        // runtime in its group may reach it plainly.
+        $richKeys = [];
+        $runtimeGroups = [];
+        foreach ($hits as $hit) {
+            if ($hit['text'] !== null && !empty($hit['rich'])) {
+                $richKeys[$hit['text']] = true;
+            } elseif ($hit['text'] === null && isset($hit['group']) && $hit['group'] !== null) {
+                $runtimeGroups[] = $hit['group'];
+            }
+        }
+
         foreach ($this->source === null ? [] : $this->source->keys() as $key) {
+            if (isset($richKeys[$key]) && !self::inGroups($key, $runtimeGroups)) {
+                continue;
+            }
+
             $entry = $this->source->resolve($key);
             if ($entry !== null) {
                 $add($entry['phrase'], $entry['category'], self::lineTranslations($key, $readers, $skipped), $key);
@@ -250,6 +288,67 @@ final class Planner
         }
 
         foreach ($this->source->keys() as $key) {
+            if (strpos($key, $group . '.') === 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The translations carried for a rich line, each read as the line is. One
+     * whose elements do not line up with the source's - another count, or
+     * another element in a slot - cannot be rebuilt around the source's own
+     * markup, and is listed as not converted rather than carried; the
+     * language file keeps serving it until the phrase is translated.
+     *
+     * @param array $source MarkupTokenizer::readLine() of the source line
+     * @param string $key
+     * @param array<string, string> $translations
+     * @param array &$skipped
+     * @return array<string, string>
+     */
+    private static function richTranslations(array $source, $key, array $translations, array &$skipped)
+    {
+        $carried = [];
+
+        foreach ($translations as $locale => $text) {
+            $line = MarkupTokenizer::readLine($text);
+
+            if ($line === null || !$line['tokenizer']->hasText($line['encoded']['text'])
+                || self::slotNames($line['encoded']['slots']) !== self::slotNames($source['encoded']['slots'])) {
+                $skipped[] = ['key' => $key, 'locale' => $locale, 'reason' => 'not_converted'];
+                continue;
+            }
+
+            $carried[$locale] = $line['encoded']['text'];
+        }
+
+        return $carried;
+    }
+
+    /**
+     * @param \DOMElement[] $slots
+     * @return string[]
+     */
+    private static function slotNames(array $slots)
+    {
+        return array_map(function (\DOMElement $slot) {
+            return strtolower($slot->tagName);
+        }, $slots);
+    }
+
+    /**
+     * Whether a key belongs to one of the groups.
+     *
+     * @param string $key
+     * @param string[] $groups
+     * @return bool
+     */
+    private static function inGroups($key, array $groups)
+    {
+        foreach ($groups as $group) {
             if (strpos($key, $group . '.') === 0) {
                 return true;
             }

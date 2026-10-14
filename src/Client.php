@@ -1141,16 +1141,12 @@ class Client
      */
     public function translateRich($sourceHtml, $locale = null, $category = '__uncategorized__', array $params = [])
     {
-        $doc = $this->fragmentDocument((string) $sourceHtml);
-        $wrapper = $doc === null ? null : $doc->getElementsByTagName('div')->item(0);
-        if ($wrapper === null) {
+        $line = \Langsys\SDK\Html\MarkupTokenizer::readLine((string) $sourceHtml);
+        if ($line === null) {
             return ['html' => (string) $sourceHtml, 'from' => 'source'];
         }
 
-        $markers = \Langsys\SDK\Html\ValueMarkers::read($wrapper);
-        $tokenizer = new \Langsys\SDK\Html\MarkupTokenizer();
-        $encoded = $tokenizer->encode($wrapper, $markers);
-
+        list($doc, $wrapper, $markers, $tokenizer, $encoded) = [$line['doc'], $line['root'], $line['markers'], $line['tokenizer'], $line['encoded']];
         $slots = $encoded['slots'];
 
         // A line with no text of its own registers nothing, and renders as

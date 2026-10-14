@@ -21,8 +21,8 @@ class PlannerTest extends TestCase
         if ($this->dir === null) {
             return;
         }
-        foreach (glob($this->dir . '/*') ?: [] as $file) {
-            unlink($file);
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($this->dir, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST) as $entry) {
+            $entry->isDir() ? rmdir($entry->getPathname()) : unlink($entry->getPathname());
         }
         rmdir($this->dir);
     }
@@ -165,5 +165,91 @@ class PlannerTest extends TestCase
         $plan = Planner::offline($this->hits("__('Filed under :category.', ['category' => \$c]);"), null, [\Langsys\SDK\Tests\Frm\Fixtures\Category::class]);
 
         $this->assertSame(['Filed under Books.', 'Filed under Music.'], array_column($plan->items, 'phrase'));
+    }
+
+    // FRM-8: a line a call prints raw
+
+    private function files(array $base, array $spanish)
+    {
+        $this->dir = sys_get_temp_dir() . '/langsys-planner-' . bin2hex(random_bytes(4));
+        mkdir($this->dir . '/en', 0777, true);
+        mkdir($this->dir . '/es');
+        file_put_contents($this->dir . '/en/legal.php', '<?php return ' . var_export($base, true) . ';');
+        file_put_contents($this->dir . '/es/legal.php', '<?php return ' . var_export($spanish, true) . ';');
+
+        return [new \Langsys\SDK\Migration\LegacyKeys(['files' => [['path' => $this->dir . '/en/legal.php', 'format' => 'laravel']]]), ['es-es' => new \Langsys\SDK\Migration\LegacyKeys(['files' => [['path' => $this->dir . '/es/legal.php', 'format' => 'laravel']]])]];
+    }
+
+    private static function items(\Langsys\SDK\Sync\SyncPlan $plan)
+    {
+        return array_map(function ($item) {
+            return [$item['category'], $item['phrase'], $item['translations']];
+        }, $plan->items);
+    }
+
+    /**
+     * A rich line registers once, with its inline markup as tokens - the
+     * phrase translateRich() looks up for it - and never as its raw HTML.
+     * A rich line with no markup registers as itself, and one with no text
+     * of its own registers nothing and reports nothing.
+     */
+    public function testARichLineRegistersOnceInTheFormTheRuntimeLooksUp(): void
+    {
+        $plan = Planner::offline($this->hits(
+            "echo app('translator')->getHtml('Read our <a href=\"/terms\">terms</a> today');\n"
+            . "echo app('translator')->getHtml('Place order');\n"
+            . "echo app('translator')->getHtml('<b translate=\"no\">Langsys</b>');"
+        ));
+
+        $this->assertSame(['Read our {m0o}terms{m0c} today', 'Place order'], array_column($plan->items, 'phrase'));
+        $this->assertSame([], $plan->reported);
+    }
+
+    /**
+     * A key reached through a rich line registers its line tokenized under
+     * its group, with no raw copy from the base-language lines, and carries
+     * each translation whose elements line up with the source's, tokenized
+     * the same way. One whose elements do not is not converted, and a rich
+     * line with no text of its own reports nothing either. A key only plain
+     * calls reach is still one item with its base-language line.
+     */
+    public function testARichKeyLineRegistersTokenizedWithTheTranslationsThatLineUp(): void
+    {
+        list($source, $readers) = $this->files(
+            ['terms' => 'Accept the <a href="/terms">terms</a> to continue', 'privacy' => 'See our <a href="/privacy">policy</a>', 'plain' => 'Just <b>plain</b>'],
+            ['terms' => 'Acepta los <a href="/es/terminos">términos</a> para continuar', 'privacy' => 'Vea nuestra <b>política</b> <a href="/es/privacidad">aquí</a>', 'plain' => 'Solo <b>simple</b>']
+        );
+
+        $plan = (new Planner($source))->plan($this->hits("echo app('translator')->getHtml('legal.terms');\necho app('translator')->getHtml('legal.privacy');\necho app('translator')->getHtml('<b translate=\"no\">Langsys</b>');\necho e(__('legal.plain'));"), $readers);
+
+        $this->assertSame([
+            ['legal', 'Accept the {m0o}terms{m0c} to continue', ['es-es' => 'Acepta los {m0o}términos{m0c} para continuar']],
+            ['legal', 'See our {m0o}policy{m0c}', []],
+            ['legal', 'Just <b>plain</b>', ['es-es' => 'Solo <b>simple</b>']],
+        ], self::items($plan));
+        $this->assertSame(['app.php:5', 'legal.plain'], $plan->items[2]['origins'], 'the call and its base-language line, one item');
+        $this->assertSame([['key' => 'legal.privacy', 'locale' => 'es-es', 'reason' => 'not_converted']], $plan->skipped);
+    }
+
+    /**
+     * A key a plain call reaches too, or a key built at runtime in its group
+     * may reach, keeps its raw line beside the tokenized one: each is what
+     * some lookup asks for.
+     */
+    public function testAKeyAlsoReachedPlainlyKeepsItsRawLine(): void
+    {
+        list($source, $readers) = $this->files(['both' => 'Read <b>this</b>', 'built' => 'Mind <b>that</b>'], ['both' => 'Lee <b>esto</b>', 'built' => 'Ojo <b>eso</b>']);
+
+        $plan = (new Planner($source))->plan($this->hits(
+            "echo app('translator')->getHtml('legal.both');\necho e(__('legal.both'));\n"
+            . "echo app('translator')->getHtml('legal.built');\necho e(__(\"legal.\$k\"));"
+        ), $readers);
+
+        $this->assertSame([
+            ['legal', 'Read {m0o}this{m0c}', ['es-es' => 'Lee {m0o}esto{m0c}']],
+            ['legal', 'Read <b>this</b>', ['es-es' => 'Lee <b>esto</b>']],
+            ['legal', 'Mind {m0o}that{m0c}', ['es-es' => 'Ojo {m0o}eso{m0c}']],
+            ['legal', 'Mind <b>that</b>', ['es-es' => 'Ojo <b>eso</b>']],
+        ], self::items($plan));
     }
 }
