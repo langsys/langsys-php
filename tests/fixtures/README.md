@@ -220,7 +220,7 @@ once already, and a path citation cannot tell you whether the bytes changed.
 | File | Origin | Blob |
 |---|---|---|
 | `legacy-custom-id-reference.json` | `langsys-python` | `dc5556466dc54fe82e81ac9fdbf4549b2b76e7ce` |
-| `canonicalization-reference.json` | `langsys-js-typescript` @ `ab408561` | `fa32452dc81c4f6c5e62f48e196f48870f1a538f` |
+| `canonicalization-reference.json` | `langsys-js-typescript` @ `47639069` | `e0c723f6c7aa70b5cd09faf281d9cd6cfe866f31` |
 | `mig-vectors.json` | `langsys-js-typescript` @ `a639ae8c` | `20f2bdd678cb33981e3064e42d43ca62783920ad` |
 | `snapshot-vectors.json` | `langsys-js-typescript` @ `a639ae8c` | `594bd77a0289abfdf608508ac93cc9f4c4f88459` |
 | `server-message-vectors.json` | `langsys-js-typescript` @ `239166a6` | `7333e3919dac43af81c6c20bfdba974efd79725b` |

@@ -336,16 +336,17 @@ class HtmlParserTest extends TestCase
      * The cross-SDK canonicalization vectors (TOK-1, TOK-2, TOK-4).
      *
      * Authored by langsys-js-typescript and adopted byte-identically
-     * (`ab408561:tests/fixtures/canonicalization-reference.json`, blob
-     * `fa32452dc81c4f6c5e62f48e196f48870f1a538f`, 41 rows). Each row carries every
+     * (`47639069:tests/fixtures/canonicalization-reference.json`, blob
+     * `e0c723f6c7aa70b5cd09faf281d9cd6cfe866f31`, 45 rows). Each row carries every
      * lane's MEASURED output alongside the expectation, so the file records
      * where the fleet disagreed rather than only where it should agree — this
      * SDK was 13/19 when the file was first adopted at `6596faf` (blob
      * `e4c1f185...`, 19 rows). Re-vendored at `4eac870` (26 rows) for the 8.0.1
      * re-row: no existing row's expectation changed, and the seven added rows
      * are the 8.0.1 behaviours. The current copy adds six rows for TOK-2's C0
-     * strip (8.2.7), measured by this SDK, with no earlier row's expectation
-     * changed; `spec_blob` names `5fa32cb9`.
+     * strip (8.2.7), measured by this SDK, and four rows whose
+     * `expected_content` pins the content a block registers with (VAR-3, 8.5.9),
+     * with no earlier row's expectation changed.
      *
      * Every row also carries codepoints. That is the load-bearing part: the
      * three rules here turn on characters that are invisible in a terminal and
@@ -362,7 +363,7 @@ class HtmlParserTest extends TestCase
         $fixture = json_decode(file_get_contents($path), true);
         $cases = $fixture['cases'];
 
-        $this->assertCount(41, $cases, 'the adopted file has 41 rows');
+        $this->assertCount(45, $cases, 'the adopted file has 45 rows');
 
         foreach ($cases as $case) {
             $tokens = array_values($this->parser->extractPhrases($case['html']));
@@ -378,7 +379,15 @@ class HtmlParserTest extends TestCase
                 $this->parser->generateCustomId($case['category'], $tokens),
                 'id for ' . $case['id']
             );
+
+            // VAR-3: the content the block registers with, byte for byte.
+            if (array_key_exists('expected_content', $case)) {
+                $this->assertSame($case['expected_content'], \Langsys\SDK\Html\ValueMarkers::placeholderHtml($case['html']), 'content for ' . $case['id']);
+                $contentRows = isset($contentRows) ? $contentRows + 1 : 1;
+            }
         }
+
+        $this->assertSame(4, isset($contentRows) ? $contentRows : 0, 'four rows pin a block\'s content');
     }
 
     /**
@@ -2059,8 +2068,8 @@ class HtmlParserTest extends TestCase
     public function testSourcesWriteInvisibleCharactersAsEscapes($path, $blob): void
     {
         $vendored = [
-            // canonicalization-reference.json needs no exemption any more: re-vendored
-            // at langsys-js-typescript ab408561 (blob fa32452d), which is escaped at source.
+            // canonicalization-reference.json needs no exemption: vendored at
+            // langsys-js-typescript 47639069 (blob e0c723f6), which is escaped at source.
             // legacy-custom-id-reference.json, langsys-python
             'dc5556466dc54fe82e81ac9fdbf4549b2b76e7ce' => 'adopted byte-identically from langsys-python',
         ];

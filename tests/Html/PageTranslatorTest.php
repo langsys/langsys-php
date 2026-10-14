@@ -2178,7 +2178,7 @@ class PageTranslatorTest extends TestCase
     public function testThePagePathMatchesTheCanonicalizationFixture(): void
     {
         $fixture = json_decode(file_get_contents(dirname(__DIR__) . '/fixtures/canonicalization-reference.json'), true);
-        $this->assertCount(41, $fixture['cases']);
+        $this->assertCount(45, $fixture['cases']);
 
         foreach ($fixture['cases'] as $case) {
             $unit = (new HtmlParser())->fragmentUnit($case['html']);

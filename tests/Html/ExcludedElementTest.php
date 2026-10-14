@@ -295,6 +295,45 @@ class ExcludedElementTest extends TestCase
     }
 
     /**
+     * The shared fixture's rich-phrase rows, authored by the JS core
+     * (`canonicalization-reference.json`, `phrase_cases`), executed through
+     * the reader translateRich() keys with: the phrase by codepoint, the
+     * values it renders with, whether it registers, and - where a row names
+     * one - the earlier key this SDK's v1.0.1-v1.0.2 reader gave the host,
+     * which for a host with no excluded element is its current key.
+     */
+    public function testTheSharedRichPhraseRowsHold(): void
+    {
+        $fixture = json_decode(file_get_contents(dirname(__DIR__) . '/fixtures/canonicalization-reference.json'), true);
+        $this->assertCount(13, $fixture['phrase_cases']);
+
+        foreach ($fixture['phrase_cases'] as $row) {
+            $line = \Langsys\SDK\Html\MarkupTokenizer::readLine($row['html']);
+            $phrase = $line['encoded']['text'];
+
+            $codepoints = array_map(function ($char) {
+                return sprintf('U+%04X', mb_ord($char, 'UTF-8'));
+            }, preg_split('//u', $phrase, -1, PREG_SPLIT_NO_EMPTY));
+            $this->assertSame($row['expected_phrase_codepoints'], $codepoints, $row['id'] . ': got ' . $phrase);
+
+            preg_match_all('/\{([a-z][a-z0-9_]*)\}/', $phrase, $named);
+            $values = array_intersect_key(array_map(function ($unused) {
+                return true;
+            }, $line['markers']->sentinels()), array_flip($named[1]));
+            $this->assertSame(array_keys($row['expected_values']), array_keys($values), $row['id'] . ': values');
+
+            $client = $this->client();
+            $client->translateRich($row['html'], null, $row['category']);
+            $this->assertSame($row['registers'] ? [$row['expected_phrase']] : [], array_values(array_column($client->getPendingPhrases(), 'phrase')), $row['id'] . ': registers');
+
+            if (array_key_exists('earlier_phrase', $row)) {
+                $earlier = $line['encoded']['earlier'] === null ? $phrase : $line['encoded']['earlier']['text'];
+                $this->assertSame($row['earlier_phrase'], $earlier, $row['id'] . ': earlier key');
+            }
+        }
+    }
+
+    /**
      * A script is kept whole by TOK-1's own list, author-excluded or not,
      * and no earlier reader walked into it: no earlier key is looked up.
      *
