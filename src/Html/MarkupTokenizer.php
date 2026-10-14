@@ -158,6 +158,45 @@ class MarkupTokenizer
     }
 
     /**
+     * Fill each `{name}` the caller passes, as plain text, inside the slots
+     * kept whole because their author excluded them. A framework call's line
+     * is a template: excluding an element keeps its words from translation,
+     * not its placeholders from their values. Script and its kin are left as
+     * written.
+     *
+     * @param DOMElement[] $slots
+     * @param int[] $opaque encode()'s `opaque`
+     * @param array $params
+     * @return void
+     */
+    public function fillExcluded(array $slots, array $opaque, array $params)
+    {
+        foreach ($opaque as $index) {
+            if (isset($slots[$index]) && $this->isAuthorExcluded($slots[$index])) {
+                $this->fillText($slots[$index], $params);
+            }
+        }
+    }
+
+    /**
+     * @param DOMNode $node
+     * @param array $params
+     * @return void
+     */
+    private function fillText(DOMNode $node, array $params)
+    {
+        foreach ($node->childNodes as $child) {
+            if ($child instanceof DOMText) {
+                $child->nodeValue = (string) preg_replace_callback('/\{([A-Za-z_][A-Za-z0-9_]*)\}/', function ($m) use ($params) {
+                    return array_key_exists($m[1], $params) && is_scalar($params[$m[1]]) ? (string) $params[$m[1]] : $m[0];
+                }, $child->nodeValue);
+            } elseif ($child instanceof DOMElement && !in_array(strtolower($child->tagName), self::OPAQUE_ELEMENTS, true)) {
+                $this->fillText($child, $params);
+            }
+        }
+    }
+
+    /**
      * Whether an element is kept whole because its author excluded it, not
      * for its kind: an earlier reader walked into it.
      *

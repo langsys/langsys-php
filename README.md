@@ -1532,8 +1532,11 @@ $client->translateRich('Read our <a href="/terms">terms</a>');
 The line registers as `Read our {m0o}terms{m0c}`. Rendering rebuilds only your source's
 elements, with their attributes as you wrote them, around the translated text: a tag or
 attribute in a translation comes out as text, so a translation can move your link but never
-add one, change its `href` or run script. An element you excluded is kept as you wrote it,
-as in a `data-langsys-phrase` run. A line from your language files comes back as written.
+add one, change its `href` or run script. An element you excluded is never translated: it
+renders as you wrote it, with the params you pass filled in, since the line is a template.
+A page or a block, by contrast, keeps excluded text exactly as written, so
+`<code translate="no">{name}</code>` can show the syntax itself. A line from your language
+files comes back as written.
 
 ### Declared value sets
 

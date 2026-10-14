@@ -244,6 +244,57 @@ class ExcludedElementTest extends TestCase
     }
 
     /**
+     * In a framework call's line the source is a template: a placeholder the
+     * caller passes is filled inside an excluded element too, as plain text,
+     * on a miss and on a hit, in the element's descendants too, and the key
+     * is unchanged. One it does not pass, or passes as null, stays as
+     * written, and so does a script, inside the element or not.
+     */
+    public function testARichLineFillsTheCallersParamsInsideAnExcludedElement(): void
+    {
+        $source = 'Write to <b translate="no">{email} <i>{email}</i><script>go("{email}")</script> {other}</b> for help';
+        $filled = '<b translate="no">ana@example.com <i>ana@example.com</i><script>go("{email}")</script> {other}</b>';
+        $params = ['email' => 'ana@example.com', 'other' => null];
+
+        $client = $this->client();
+        $this->assertSame('Write to ' . $filled . ' for help', $client->translateRich($source, null, 'UI', $params)['html']);
+        $this->assertSame(['Write to {m0o}{m0c} for help'], array_values(array_column($client->getPendingPhrases(), 'phrase')));
+
+        $client = $this->client(['Write to {m0o}{m0c} for help' => 'Escribe a {m0o}{m0c} para ayuda']);
+        $this->assertSame('Escribe a ' . $filled . ' para ayuda', $client->translateRich($source, null, 'UI', $params)['html']);
+
+        $this->assertSame('Run <script>go("{email}")</script> now', $this->client()->translateRich('Run <script>go("{email}")</script> now', null, 'UI', $params)['html']);
+    }
+
+    /**
+     * A rich line made only of an excluded element registers nothing and
+     * renders with the caller's params filled.
+     */
+    public function testAnExcludedOnlyRichLineFillsTheCallersParams(): void
+    {
+        $client = $this->client();
+
+        $this->assertSame(['html' => '<b translate="no">ana@example.com</b>', 'from' => 'source'], $client->translateRich('<b translate="no">{email}</b>', null, 'UI', ['email' => 'ana@example.com']));
+        $this->assertSame([], $client->getPendingPhrases());
+    }
+
+    /**
+     * A page or a block keeps excluded text exactly as written, params or
+     * not: `<code translate="no">{name}</code>` is how a page shows the
+     * syntax itself.
+     */
+    public function testAPageOrBlockKeepsExcludedTextAsWritten(): void
+    {
+        foreach (['<p>Use <code translate="no">{name}</code> for the name</p>', '<p data-ls-phrase>Use <code translate="no">{name}</code> for the name</p>'] as $html) {
+            $page = $this->client()->translatePage('<html><body>' . $html . '</body></html>', 'UI', [], ['name' => 'Ana']);
+            $this->assertStringContainsString('<code translate="no">{name}</code>', $page, $html);
+
+            $block = $this->client()->translateContentBlock($html, 'UI', ['name' => 'Ana']);
+            $this->assertStringContainsString('<code translate="no">{name}</code>', $block, $html);
+        }
+    }
+
+    /**
      * A script is kept whole by TOK-1's own list, author-excluded or not,
      * and no earlier reader walked into it: no earlier key is looked up.
      *

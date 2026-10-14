@@ -1151,11 +1151,21 @@ class Client
         $tokenizer = new \Langsys\SDK\Html\MarkupTokenizer();
         $encoded = $tokenizer->encode($wrapper, $markers);
 
+        $slots = $encoded['slots'];
+
+        // A line with no text of its own registers nothing, and renders as
+        // given with the caller's params filled.
         if (!$tokenizer->hasText($encoded['text'])) {
-            return ['html' => (string) $sourceHtml, 'from' => 'source'];
+            if ($params === []) {
+                return ['html' => (string) $sourceHtml, 'from' => 'source'];
+            }
+
+            $tokenizer->fillExcluded($slots, $encoded['opaque'], $params);
+            $rendered = $this->getInterpolator()->interpolate($encoded['text'], $tokenizer->tokenParams(count($slots)));
+
+            return ['html' => $this->renderRichLine($wrapper, $doc, $tokenizer, $rendered, $encoded, $markers), 'from' => 'source'];
         }
 
-        $slots = $encoded['slots'];
         $rendered = $this->translateCall($encoded['text'], $locale, $category, null, array_merge($markers->sentinels(), $params, $tokenizer->tokenParams(count($slots))), $from, $this->earlierLookup($tokenizer, $encoded['earlier']));
 
         if ($from === 'fallback') {
@@ -1167,10 +1177,30 @@ class Client
         // source's own elements are still rebuilt.
         $rendered = (string) preg_replace('/\{m\d+[oc]\}/', '', $rendered);
 
+        // An excluded element is restored from the line as written, which
+        // in a call with params is a template (TOK-1).
+        $tokenizer->fillExcluded($slots, $encoded['opaque'], $params);
+
+        return ['html' => $this->renderRichLine($wrapper, $doc, $tokenizer, $rendered, $encoded, $markers), 'from' => $from];
+    }
+
+    /**
+     * A rich line's elements rebuilt around its rendered text, serialised.
+     *
+     * @param \DOMElement $wrapper
+     * @param \DOMDocument $doc
+     * @param \Langsys\SDK\Html\MarkupTokenizer $tokenizer
+     * @param string $rendered
+     * @param array $encoded
+     * @param \Langsys\SDK\Html\ValueMarkers $markers
+     * @return string
+     */
+    private function renderRichLine(\DOMElement $wrapper, \DOMDocument $doc, \Langsys\SDK\Html\MarkupTokenizer $tokenizer, $rendered, array $encoded, \Langsys\SDK\Html\ValueMarkers $markers)
+    {
         while ($wrapper->firstChild !== null) {
             $wrapper->removeChild($wrapper->firstChild);
         }
-        foreach ($tokenizer->render($rendered, $slots, $doc, $encoded['opaque']) as $node) {
+        foreach ($tokenizer->render($rendered, $encoded['slots'], $doc, $encoded['opaque']) as $node) {
             $wrapper->appendChild($node);
         }
         $markers->finish($wrapper);
@@ -1180,7 +1210,7 @@ class Client
             $html .= $doc->saveHTML($child);
         }
 
-        return ['html' => $html, 'from' => $from];
+        return $html;
     }
 
     /**
