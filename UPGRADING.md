@@ -23,6 +23,7 @@ machine translated, and billed, again.
 | An `<img alt>`, `<input placeholder>` or inline element outside a paragraph | Registers; it did not before |
 | A block containing an element marked `data-ls-phrase` or `data-ls-contentblock` | The marked element is its own unit; the block around it has new text |
 | `data-langsys-contentblock="<anything but true/1/yes/false/0>"` | The value is the block's id, rather than a request to derive one |
+| A `data-langsys-phrase` run made only of `translate="no"` or `data-notrans` elements | Registers nothing; it registered `{m0o}{m0c}` |
 
 **What to do:** nothing is required. Each affected item registers once and is translated
 again. If a site has many of these shapes and its translations were human-made, re-apply
@@ -76,17 +77,22 @@ prefix. Pass `'error_log' => false` to turn that off.
 
 ## Subclasses
 
-`Client`, `PageTranslator`, `HtmlParser` and `Interpolator` are not final. A subclass that
-overrides one of these protected methods must add the new trailing optional parameter to
-its signature, or PHP refuses it as incompatible:
+`Client`, `PageTranslator`, `HtmlParser`, `MarkupTokenizer` and `Interpolator` are not
+final. A subclass that overrides one of these methods must add the new trailing optional
+parameters to its signature, or PHP refuses it as incompatible:
 
-| Method | New parameter |
+| Method | New parameters |
 |---|---|
 | `Client::applyBlockTranslations()` | `$customId = null` |
 | `HtmlParser::walkNode()` | `&$textNodes = null` |
 | `PageTranslator::interp()` | `DOMNode $scope = null` |
 | `Interpolator::chooseIcuBranch()` | `$locale = null` |
 | `Interpolator::formatIcu()` | `$template = null` |
+| `MarkupTokenizer::encode()` | `ValueMarkers $markers = null` |
+| `MarkupTokenizer::render()`, `MarkupTokenizer::rebuild()` | `array $opaque = []` |
+| `MarkupTokenizer::encodeChildren()` | `array &$opaque = [], ValueMarkers $markers = null, &$excluded = false` |
+
+`MarkupTokenizer::encode()` returns two more keys, `opaque` and `earlier`.
 
 `PageTranslator::markItemsAsRegistered()` and `markItemsAsRegisteredWithCategory()` no
 longer exist.

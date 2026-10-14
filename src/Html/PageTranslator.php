@@ -696,8 +696,9 @@ class PageTranslator
     {
         $encoded = $this->markupTokenizer->encode($element);
 
-        if ($encoded['text'] === '') {
-            return; // Nothing translatable.
+        // Nothing translatable: no text, or only elements kept whole (TOK-1).
+        if (!$this->markupTokenizer->hasText($encoded['text'])) {
+            return;
         }
 
         $category = $effectiveCategory !== null ? $effectiveCategory : '__uncategorized__';
@@ -985,9 +986,22 @@ class PageTranslator
 
         // Slots are taken now, not at extraction: a marked host nested in this
         // one (MARK-4) has been translated since, and the rebuild copies it.
-        $slots = $this->markupTokenizer->encode($element)['slots'];
+        $encoded = $this->markupTokenizer->encode($element, $this->markers);
+        $slots = $encoded['slots'];
 
         $translated = $this->lookupTranslation($phraseData['text'], $itemCategory, $translations);
+
+        // TOK-1: with no translation under its key, a phrase holding an
+        // excluded element renders one under the key an earlier reader gave
+        // it. Only the current key is ever registered.
+        $cat = $itemCategory !== null ? $itemCategory : '__uncategorized__';
+        $current = isset($translations[$cat][$phraseData['text']]) ? $translations[$cat][$phraseData['text']] : null;
+        if ($encoded['earlier'] !== null && !(is_string($current) && $current !== '')) {
+            $value = isset($translations[$cat][$encoded['earlier']['text']]) ? $translations[$cat][$encoded['earlier']['text']] : null;
+            if (is_string($value) && $value !== '') {
+                $translated = $this->markupTokenizer->fromEarlier($value, $encoded['earlier']);
+            }
+        }
 
         $tokenParams = $this->markupTokenizer->tokenParams(count($slots));
         $merged = array_merge($this->paramsFor($element, $translated), $tokenParams);
@@ -1004,7 +1018,7 @@ class PageTranslator
             $slots = [];
         }
 
-        $nodes = $this->markupTokenizer->render($rendered, $slots, $element->ownerDocument);
+        $nodes = $this->markupTokenizer->render($rendered, $slots, $element->ownerDocument, $encoded['opaque']);
 
         // Replace the element's children with the rebuilt nodes.
         while ($element->firstChild !== null) {

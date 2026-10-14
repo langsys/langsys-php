@@ -302,13 +302,68 @@ final class ValueMarkers
                 continue;
             }
 
-            $values = $run['values'];
-            $node->nodeValue = preg_replace_callback('/\{([a-z][a-z0-9_]*)\}/', function ($m) use ($values) {
-                return isset($values[$m[1]]) ? self::sentinel($m[1], $values[$m[1]]) : $m[0];
-            }, $node->textContent);
+            $node->nodeValue = self::sealed($run);
         }
 
         self::expand($root);
+    }
+
+    /**
+     * A deep clone of $node in which every run read below it holds its
+     * values as sentinels again, so the copy renders the markers it was read
+     * from: the form an excluded element is kept in, whose content is
+     * restored as given rather than rendered (TOK-1).
+     *
+     * @param DOMNode $node
+     * @return DOMNode
+     */
+    public function sealedClone(DOMNode $node)
+    {
+        $clone = $node->cloneNode(true);
+        $this->sealInto($node, $clone);
+
+        return $clone;
+    }
+
+    /**
+     * @param DOMNode $from
+     * @param DOMNode $to Its deep clone
+     * @return void
+     */
+    private function sealInto(DOMNode $from, DOMNode $to)
+    {
+        if ($from instanceof DOMText) {
+            foreach ($this->runs as $run) {
+                if ($run['node'] === $from) {
+                    $to->nodeValue = self::sealed($run);
+                }
+            }
+
+            return;
+        }
+
+        if ($from->childNodes === null) {
+            return;
+        }
+
+        foreach ($from->childNodes as $i => $child) {
+            $this->sealInto($child, $to->childNodes->item($i));
+        }
+    }
+
+    /**
+     * A run's text with each of its placeholders as the sentinel for its value.
+     *
+     * @param array $run
+     * @return string
+     */
+    private static function sealed(array $run)
+    {
+        $values = $run['values'];
+
+        return (string) preg_replace_callback('/\{([a-z][a-z0-9_]*)\}/', function ($m) use ($values) {
+            return isset($values[$m[1]]) ? self::sentinel($m[1], $values[$m[1]]) : $m[0];
+        }, $run['node']->textContent);
     }
 
     /**

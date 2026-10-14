@@ -95,18 +95,134 @@ class MarkupTokenizer
     /**
      * Encode an element's children into a single tokenized phrase.
      *
+     * An element kept whole - one its author excluded, script and its kin,
+     * a nested marked host - is one empty token pair whatever it holds, its
+     * slot a deep copy restored as given on render (TOK-1). With the values
+     * read below $element, that copy holds each one as it was marked, never
+     * as its placeholder.
+     *
+     * Where the phrase holds an author's exclusion, `earlier` is the key an
+     * earlier reader gave it, one that walked into the excluded element, with
+     * the map fromEarlier() brings that key's translation to these slots by.
+     *
      * @param DOMElement $element The element whose CHILDREN are encoded
-     * @return array ['text' => string, 'slots' => DOMElement[]]
+     * @param ValueMarkers|null $markers The value markers read below $element
+     * @return array ['text' => string, 'slots' => DOMElement[], 'opaque' => int[], 'earlier' => array|null]
      */
-    public function encode(DOMElement $element)
+    public function encode(DOMElement $element, ValueMarkers $markers = null)
     {
         $slots = [];
-        $text = $this->encodeChildren($element, $slots);
+        $opaque = [];
+        $excluded = false;
+        $text = $this->encodeChildren($element, $slots, $opaque, $markers, $excluded);
 
         return [
             'text' => $this->collapseWhitespace($text),
             'slots' => $slots,
+            'opaque' => $opaque,
+            'earlier' => $excluded ? $this->earlierKey($element) : null,
         ];
+    }
+
+    /**
+     * Whether a phrase has text of its own: anything once its markup tokens
+     * and whitespace are gone. One made only of elements kept whole has none,
+     * and registers nothing (TOK-1).
+     *
+     * @param string $text
+     * @return bool
+     */
+    public function hasText($text)
+    {
+        return Canonical::phrase((string) preg_replace('/\{m\d+[oc]\}/', '', (string) $text)) !== '';
+    }
+
+    /**
+     * A translation of a phrase's earlier key (see encode()), in the current
+     * key's terms: each token takes the slot its element has now, and one
+     * for an element inside an excluded element, or for none at all, is
+     * dropped. What the translation put inside an excluded element's pair is
+     * then dropped on render, the element being restored from source.
+     *
+     * @param string $translation
+     * @param array $earlier encode()'s `earlier`
+     * @return string
+     */
+    public function fromEarlier($translation, array $earlier)
+    {
+        $map = $earlier['map'];
+
+        return (string) preg_replace_callback('/\{m(\d+)([oc])\}/', function ($m) use ($map) {
+            return isset($map[(int) $m[1]]) ? '{m' . $map[(int) $m[1]] . $m[2] . '}' : '';
+        }, (string) $translation);
+    }
+
+    /**
+     * Whether an element is kept whole because its author excluded it, not
+     * for its kind: an earlier reader walked into it.
+     *
+     * @param DOMElement $element
+     * @return bool
+     */
+    protected function isAuthorExcluded(DOMElement $element)
+    {
+        return HtmlParser::isTranslationExcluded($element)
+            && !in_array(strtolower($element->tagName), self::OPAQUE_ELEMENTS, true);
+    }
+
+    /**
+     * The key a reader that walked into author-excluded elements gave the
+     * phrase, and each of its slots' current slot: null for a slot inside an
+     * excluded element, which has none now.
+     *
+     * @param DOMElement $element
+     * @return array{text: string, map: array<int, int|null>}
+     */
+    protected function earlierKey(DOMElement $element)
+    {
+        $map = [];
+        $current = 0;
+        $text = $this->encodeEarlier($element, $map, $current, false);
+
+        return ['text' => $this->collapseWhitespace($text), 'map' => $map];
+    }
+
+    /**
+     * @param DOMNode $node
+     * @param array &$map
+     * @param int &$current The next current slot
+     * @param bool $inside Whether $node is inside an excluded element
+     * @return string
+     */
+    private function encodeEarlier(DOMNode $node, array &$map, &$current, $inside)
+    {
+        $out = '';
+
+        foreach ($node->childNodes as $child) {
+            if ($child instanceof DOMText) {
+                $out .= $child->textContent;
+                continue;
+            }
+
+            if (!$child instanceof DOMElement) {
+                continue;
+            }
+
+            $index = count($map);
+            $walked = $this->isAuthorExcluded($child);
+            $map[$index] = $inside ? null : $current++;
+
+            if ($this->isOpaque($child) && !$walked) {
+                $out .= '{m' . $index . 'o}{m' . $index . 'c}';
+                continue;
+            }
+
+            $out .= '{m' . $index . 'o}'
+                . $this->encodeEarlier($child, $map, $current, $inside || $walked)
+                . '{m' . $index . 'c}';
+        }
+
+        return $out;
     }
 
     /**
@@ -152,17 +268,21 @@ class MarkupTokenizer
      * tokens works by construction - elements are placed where the tokens now
      * sit, not where they originally were, which is the entire point.
      *
+     * An element kept whole renders as its slot holds it: a translation's
+     * text inside its token pair is dropped.
+     *
      * @param string $text Interpolated text containing sentinels
      * @param DOMElement[] $slots Shallow element clones by index
      * @param DOMDocument $doc Document used to create nodes
+     * @param int[] $opaque The slots kept whole (encode()'s `opaque`)
      * @return DOMNode[] Nodes ready to be appended
      */
-    public function render($text, array $slots, DOMDocument $doc)
+    public function render($text, array $slots, DOMDocument $doc, array $opaque = [])
     {
         // Any DOM failure - most likely slots owned by a different document -
         // must fall to "lose the markup, keep the meaning" rather than escape.
         try {
-            $result = $this->rebuild($text, $slots, $doc);
+            $result = $this->rebuild($text, $slots, $doc, $opaque);
         } catch (\Throwable $e) {
             $result = null;
         }
@@ -211,9 +331,12 @@ class MarkupTokenizer
      *
      * @param DOMNode $node
      * @param array &$slots
+     * @param int[] &$opaque The slots kept whole
+     * @param ValueMarkers|null $markers
+     * @param bool &$excluded Set when an author-excluded element is met
      * @return string
      */
-    protected function encodeChildren(DOMNode $node, array &$slots)
+    protected function encodeChildren(DOMNode $node, array &$slots, array &$opaque = [], ValueMarkers $markers = null, &$excluded = false)
     {
         $out = '';
 
@@ -240,7 +363,9 @@ class MarkupTokenizer
                 // clone and emitting an empty token pair. It renders back
                 // untouched and contributes nothing to the phrase.
                 if ($this->isOpaque($child)) {
-                    $slots[] = $child->cloneNode(true);
+                    $slots[] = $markers === null ? $child->cloneNode(true) : $markers->sealedClone($child);
+                    $opaque[] = $index;
+                    $excluded = $excluded || $this->isAuthorExcluded($child);
                     $out .= '{m' . $index . 'o}{m' . $index . 'c}';
                     continue;
                 }
@@ -248,7 +373,7 @@ class MarkupTokenizer
                 $slots[] = $child->cloneNode(false); // Shallow: tag + attributes only.
 
                 $out .= '{m' . $index . 'o}'
-                    . $this->encodeChildren($child, $slots)
+                    . $this->encodeChildren($child, $slots, $opaque, $markers, $excluded)
                     . '{m' . $index . 'c}';
                 continue;
             }
@@ -265,9 +390,10 @@ class MarkupTokenizer
      * @param string $text
      * @param DOMElement[] $slots
      * @param DOMDocument $doc
+     * @param int[] $opaque
      * @return DOMNode[]|null Null when the stream is unusable
      */
-    protected function rebuild($text, array $slots, DOMDocument $doc)
+    protected function rebuild($text, array $slots, DOMDocument $doc, array $opaque = [])
     {
         $top = [];          // Nodes at the outermost level.
         $stack = [];        // Open elements: ['index' => int, 'node' => DOMElement].
@@ -328,7 +454,7 @@ class MarkupTokenizer
                     : $doc->importNode($clone, true);
 
                 $this->appendNode($element, $top, $stack);
-                $stack[] = ['index' => $index, 'node' => $element];
+                $stack[] = ['index' => $index, 'node' => $element, 'kept' => in_array($index, $opaque, true)];
                 continue;
             }
 
@@ -371,6 +497,12 @@ class MarkupTokenizer
         }
 
         $current = $stack[count($stack) - 1];
+
+        // Nothing is added to an element kept whole.
+        if (!empty($current['kept'])) {
+            return;
+        }
+
         $current['node']->appendChild($node);
     }
 

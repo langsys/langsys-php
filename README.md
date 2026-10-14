@@ -614,6 +614,11 @@ Notes:
 - Element attributes (classes, `href`) are preserved — only the position is
   taken from the translation.
 - Presence alone enables it; `data-langsys-phrase="false"` (or `"0"`) opts out.
+- An element you excluded (`translate="no"`, `data-notrans`) is one empty token
+  pair, `Signed in as {m0o}{m0c} today`, whatever it holds, and renders exactly
+  as you wrote it, values included: a translator never sees its text, and a
+  translation cannot write into it. A run made only of excluded elements
+  registers nothing.
 - If a translation drops, unbalances or misnumbers the tokens, the text is
   rendered without the markup rather than failing. The rendered page never
   contains literal `{m0o}`/`{m0c}` tokens on any path.
@@ -1527,8 +1532,8 @@ $client->translateRich('Read our <a href="/terms">terms</a>');
 The line registers as `Read our {m0o}terms{m0c}`. Rendering rebuilds only your source's
 elements, with their attributes as you wrote them, around the translated text: a tag or
 attribute in a translation comes out as text, so a translation can move your link but never
-add one, change its `href` or run script. A line from your language files comes back as
-written.
+add one, change its `href` or run script. An element you excluded is kept as you wrote it,
+as in a `data-langsys-phrase` run. A line from your language files comes back as written.
 
 ### Declared value sets
 

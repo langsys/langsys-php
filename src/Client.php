@@ -1129,7 +1129,9 @@ class Client
      * change an attribute or inject script, and a token the source lacks is
      * dropped. A line from the miss fallback is the app's own and comes back
      * as the framework prints it; with neither, the source line comes back
-     * with its values filled.
+     * with its values filled. An element its author excluded is kept whole,
+     * one empty token pair restored as written, and a line made only of such
+     * elements registers nothing (TOK-1).
      *
      * @param string $sourceHtml
      * @param string|null $locale
@@ -1147,14 +1149,14 @@ class Client
 
         $markers = \Langsys\SDK\Html\ValueMarkers::read($wrapper);
         $tokenizer = new \Langsys\SDK\Html\MarkupTokenizer();
-        $encoded = $tokenizer->encode($wrapper);
+        $encoded = $tokenizer->encode($wrapper, $markers);
 
-        if ($encoded['text'] === '') {
+        if (!$tokenizer->hasText($encoded['text'])) {
             return ['html' => (string) $sourceHtml, 'from' => 'source'];
         }
 
         $slots = $encoded['slots'];
-        $rendered = $this->translateCall($encoded['text'], $locale, $category, null, array_merge($markers->sentinels(), $params, $tokenizer->tokenParams(count($slots))), $from);
+        $rendered = $this->translateCall($encoded['text'], $locale, $category, null, array_merge($markers->sentinels(), $params, $tokenizer->tokenParams(count($slots))), $from, $this->earlierLookup($tokenizer, $encoded['earlier']));
 
         if ($from === 'fallback') {
             return ['html' => $rendered, 'from' => $from];
@@ -1168,7 +1170,7 @@ class Client
         while ($wrapper->firstChild !== null) {
             $wrapper->removeChild($wrapper->firstChild);
         }
-        foreach ($tokenizer->render($rendered, $slots, $doc) as $node) {
+        foreach ($tokenizer->render($rendered, $slots, $doc, $encoded['opaque']) as $node) {
             $wrapper->appendChild($node);
         }
         $markers->finish($wrapper);
@@ -1265,9 +1267,10 @@ class Client
      * @param string|null $contentBlockId
      * @param array $params
      * @param string|null $from Set to catalog, fallback or source
+     * @param callable|null $earlier A miss's lookup under the phrase's earlier key (TOK-1)
      * @return string
      */
-    protected function translateCall($phrase, $locale, $category, $contentBlockId, array $params, &$from)
+    protected function translateCall($phrase, $locale, $category, $contentBlockId, array $params, &$from, callable $earlier = null)
     {
         $this->requireCredentialsAtUse();
 
@@ -1305,7 +1308,30 @@ class Client
             }
         }
 
-        return $this->translateSource($phrase, $locale, $category, $contentBlockId, $params, true, $from, $argument);
+        return $this->translateSource($phrase, $locale, $category, $contentBlockId, $params, true, $from, $argument, $earlier);
+    }
+
+    /**
+     * TOK-1: the lookup a phrase holding an excluded element makes on a miss,
+     * under the key an earlier reader gave it - one that walked into the
+     * element - with that translation brought to the current slots. Lookup
+     * only: the earlier key is never registered.
+     *
+     * @param \Langsys\SDK\Html\MarkupTokenizer $tokenizer
+     * @param array|null $earlier The tokenizer's `earlier`
+     * @return callable|null category slice => translation, or null
+     */
+    private function earlierLookup(\Langsys\SDK\Html\MarkupTokenizer $tokenizer, array $earlier = null)
+    {
+        if ($earlier === null) {
+            return null;
+        }
+
+        return function (array $slice) use ($tokenizer, $earlier) {
+            $value = isset($slice[$earlier['text']]) ? $slice[$earlier['text']] : null;
+
+            return is_string($value) && $value !== '' ? $tokenizer->fromEarlier($value, $earlier) : null;
+        };
     }
 
     /**
@@ -1322,9 +1348,11 @@ class Client
      *                       runtime registration switch governs (FRM-2)
      * @param string|null $from Set to catalog, fallback or source
      * @param mixed $argument The argument as the caller wrote it
+     * @param callable|null $earlier A miss's lookup under the phrase's earlier
+     *                              key: category slice => translation or null
      * @return string
      */
-    protected function translateSource($phrase, $locale, $category, $contentBlockId, array $params, $fromCall = false, &$from = null, $argument = null)
+    protected function translateSource($phrase, $locale, $category, $contentBlockId, array $params, $fromCall = false, &$from = null, $argument = null, callable $earlier = null)
     {
         $from = 'source';
 
@@ -1365,6 +1393,13 @@ class Client
             $value = $seed[$category][$phrase];
 
             if ($value !== null && $value !== '') {
+                $from = 'catalog';
+
+                return $this->interpolate($value, $params, $locale);
+            }
+
+            $value = $earlier === null ? null : $earlier($seed[$category]);
+            if ($value !== null) {
                 $from = 'catalog';
 
                 return $this->interpolate($value, $params, $locale);
@@ -1443,6 +1478,13 @@ class Client
                 return $this->interpolate($value, $params, $locale);
             }
 
+            $value = $earlier === null ? null : $earlier($categoryTranslations);
+            if ($value !== null) {
+                $from = 'catalog';
+
+                return $this->interpolate($value, $params, $locale);
+            }
+
             return $this->answerMiss($phrase, $locale, $category, $params, $from, $argument);
         }
 
@@ -1453,6 +1495,15 @@ class Client
         // see (FRM-7).
         if (!$fromCall || $this->runtimeRegistration || ($template !== null && $this->templateSynced($template, $phrase, $categoryTranslations))) {
             $this->queuePhraseForRegistration($phrase, $category);
+        }
+
+        // A translation under the phrase's earlier key renders it, while only
+        // the current key registers (TOK-1).
+        $value = $earlier === null ? null : $earlier($categoryTranslations);
+        if ($value !== null) {
+            $from = 'catalog';
+
+            return $this->interpolate($value, $params, $locale);
         }
 
         return $this->answerMiss($phrase, $locale, $category, $params, $from, $argument);
@@ -3079,18 +3130,18 @@ class Client
     {
         $tokenizer = new \Langsys\SDK\Html\MarkupTokenizer();
         $markers = \Langsys\SDK\Html\ValueMarkers::read($host);
-        $encoded = $tokenizer->encode($host);
+        $encoded = $tokenizer->encode($host, $markers);
 
-        if ($encoded['text'] !== '' && !$markers->markerOnly([$encoded['text']]) && !$markers->unnamedWithin()) {
+        if ($tokenizer->hasText($encoded['text']) && !$markers->markerOnly([$encoded['text']]) && !$markers->unnamedWithin()) {
             $slots = $encoded['slots'];
-            $rendered = $this->translateSource($encoded['text'], null, $category, null, array_merge($markers->sentinels(), $params, $tokenizer->tokenParams(count($slots))));
+            $rendered = $this->translateSource($encoded['text'], null, $category, null, array_merge($markers->sentinels(), $params, $tokenizer->tokenParams(count($slots))), false, $from, null, $this->earlierLookup($tokenizer, $encoded['earlier']));
 
             if ($tokenizer->hasTokens($rendered)) {
                 $rendered = (string) preg_replace('/\{m\d+[oc]\}/', '', $rendered);
                 $slots = [];
             }
 
-            $nodes = $tokenizer->render($rendered, $slots, $host->ownerDocument);
+            $nodes = $tokenizer->render($rendered, $slots, $host->ownerDocument, $encoded['opaque']);
 
             while ($host->firstChild !== null) {
                 $host->removeChild($host->firstChild);

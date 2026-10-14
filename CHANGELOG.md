@@ -264,6 +264,18 @@ its id or re-registers it.
 
 ### Fixed
 
+- **An element you excluded inside a phrase renders as you wrote it.** In a
+  `data-langsys-phrase` run or a `translateRich()` line, an element marked
+  `translate="no"` or `data-notrans` is one empty token pair whatever it holds
+  (`Signed in as {m0o}{m0c} today`), and it renders from your source. A value
+  marked inside it rendered as its placeholder, so the page showed a literal
+  `{email}`; it now shows the value. Text a translation put between the pair is
+  dropped, and a run made only of excluded elements registers nothing, where it
+  registered `{m0o}{m0c}`. A run that v1.0.1 and v1.0.2 keyed with the excluded
+  element's text inside (`Welcome to {m0o}Langsys{m0c}`) renders the translation
+  stored under that key until its current key has one; only the current key
+  registers.
+
 - **A client built without credentials renders source text instead of throwing.**
   Without an API key or a project ID, `new Client()` threw, and whatever built it
   went down with it: an app's tests, CI, a fresh clone or an image build. Such a
