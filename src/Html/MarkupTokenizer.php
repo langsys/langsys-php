@@ -190,11 +190,13 @@ class MarkupTokenizer
     }
 
     /**
-     * Fill each `{name}` the caller passes, as plain text, inside the slots
-     * kept whole because their author excluded them. A framework call's line
-     * is a template: excluding an element keeps its words from translation,
-     * not its placeholders from their values. Script and its kin are left as
-     * written.
+     * Fill each `{name}` the caller passes, or its `%name%` spelling (TOK-5),
+     * as plain text inside the slots kept whole because their author
+     * excluded them, a boolean as `true`/`false` as the Interpolator writes
+     * it. A framework call's line is a template: excluding an element keeps
+     * its words from translation, not its placeholders from their values. A
+     * value that is not a scalar, such as a date, and script and its kin are
+     * left as written.
      *
      * @param DOMElement[] $slots
      * @param int[] $opaque encode()'s `opaque`
@@ -219,8 +221,13 @@ class MarkupTokenizer
     {
         foreach ($node->childNodes as $child) {
             if ($child instanceof DOMText) {
-                $child->nodeValue = (string) preg_replace_callback('/\{([A-Za-z_][A-Za-z0-9_]*)\}/', function ($m) use ($params) {
-                    return array_key_exists($m[1], $params) && is_scalar($params[$m[1]]) ? (string) $params[$m[1]] : $m[0];
+                $child->nodeValue = (string) preg_replace_callback('/\{([A-Za-z_][A-Za-z0-9_]*)\}|%([A-Za-z_][A-Za-z0-9_]*)%/', function ($m) use ($params) {
+                    $name = isset($m[2]) && $m[2] !== '' ? $m[2] : $m[1];
+                    if (!array_key_exists($name, $params) || !is_scalar($params[$name])) {
+                        return $m[0];
+                    }
+
+                    return is_bool($params[$name]) ? ($params[$name] ? 'true' : 'false') : (string) $params[$name];
                 }, $child->nodeValue);
             } elseif ($child instanceof DOMElement && !in_array(strtolower($child->tagName), self::OPAQUE_ELEMENTS, true)) {
                 $this->fillText($child, $params);

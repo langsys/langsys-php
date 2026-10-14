@@ -281,8 +281,10 @@ its id or re-registers it.
   `{email}`; it now shows the value. Text a translation put between the pair is
   dropped, and a run made only of excluded elements registers nothing, where it
   registered `{m0o}{m0c}`. In a `translateRich()` line a placeholder the caller
-  passes is filled inside the excluded element as well, as the framework fills
-  the rest of the line; a page or a block keeps excluded text exactly as written. A run that v1.0.1 and v1.0.2 keyed with the excluded
+  passes, `{name}` or `%name%`, is filled inside the excluded element as well,
+  as the framework fills the rest of the line (a boolean as `true`/`false`, a
+  date left as written); a page or a block keeps excluded text exactly as
+  written. A run that v1.0.1 and v1.0.2 keyed with the excluded
   element's text inside (`Welcome to {m0o}Langsys{m0c}`) renders the translation
   stored under that key until its current key has one; only the current key
   registers.

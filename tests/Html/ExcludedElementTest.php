@@ -267,6 +267,21 @@ class ExcludedElementTest extends TestCase
     }
 
     /**
+     * Inside an excluded element a value renders as the Interpolator writes
+     * it elsewhere in the line: `%name%` is `{name}` (TOK-5), a boolean is
+     * `true` or `false`, a number its digits; a date, which is no plain
+     * text, stays as written.
+     */
+    public function testAFillRendersEachValueAsTheInterpolatorDoes(): void
+    {
+        $params = ['email' => 'ana@example.com', 'on' => true, 'off' => false, 'count' => 3, 'ratio' => 2.5, 'when' => new \DateTime('2026-10-14T12:00:00Z')];
+
+        $html = $this->client()->translateRich('Write to <b translate="no">%email% {on} {off} {count} {ratio} {when} %when%</b> for help', null, 'UI', $params)['html'];
+
+        $this->assertSame('Write to <b translate="no">ana@example.com true false 3 2.5 {when} %when%</b> for help', $html);
+    }
+
+    /**
      * A rich line made only of an excluded element registers nothing and
      * renders with the caller's params filled.
      */
