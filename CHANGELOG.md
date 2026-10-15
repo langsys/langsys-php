@@ -283,9 +283,11 @@ its id or re-registers it.
   parser (libxml2 2.9) ends a `<script>` or `<style>` body at any end tag and
   drops it, so `translatePage()` turned `el.innerHTML = '<p>hi</p>'` into
   `'<p>hi'` and stripped `</b>` from JSON-LD and `</p>` from a CSS comment.
-  Every path now sets those bodies aside before parsing and restores them
-  as written, including inside a translated line. `<title>` and `<textarea>`
-  bodies still lose an end tag written inside them.
+  Every path now parses in libxml's recovery mode, which reads each body on
+  to its own end tag, including inside a translated line, and parses the rest
+  of the page as before. An end tag whose name begins with the element's own
+  (`</scripts>` inside a script) is still dropped, and so is an end tag inside
+  a `<title>` or `<textarea>`.
 - **An element you excluded inside a phrase renders as you wrote it.** In a
   `data-langsys-phrase` run or a `translateRich()` line, an element marked
   `translate="no"` or `data-notrans` is one empty token pair whatever it holds

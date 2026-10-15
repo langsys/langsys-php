@@ -50,7 +50,6 @@ class RawTextBodyTest extends TestCase
             'a template literal' => ['<script>const t = `<div class="x"><span>${n}</span></div>`;</script>'],
             'JSON-LD' => ['<script type="application/ld+json">{"desc": "<b>bold</b>"}</script>'],
             'a style comment' => ['<style>/* </p> */ p{color:red}</style>'],
-            'a longer end tag' => ['<script>a = "</scripts>"; b = "</b>";</script>'],
             'a comparison, the control' => ['<script>if (a < b && c > d) go();</script>'],
         ];
     }
@@ -131,6 +130,34 @@ class RawTextBodyTest extends TestCase
         $page = $this->client()->translatePage('<html><head><meta charset="utf-8"></head><body><div data-x="<script>a && b</script>"><p>Hello</p></div></body></html>', 'UI');
 
         $this->assertStringContainsString('data-x="&lt;script&gt;a &amp;&amp; b&lt;/script&gt;"', $page);
+    }
+
+    /**
+     * The markup around a body is read as libxml reads it, so what precedes
+     * a script cannot change where it starts or ends: a self-closed script or
+     * style, a comment closed by `--!>`, a stray quote in a tag, and a `<`
+     * that opens no tag.
+     */
+    public function testWhatPrecedesABodyIsReadAsTheParserReadsIt(): void
+    {
+        $body = '<script>el.innerHTML = "<b>x</b>";</script>';
+        foreach (['<script src="a.js"/>', '<svg viewBox="0 0 1 1"><defs><style/></defs></svg>', '<!-- nav --!>', '<img src="a.png"" alt="Logo">'] as $before) {
+            $page = $this->client(['Hello' => 'Hola'])->translatePage('<html><head><meta charset="utf-8"></head><body>' . $before . '<p>Hello</p>' . $body . '<p>Hello</p></body></html>', 'UI');
+
+            $this->assertStringContainsString('<p>Hola</p>' . $body . '<p>Hola</p>', $page, $before);
+        }
+    }
+
+    /**
+     * A body on a page in another charset comes back in the charset the page
+     * is written out in, as the rest of the page does.
+     */
+    public function testABodyOnALatin1PageIsWrittenOutAsTheRestOfThePageIs(): void
+    {
+        $page = $this->client()->translatePage("<html><head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=iso-8859-1\"></head><body><p>Hello</p><script>alert(\"Contrase\xF1a </b>\");</script></body></html>", 'UI');
+
+        $this->assertStringContainsString("alert(\"Contrase\u{F1}a </b>\")", $page);
+        $this->assertSame(1, preg_match('//u', $page), 'one encoding throughout');
     }
 
     /**
