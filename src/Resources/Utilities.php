@@ -49,7 +49,7 @@ class Utilities
      */
     public function getCountries($displayLocale, array $options = [])
     {
-        return $this->http->get('countries/' . $displayLocale, $options);
+        return $this->http->get('countries/' . rawurlencode((string) $displayLocale), $options);
     }
 
     /**
@@ -73,7 +73,7 @@ class Utilities
      */
     public function getDialCodes($displayLocale, array $options = [])
     {
-        return $this->http->get('countries/dial-codes/' . $displayLocale, $options);
+        return $this->http->get('countries/dial-codes/' . rawurlencode((string) $displayLocale), $options);
     }
 
     /**

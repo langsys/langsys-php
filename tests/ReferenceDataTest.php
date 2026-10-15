@@ -198,6 +198,27 @@ class ReferenceDataTest extends TestCase
     }
 
     /**
+     * A display locale that is not one - a path, a query - is refused before
+     * anything is sent, so it can never steer the authenticated request off
+     * its route.
+     */
+    public function testALocaleThatIsNotOneSendsNothing(): void
+    {
+        $client = $this->client();
+
+        foreach (['../authorize-project/project-id', '../../x?y=1#', 'es es', 'es/es', ''] as $locale) {
+            $this->assertSame([], $client->getCountries($locale === '' ? "\0" : $locale), json_encode($locale));
+            $this->assertSame([], $client->getCurrencies($locale === '' ? "\0" : $locale));
+            $this->assertSame([], $client->getDialCodes($locale === '' ? "\0" : $locale));
+            $this->assertSame([], $client->getLocalesFormat('flat', $locale === '' ? "\0" : $locale));
+        }
+
+        $this->assertSame([], $this->reads());
+        $this->assertNotEmpty($this->logger->messagesAt('warning'));
+        $this->assertSame(self::CURRENCIES, $client->getCurrencies('ES-es'), 'a locale in any case is still one');
+    }
+
+    /**
      * With no locale set or given, the list is read in the project's base
      * locale, as the TS core falls back to its base locale.
      */

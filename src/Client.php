@@ -2463,7 +2463,8 @@ class Client
     /**
      * The locale a reference list is named in: the one given, else the current
      * one, which a request with no locale of its own resolves to the project's
-     * base locale.
+     * base locale. One that is not shaped as a locale - a path, a query - is
+     * refused, since it is written into the request path.
      *
      * @param string|null $locale
      * @return string|null
@@ -2472,7 +2473,15 @@ class Client
     {
         $display = is_string($locale) && $locale !== '' ? LocaleDetector::normalize($locale) : $this->getLocale();
 
-        return $display === '' ? null : $display;
+        if (!is_string($display) || !preg_match('/^[a-z]{2,3}(?:-[a-z0-9]{1,8})*$/', $display)) {
+            if ($display !== null && $display !== '') {
+                $this->logger->warning('A reference list was asked for in something that is not a locale; nothing was sent', ['locale' => $display]);
+            }
+
+            return null;
+        }
+
+        return $display;
     }
 
     /**

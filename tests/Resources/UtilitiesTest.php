@@ -27,6 +27,17 @@ class UtilitiesTest extends TestCase
         $this->utilities = new Utilities($this->http, 'test-project-id');
     }
 
+    /**
+     * A display locale is one path segment, however it is written.
+     */
+    public function testADisplayLocaleIsOnePathSegment()
+    {
+        $this->utilities->getCountries('../authorize-project/x');
+        $this->utilities->getDialCodes('../x?y=1');
+
+        $this->assertSame(['countries/..%2Fauthorize-project%2Fx', 'countries/dial-codes/..%2Fx%3Fy%3D1'], array_column($this->http->getRequests(), 'endpoint'));
+    }
+
     public function testGetCountries()
     {
         $expectedResponse = [
