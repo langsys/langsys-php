@@ -187,6 +187,17 @@ class RawTextBodyTest extends TestCase
     }
 
     /**
+     * WIRE-4: a page with no element - only whitespace, a comment or a
+     * doctype - comes back as given, never an exception.
+     */
+    public function testAPageWithNoElementComesBackAsGiven(): void
+    {
+        foreach (["  \n", '<!-- x -->', '<!DOCTYPE html>'] as $html) {
+            $this->assertSame($html, $this->client()->translatePage($html, 'UI'), json_encode($html));
+        }
+    }
+
+    /**
      * A doctype with public and system identifiers is written back as it was.
      */
     public function testALegacyDoctypeIsWrittenBack(): void

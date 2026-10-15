@@ -183,10 +183,11 @@ class PageTranslator
             return $html;
         }
 
-        // Parse document
+        // Parse document. One with no element - whitespace, a comment, a
+        // doctype - has nothing to translate and comes back as given.
         $doc = $this->parseDocument($html);
-        if ($doc === null) {
-            return $html; // Return original on parse failure
+        if ($doc === null || $doc->documentElement === null) {
+            return $html;
         }
 
         // Value markers read as placeholders before anything is tokenized
