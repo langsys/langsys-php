@@ -124,9 +124,18 @@ class Client
     protected $pendingContentBlocks = [];
 
     /**
-     * @var bool Whether shutdown handler has been registered
+     * Clients with registrations queued, by object id. Held weakly, so the
+     * handler that flushes them when the process ends does not keep a Client
+     * alive: one its framework lets go is freed, and sends its queue as it goes.
+     *
+     * @var \WeakReference[]
      */
-    protected $shutdownRegistered = false;
+    private static $queued = [];
+
+    /**
+     * @var bool Whether the process's shutdown handler has been registered
+     */
+    private static $shutdownHandlerRegistered = false;
 
     /**
      * Consecutive failed sends, and when the next send may be tried (REG-8).
@@ -424,8 +433,8 @@ class Client
 
     /**
      * The exception for a client without credentials. With
-     * `require_credentials` on it is the one the constructor raised when
-     * credentials were mandatory; otherwise it names what was refused and why.
+     * `require_credentials` on it is the one the first use raises, naming the
+     * setting to provide; otherwise it names what was refused and why.
      *
      * @param string $action What was refused, e.g. "register phrases"
      * @return ConfigurationException
@@ -3819,23 +3828,61 @@ class Client
     }
 
     /**
-     * Register shutdown handler to auto-flush pending registrations.
+     * Have this Client's queue sent when the process ends, if it is still
+     * alive then. One handler serves every Client in the process.
      *
      * @return void
      */
     protected function registerShutdownHandler()
     {
-        if ($this->shutdownRegistered) {
+        // An id is reused once its object is freed, so an entry under it may
+        // be a Client gone before this one.
+        $id = spl_object_id($this);
+        if (!isset(self::$queued[$id]) || self::$queued[$id]->get() !== $this) {
+            self::$queued[$id] = \WeakReference::create($this);
+        }
+
+        if (!self::$shutdownHandlerRegistered) {
+            self::$shutdownHandlerRegistered = true;
+            register_shutdown_function(static function () {
+                self::flushAtShutdown();
+            });
+        }
+    }
+
+    /**
+     * Send the queue of every Client still alive.
+     *
+     * @return void
+     */
+    private static function flushAtShutdown()
+    {
+        foreach (self::$queued as $id => $reference) {
+            unset(self::$queued[$id]);
+            $client = $reference->get();
+            if ($client !== null) {
+                $client->flushPendingRegistrations();
+            }
+        }
+    }
+
+    /**
+     * A Client let go with registrations queued sends them now: nothing else
+     * will. A best-effort send, so nothing it raises escapes the free.
+     */
+    public function __destruct()
+    {
+        unset(self::$queued[spl_object_id($this)]);
+
+        if (empty($this->pendingPhrases) && empty($this->pendingContentBlocks)) {
             return;
         }
 
-        $this->shutdownRegistered = true;
-
-        // Register shutdown function to flush at end of request
-        $client = $this;
-        register_shutdown_function(function () use ($client) {
-            $client->flushPendingRegistrations();
-        });
+        try {
+            $this->flushPendingRegistrations();
+        } catch (\Throwable $e) {
+            $this->logger->error('Flush failed as the client was freed', ['error' => $e->getMessage()]);
+        }
     }
 
     /**

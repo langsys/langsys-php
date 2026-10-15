@@ -11,7 +11,7 @@ namespace Langsys\SDK\Tests\Contract;
  */
 class ShutdownFlushContractTest extends ContractTestCase
 {
-    private function render($key)
+    private function render($key, $after = '')
     {
         $script = sys_get_temp_dir() . '/langsys-srv3-' . bin2hex(random_bytes(4)) . '.php';
         file_put_contents($script, '<?php
@@ -20,36 +20,63 @@ $client = new \\Langsys\\SDK\\Client(' . var_export($key, true) . ', ' . var_exp
 $client->setLocale("es-es");
 echo $client->translatePage("<html><body><p>Collected after the response</p></body></html>"), "\n";
 fflush(STDOUT);
-');
+' . $after);
 
+        // Each line the process prints, and the server's state as it was read.
         $process = proc_open([PHP_BINARY, $script], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
-        $page = fgets($pipes[1]);
-        $stateWhenPrinted = $this->registeredPhrases();
-        stream_get_contents($pipes[1]);
+        $lines = [];
+        $states = [];
+        while (($line = fgets($pipes[1])) !== false) {
+            $lines[] = $line;
+            $states[] = $this->registeredPhrases();
+        }
         proc_close($process);
         @unlink($script);
 
-        return [$page, $stateWhenPrinted];
+        return [$lines, $states];
     }
 
     public function testAWriteKeyRegistersAfterThePageIsOut(): void
     {
         $this->seedProject(['k-write' => ['type' => 'write']], [], [], [['method' => 'POST', 'path' => '/translatable-items', 'delay_ms' => 1000]]);
 
-        list($page, $stateWhenPrinted) = $this->render('k-write');
+        list($lines, $states) = $this->render('k-write');
 
-        $this->assertStringContainsString('Collected after the response', $page);
-        $this->assertSame([], $stateWhenPrinted, 'nothing was registered before the page was printed');
+        $this->assertStringContainsString('Collected after the response', $lines[0]);
+        $this->assertSame([], $states[0], 'nothing was registered before the page was printed');
         $this->assertSame([[null, 'Collected after the response']], $this->registeredPhrases(), 'and it was registered once the process ended');
+    }
+
+    /**
+     * The send at the end runs with the process's shutdown functions, while
+     * the framework that built the Client is still up, and not as PHP frees
+     * what is left, in no set order, once they are done. A shutdown function
+     * registered after the render finds the registration made, and holds the
+     * process there while the server's state is read.
+     */
+    public function testTheSendAtTheEndRunsWithTheShutdownFunctions(): void
+    {
+        $this->seedProject(['k-write' => ['type' => 'write']]);
+
+        list($lines, $states) = $this->render('k-write', 'register_shutdown_function(function () {
+    echo "shutdown functions running\n";
+    fflush(STDOUT);
+    usleep(1500000);
+});
+');
+
+        $marker = array_search("shutdown functions running\n", $lines, true);
+        $this->assertNotFalse($marker);
+        $this->assertSame([[null, 'Collected after the response']], $states[$marker]);
     }
 
     public function testAReadKeyOnTheSameRenderRegistersNothing(): void
     {
         $this->seedProject(['k-read' => ['type' => 'read']]);
 
-        list($page) = $this->render('k-read');
+        list($lines) = $this->render('k-read');
 
-        $this->assertStringContainsString('Collected after the response', $page);
+        $this->assertStringContainsString('Collected after the response', $lines[0]);
         $this->assertSame([], $this->registeredPhrases());
     }
 }

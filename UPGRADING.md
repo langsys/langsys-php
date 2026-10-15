@@ -96,3 +96,7 @@ parameters to its signature, or PHP refuses it as incompatible:
 
 `PageTranslator::markItemsAsRegistered()` and `markItemsAsRegisteredWithCategory()` no
 longer exist.
+
+`Client` has a destructor, which sends what a freed `Client` still has queued. A subclass
+that defines `__destruct()` should call `parent::__destruct()`, or that queue is not sent.
+The protected `Client::$shutdownRegistered` property no longer exists.

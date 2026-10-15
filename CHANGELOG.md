@@ -281,6 +281,14 @@ its id or re-registers it.
 
 ### Fixed
 
+- **A worker that builds a `Client` per request no longer keeps every one of
+  them.** The end-of-process flush held each `Client` that had queued anything
+  until the process ended, so such a worker grew by a whole `Client`, caches
+  included, with every request. One shutdown handler now serves the process and
+  holds its clients weakly: a `Client` its framework lets go is freed, and sends
+  what it still has queued as it goes; one still alive at the end is sent from the
+  shutdown handler, while the framework is still up. Measured flat over 3,000
+  requests.
 - **A page without `<html>`, or without a `<head>` or `<body>`, is translated
   whole.** Such a page is read inside an `<html>` as a browser reads it, so
   every top-level element is translated, where only the first was, and a

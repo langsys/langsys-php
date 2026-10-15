@@ -748,11 +748,13 @@ $result = $client->flushPendingRegistrations();
 // Returns: ['phrases' => 5, 'content_blocks' => 2, 'success' => true, ...]
 ```
 
-The shutdown flush is **best-effort**: it does not run when the process is killed
-(out of memory, a hard timeout), and a long-lived worker (Octane, Swoole, a queue
-worker) may never reach it. Call `flushPendingRegistrations()` yourself at the end
-of each request or job, then `resetRequestState()`; the reset drops anything still
-queued, so one request's phrases never go out with another's.
+The automatic flush is **best-effort**. A `Client` sends what it still has queued
+when it is freed, and one still alive when the process ends sends it from a shutdown
+function. Neither happens when the process is killed (out of memory, a hard timeout),
+and a long-lived worker (Octane, Swoole, a queue worker) that keeps one `Client` for
+its whole life reaches neither until it exits. Call `flushPendingRegistrations()`
+yourself at the end of each request or job, then `resetRequestState()`; the reset
+drops anything still queued, so one request's phrases never go out with another's.
 
 **When a send fails** the items stay queued and the SDK backs off: the next flush
 waits 3 seconds, then 6, doubling up to 5 minutes, and the first successful send
