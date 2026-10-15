@@ -183,7 +183,7 @@ class HtmlParser
         $doc = new DOMDocument();
         // Wrap in a div to handle fragments, use UTF-8 encoding
         $wrapped = '<?xml encoding="UTF-8"><div>' . $html . '</div>';
-        $doc->loadHTML($wrapped, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        Document::load($doc, $wrapped, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
 
         libxml_clear_errors();
         libxml_use_internal_errors($internalErrors);
@@ -747,7 +747,7 @@ class HtmlParser
             $internalErrors = libxml_use_internal_errors(true);
 
             $doc = new DOMDocument();
-            $doc->loadHTML('<?xml encoding="UTF-8"><div>' . $html . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+            Document::load($doc, '<?xml encoding="UTF-8"><div>' . $html . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
 
             libxml_clear_errors();
             libxml_use_internal_errors($internalErrors);
@@ -961,7 +961,7 @@ class HtmlParser
         $doc->encoding = 'UTF-8';
         // Wrap in a div to handle fragments
         $wrapped = '<?xml encoding="UTF-8"><div>' . $html . '</div>';
-        $doc->loadHTML($wrapped, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        Document::load($doc, $wrapped, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
 
         libxml_clear_errors();
         libxml_use_internal_errors($internalErrors);

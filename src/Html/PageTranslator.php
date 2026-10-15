@@ -450,7 +450,7 @@ class PageTranslator
             $htmlWithEncoding = '<?xml encoding="UTF-8">' . $html;
         }
 
-        $loaded = $doc->loadHTML($htmlWithEncoding, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        $loaded = Document::load($doc, $htmlWithEncoding, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
 
         libxml_clear_errors();
         libxml_use_internal_errors($internalErrors);

@@ -140,7 +140,7 @@ class MarkupTokenizer
 
         $doc = new DOMDocument();
         $doc->encoding = 'UTF-8';
-        $loaded = $doc->loadHTML('<?xml encoding="UTF-8"><div>' . $html . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        $loaded = Document::load($doc, '<?xml encoding="UTF-8"><div>' . $html . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
 
         libxml_clear_errors();
         libxml_use_internal_errors($internalErrors);
