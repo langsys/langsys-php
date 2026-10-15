@@ -200,6 +200,29 @@ class RawTextBodyTest extends TestCase
     }
 
     /**
+     * A page without an <html> is read as a browser reads it, inside one:
+     * every top-level element is translated, and one that is a document - a
+     * doctype, a head, a body or a title - is written back as one, its head
+     * holding the head elements it led with, so its title and lang are set.
+     * One that is a fragment is written back as the fragment it was.
+     */
+    public function testAPageWithoutAnHtmlElementIsTranslatedWhole(): void
+    {
+        $catalog = ['Hello world' => 'Hola mundo', 'Title' => 'Título'];
+        foreach ([
+            '<meta charset="utf-8"><title>Title</title><p>Hello world</p>' => '<html lang="es-es" data-ls-resolved="es-es"><head><meta charset="utf-8"><title>Título</title></head><p>Hola mundo</p></html>' . "\n",
+            '<head><meta charset="utf-8"><title>Title</title></head><body><p>Hello world</p></body>' => '<html lang="es-es" data-ls-resolved="es-es"><head><meta charset="utf-8"><title>Título</title></head><body><p>Hola mundo</p></body></html>' . "\n",
+            '<!DOCTYPE html><meta charset="utf-8"><title>Title</title><p>Hello world</p>' => '<!DOCTYPE html>' . "\n" . '<html lang="es-es" data-ls-resolved="es-es"><head><meta charset="utf-8"><title>Título</title></head><p>Hola mundo</p></html>' . "\n",
+            '<div><p>Hello world</p></div><footer><p>Hello world</p></footer>' => '<div data-ls-resolved="es-es"><p>Hola mundo</p></div><footer><p>Hola mundo</p></footer>' . "\n",
+            '<p>Hello world</p>' => '<p data-ls-resolved="es-es">Hola mundo</p>' . "\n",
+            '<!DOCTYPE html><html lang="de"><meta charset="windows-1252"><title>Title</title><p>Hello world</p></html>' => '<!DOCTYPE html>' . "\n" . '<html lang="es-es" data-ls-resolved="es-es"><head><meta charset="utf-8"><title>Título</title></head><p>Hola mundo</p></html>' . "\n",
+            '<html><head><title>Title</title></head><p>Hello world</p></html>' => '<html lang="es-es" data-ls-resolved="es-es"><head><meta charset="utf-8"><title>Título</title></head><p>Hola mundo</p></html>' . "\n",
+        ] as $html => $expected) {
+            $this->assertSame($expected, $this->client($catalog)->translatePage($html, 'UI'), $html);
+        }
+    }
+
+    /**
      * WIRE-4: a page with no element - only whitespace, a comment or a
      * doctype - comes back as given, never an exception.
      */

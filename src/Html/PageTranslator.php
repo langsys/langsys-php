@@ -53,6 +53,8 @@ class PageTranslator
      */
     const SKIP_ELEMENTS = [
         'script', 'style', 'noscript', 'template', 'math',
+        // The head handler's, and walked only on a page with no <body>.
+        'head',
     ];
 
     /**
@@ -94,6 +96,15 @@ class PageTranslator
      * @var ValueMarkers|null The value markers read from the current document.
      */
     protected $markers = null;
+
+    /**
+     * @var bool Whether the current page's <html> is one parseDocument() added
+     *           to a fragment, written back out as the fragment it was.
+     */
+    protected $fragmentRoot = false;
+
+    /** Elements a browser puts in the head a page leaves implied. */
+    const HEAD_CONTENT = ['base', 'link', 'meta', 'noscript', 'script', 'style', 'template', 'title'];
 
     /**
      * @var LoggerInterface|null Defaulted in the CONSTRUCTOR, not here.
@@ -403,6 +414,12 @@ class PageTranslator
         $htmls = $doc->getElementsByTagName('html');
         $root = $htmls->length > 0 ? $htmls->item(0) : $doc->documentElement;
 
+        // A fragment's marker goes on its first element, the <html> it was
+        // read in being the SDK's.
+        if ($this->fragmentRoot && $root instanceof DOMElement) {
+            $root = $root->firstElementChild;
+        }
+
         if (!$root instanceof DOMElement) {
             return;
         }
@@ -469,7 +486,22 @@ class PageTranslator
 
         // Decoded as a browser decodes it, then read as the UTF-8 it now is,
         // whatever its metas say (Document ignores them).
-        $loaded = Document::load($doc, '<?xml encoding="UTF-8">' . Charset::toUtf8($html), LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        $html = Charset::toUtf8($html);
+
+        // A page without an <html> is read inside one, as a browser reads it,
+        // opened after its doctype and never closed, so every top-level
+        // element is part of the page. One that is a document - a doctype, a
+        // head, a body or a title - keeps it; a fragment is written back as
+        // the fragment it was.
+        $this->fragmentRoot = false;
+        if (!preg_match('/<html[\s>\/]/i', $html) && preg_match('/<[a-z]/i', $html)) {
+            preg_match('/^(?:\s|<!--.*?-->|<!doctype[^>]*>)*/is', $html, $prolog);
+            $rest = (string) substr($html, strlen($prolog[0]));
+            $this->fragmentRoot = stripos($prolog[0], '<!doctype') === false && !preg_match('/<(?:head|body|title)[\s>\/]/i', $rest);
+            $html = $prolog[0] . '<html>' . $rest;
+        }
+
+        $loaded = Document::load($doc, '<?xml encoding="UTF-8">' . $html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
 
         libxml_clear_errors();
         libxml_use_internal_errors($internalErrors);
@@ -478,7 +510,52 @@ class PageTranslator
             return null;
         }
 
+        if (!$this->fragmentRoot) {
+            $this->impliedHead($doc);
+        }
+
         return $doc;
+    }
+
+    /**
+     * Give a page whose <html> has no <head> the one a browser implies: the
+     * head elements the page leads with - its title, metas, links, styles,
+     * scripts - so its title translates and its charset is declared there.
+     *
+     * @param DOMDocument $doc
+     * @return void
+     */
+    protected function impliedHead(DOMDocument $doc)
+    {
+        $html = $doc->getElementsByTagName('html')->item(0);
+        if (!$html instanceof DOMElement || $doc->getElementsByTagName('head')->length > 0) {
+            return;
+        }
+
+        $leading = [];
+        $elements = 0;
+        foreach ($html->childNodes as $child) {
+            if ($child instanceof DOMElement && in_array(strtolower($child->nodeName), self::HEAD_CONTENT, true)) {
+                $leading[] = $child;
+                $elements++;
+                continue;
+            }
+            if ($child instanceof \DOMComment || ($child instanceof \DOMText && trim($child->data) === '')) {
+                $leading[] = $child;
+                continue;
+            }
+            break;
+        }
+
+        if ($elements === 0) {
+            return;
+        }
+
+        $head = $doc->createElement('head');
+        $html->insertBefore($head, $html->firstChild);
+        foreach ($leading as $node) {
+            $head->appendChild($node);
+        }
     }
 
     /**
@@ -1403,6 +1480,14 @@ class PageTranslator
 
             // The encoding hint parseDocument() adds is not the page's.
             if ($child instanceof \DOMProcessingInstruction && strtolower($child->target) === 'xml') {
+                continue;
+            }
+
+            // Nor is the <html> it read a fragment inside.
+            if ($this->fragmentRoot && $child instanceof DOMElement && $child->nodeName === 'html') {
+                foreach ($child->childNodes as $node) {
+                    $html .= $doc->saveHTML($node);
+                }
                 continue;
             }
 

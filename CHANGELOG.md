@@ -281,6 +281,15 @@ its id or re-registers it.
 
 ### Fixed
 
+- **A page without `<html>`, or without a `<head>` or `<body>`, is translated
+  whole.** Such a page is read inside an `<html>` as a browser reads it, so
+  every top-level element is translated, where only the first was, and a
+  page that is a document - a doctype, a head, a body or a title - is written
+  back with the `<html>` and the head a browser implies, so its title and
+  `lang` are set; one that is a fragment comes back as the fragment it was.
+  A minified page whose `<meta charset>` came first no longer loses
+  everything after it, and on a page with no `<body>` the head is no longer
+  read as body text.
 - **A page is read as a browser reads it.** `translatePage()` decodes a page
   before anything reads it as a browser does: a byte-order mark first, then
   the charset its first 1024 bytes declare, with Latin-1 and ASCII labels read
