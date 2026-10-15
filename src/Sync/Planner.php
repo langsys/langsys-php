@@ -406,7 +406,8 @@ final class Planner
      * Each translation slot's source slot, or null when they cannot be
      * matched (see richTranslations()). An element kept whole renders its
      * source content, which its slot holds, so that content tells two of them
-     * apart as well; any other slot holds no children.
+     * apart as well; any other slot holds no children. Both sides compare in
+     * the form a phrase takes, since a carried translation is read in it.
      *
      * @param \DOMElement[] $source
      * @param \DOMElement[] $target
@@ -427,7 +428,7 @@ final class Planner
         $identity = function (\DOMElement $slot) {
             $attributes = [];
             foreach ($slot->attributes as $attribute) {
-                $attributes[$attribute->name] = $attribute->value;
+                $attributes[$attribute->name] = Canonical::phrase($attribute->value);
             }
             ksort($attributes);
 
@@ -436,7 +437,7 @@ final class Planner
                 $content .= $slot->ownerDocument->saveHTML($child);
             }
 
-            return json_encode([$attributes, $content]);
+            return json_encode([$attributes, Canonical::phrase($content)]);
         };
 
         $sourceTags = $byTag($source);

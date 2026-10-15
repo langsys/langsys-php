@@ -331,6 +331,28 @@ class PlannerTest extends TestCase
     }
 
     /**
+     * The source line and its translation are compared in the one form a
+     * phrase takes, so whitespace, a no-break space or a `%name%` inside an
+     * attribute or an element kept whole does not stop a translation that
+     * keeps the same markup.
+     */
+    public function testSlotsAreComparedInTheFormAPhraseTakes(): void
+    {
+        list($source, $readers) = $this->files(
+            ['names' => "<span translate=\"no\">Alice  Smith</span> meets <span translate=\"no\">Bob\u{A0}%brand%</span>", 'links' => '<a class="btn  x" href="/a">A</a> or <a class="btn  x" href="/b">B</a>'],
+            ['names' => "<span translate=\"no\">Alice  Smith</span> trifft <span translate=\"no\">Bob\u{A0}%brand%</span>", 'links' => '<a class="btn  x" href="/b">Be</a> o <a class="btn  x" href="/a">A</a>']
+        );
+
+        $plan = (new Planner($source))->plan($this->hits("echo app('translator')->getHtml('legal.names');\necho app('translator')->getHtml('legal.links');"), $readers);
+
+        $this->assertSame([
+            ['legal', '{m0o}{m0c} meets {m1o}{m1c}', ['es-es' => '{m0o}{m0c} trifft {m1o}{m1c}']],
+            ['legal', '{m0o}A{m0c} or {m1o}B{m1c}', ['es-es' => '{m1o}Be{m1c} o {m0o}A{m0c}']],
+        ], self::items($plan));
+        $this->assertSame([], $plan->skipped);
+    }
+
+    /**
      * A line of a rich runtime key's group that registers nothing - no text
      * of its own - reports nothing either.
      */
