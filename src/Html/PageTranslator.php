@@ -695,25 +695,25 @@ class PageTranslator
     protected function extractAsTokenizedPhrase(DOMElement $element, array &$phrases, $effectiveCategory)
     {
         $encoded = $this->markupTokenizer->encode($element);
-
-        // Nothing translatable: no text, or only elements kept whole (TOK-1).
-        if (!$this->markupTokenizer->hasText($encoded['text'])) {
-            return;
-        }
-
         $category = $effectiveCategory !== null ? $effectiveCategory : '__uncategorized__';
 
-        $phrases[] = [
-            'text' => $encoded['text'],
-            'element' => $element,
-            'category' => $category,
-            'slots' => $encoded['slots'],
-            'tokenized' => true,
-        ];
+        // A run with no text of its own - only elements kept whole - is no
+        // phrase (TOK-1), but its attributes still are.
+        $hasText = $this->markupTokenizer->hasText($encoded['text']);
+        if ($hasText) {
+            $phrases[] = [
+                'text' => $encoded['text'],
+                'element' => $element,
+                'category' => $category,
+                'slots' => $encoded['slots'],
+                'tokenized' => true,
+            ];
+        }
 
         // Translatable attributes are not part of the tokenized text, so without
         // this they would be silently dropped - adding the marker to keep a
         // sentence together would un-translate the element's title/alt/placeholder.
+        // A host with no phrase of its own has them applied on their own.
         foreach ($this->collectAttributePhrases($element) as $attributePhrase) {
             $phrases[] = [
                 'text' => $attributePhrase,
@@ -721,7 +721,7 @@ class PageTranslator
                 'scope' => $element,
                 'category' => $category,
                 'attributeOnly' => true,
-            ];
+            ] + ($hasText ? [] : ['host' => $element]);
         }
     }
 
@@ -943,7 +943,18 @@ class PageTranslator
         // Then phrases, innermost first: a phrase host nested in another
         // (MARK-4) is translated before the outer one rebuilds its markup from
         // copies of its children.
+        $attributesApplied = new \SplObjectStorage();
         foreach (array_reverse($phrases) as $phraseData) {
+            // A host with no phrase of its own still has its attributes
+            // translated, once (TOK-1).
+            if (isset($phraseData['host']) && $phraseData['host'] instanceof DOMElement) {
+                if (!$attributesApplied->contains($phraseData['host'])) {
+                    $attributesApplied->attach($phraseData['host']);
+                    $this->applyAttributeTranslations($phraseData['host'], isset($phraseData['category']) ? $phraseData['category'] : $defaultCategory, $translations);
+                }
+                continue;
+            }
+
             if (!isset($phraseData['element']) || !($phraseData['element'] instanceof DOMElement)) {
                 continue;
             }

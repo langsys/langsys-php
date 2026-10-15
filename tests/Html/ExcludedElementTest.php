@@ -141,6 +141,39 @@ class ExcludedElementTest extends TestCase
     }
 
     /**
+     * A host with no text of its own still has its attributes, and its
+     * descendants', registered and translated, on the page as in a block.
+     *
+     * @dataProvider routeProvider
+     */
+    public function testAHostOfOnlyExcludedContentStillTranslatesItsAttributes($route): void
+    {
+        if ($route === 'rich') {
+            $this->addToAssertionCount(1);
+
+            return;
+        }
+
+        list($html, $queued) = $this->render($route, '<span translate="no">Langsys</span> <img alt="Logo">');
+        $this->assertSame(['Logo'], $queued, 'the attribute registers, the excluded text does not');
+
+        $client = $this->client(['Logo' => 'Logotipo', 'Hello' => 'Hola']);
+        $out = $route === 'page'
+            ? $client->translatePage('<html><body><p data-ls-phrase title="Hello"><span translate="no">Langsys</span> <img alt="Logo"></p></body></html>', 'UI')
+            : $client->translateContentBlock('<p data-ls-phrase title="Hello"><span translate="no">Langsys</span> <img alt="Logo"></p>', 'UI');
+        $this->assertStringContainsString('title="Hola"', $out);
+        $this->assertStringContainsString('alt="Logotipo"', $out);
+        $this->assertStringContainsString('<span translate="no">Langsys</span>', $out);
+
+        // Applied once: a translation is never looked up again as source.
+        $client = $this->client(['Logo' => 'Logotipo', 'Hello' => 'Hola', 'Hola' => 'not this']);
+        $out = $route === 'page'
+            ? $client->translatePage('<html><body><p data-ls-phrase title="Hello"><span translate="no">Langsys</span> <img alt="Logo"></p></body></html>', 'UI')
+            : $client->translateContentBlock('<p data-ls-phrase title="Hello"><span translate="no">Langsys</span> <img alt="Logo"></p>', 'UI');
+        $this->assertStringContainsString('title="Hola"', $out);
+    }
+
+    /**
      * `data-notrans="false"` is no exclusion: its text is the phrase's.
      *
      * @dataProvider routeProvider
