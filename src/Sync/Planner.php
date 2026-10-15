@@ -240,18 +240,16 @@ final class Planner
             }
 
             $inRichGroup = self::inGroups($key, $richGroups);
+            $line = $inRichGroup ? self::richSource($entry['phrase']) : null;
             $raw = (!isset($richKeys[$key]) && !$inRichGroup) || self::inGroups($key, $plainGroups);
-            if (!$inRichGroup && !$raw) {
+            if ($line === null && !$raw) {
                 continue;
             }
 
             $translations = self::lineTranslations($key, $readers, $skipped);
 
-            if ($inRichGroup) {
-                $rich = self::richLine($entry['phrase'], $key, $translations, $skipped);
-                if ($rich !== null) {
-                    $add($rich[0], $entry['category'], $rich[1], $key);
-                }
+            if ($line !== null) {
+                $add($line['encoded']['text'], $entry['category'], self::richTranslations($line, $key, $translations, $skipped), $key);
             }
 
             if ($raw) {
@@ -267,6 +265,9 @@ final class Planner
                 $items[$id]['status'] = 'with_translations';
             }
         }
+
+        // A key several routes reach is reported once for each locale it lacks.
+        $skipped = array_values(array_map('unserialize', array_unique(array_map('serialize', $skipped))));
 
         return new SyncPlan(array_values($items), $reported, $skipped, $viaValidation, $covered, $viaMessageListing);
     }
@@ -333,12 +334,23 @@ final class Planner
      */
     private static function richLine($phrase, $key, array $translations, array &$skipped)
     {
-        $line = MarkupTokenizer::readLine($phrase);
-        if ($line === null || !$line['tokenizer']->hasText($line['encoded']['text'])) {
-            return null;
-        }
+        $line = self::richSource($phrase);
 
-        return [$line['encoded']['text'], self::richTranslations($line, $key, $translations, $skipped)];
+        return $line === null ? null : [$line['encoded']['text'], self::richTranslations($line, $key, $translations, $skipped)];
+    }
+
+    /**
+     * A rich source line as MarkupTokenizer::readLine() reads it, or null when
+     * it has no text of its own and registers nothing.
+     *
+     * @param string $phrase
+     * @return array|null
+     */
+    private static function richSource($phrase)
+    {
+        $line = MarkupTokenizer::readLine($phrase);
+
+        return $line === null || !$line['tokenizer']->hasText($line['encoded']['text']) ? null : $line;
     }
 
     /**

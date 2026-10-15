@@ -295,6 +295,37 @@ class PlannerTest extends TestCase
     }
 
     /**
+     * A line of a rich runtime key's group that registers nothing - no text
+     * of its own - reports nothing either.
+     */
+    public function testAGroupLineWithNoTextReportsNothing(): void
+    {
+        list($source, $readers) = $this->files(['brand' => '<b translate="no">Langsys</b>', 'terms' => 'Read <b>this</b>'], ['terms' => 'Lee <b>esto</b>']);
+
+        $plan = (new Planner($source))->plan($this->hits("echo app('translator')->getHtml(\"legal.\$k\");"), $readers);
+
+        $this->assertSame(['Read {m0o}this{m0c}'], array_column($plan->items, 'phrase'));
+        $this->assertSame([], $plan->skipped);
+    }
+
+    /**
+     * A missing translation is reported once however many routes reach its
+     * key: a rich literal and its rich runtime group, or a plain call and the
+     * base-language lines.
+     */
+    public function testEachSkipIsReportedOnce(): void
+    {
+        list($source, $readers) = $this->files(['gone' => 'Only in <b>English</b>', 'plain' => 'Only in English'], []);
+
+        $plan = (new Planner($source))->plan($this->hits("echo app('translator')->getHtml(\"legal.\$k\");\necho app('translator')->getHtml('legal.gone');\necho e(__('legal.plain'));"), $readers);
+
+        $this->assertSame([
+            ['key' => 'legal.gone', 'locale' => 'es-es', 'reason' => 'missing'],
+            ['key' => 'legal.plain', 'locale' => 'es-es', 'reason' => 'missing'],
+        ], $plan->skipped);
+    }
+
+    /**
      * A translation a rich key's other languages lack is reported once, by
      * the call that reached it, not again by the base-language lines.
      */
