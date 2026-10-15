@@ -145,7 +145,7 @@ class MarkupTokenizer
         libxml_clear_errors();
         libxml_use_internal_errors($internalErrors);
 
-        $root = $loaded ? $doc->getElementsByTagName('div')->item(0) : null;
+        $root = $loaded ? Document::fragmentRoot($doc) : null;
         if (!$root instanceof DOMElement) {
             return null;
         }

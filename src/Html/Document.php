@@ -45,14 +45,20 @@ final class Document
         return $doc->loadHTML((string) $html, $options | self::RECOVER | self::IGNORE_ENCODING);
     }
 
+    /** The element a fragment is read inside, one no fragment's end tag can close. */
+    const FRAGMENT_ROOT = 'ls-fragment';
+
     /**
-     * Load a fragment into $doc inside one `<div>`, the document's first
-     * element, as every fragment path reads it.
+     * Load a fragment into $doc inside one wrapper element, the document's
+     * first, as every fragment path reads it; fragmentRoot() finds it.
      *
      * The wrapper is opened and never closed: the end of the input closes it,
      * as it closes whatever the fragment leaves open, so a script, a comment,
      * a start tag or an attribute value the fragment ends inside ends where
      * the fragment does, as in a browser, with nothing of the SDK's in it.
+     * It is an element of its own, so a stray `</div>` in the fragment closes
+     * nothing, and what follows is still the fragment's, as an element's
+     * innerHTML keeps it.
      *
      * @param DOMDocument $doc
      * @param string $html
@@ -60,6 +66,17 @@ final class Document
      */
     public static function loadFragment(DOMDocument $doc, $html)
     {
-        return self::load($doc, '<?xml encoding="UTF-8"><div>' . Charset::scrub($html), LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        return self::load($doc, '<?xml encoding="UTF-8"><' . self::FRAGMENT_ROOT . '>' . Charset::scrub($html), LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+    }
+
+    /**
+     * The wrapper loadFragment() read a fragment inside, or null.
+     *
+     * @param DOMDocument|null $doc
+     * @return \DOMElement|null
+     */
+    public static function fragmentRoot(DOMDocument $doc = null)
+    {
+        return $doc === null ? null : $doc->documentElement;
     }
 }

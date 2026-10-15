@@ -318,6 +318,22 @@ class RawTextBodyTest extends TestCase
     }
 
     /**
+     * A fragment's own stray `</div>` closes nothing of the SDK's: what
+     * follows it is still the fragment's, rendered and registered, as an
+     * element's innerHTML keeps it.
+     */
+    public function testAStrayEndTagInAFragmentKeepsWhatFollowsIt(): void
+    {
+        $client = $this->client();
+        $this->assertSame('<p>Hello world</p><p>Tail</p>', preg_replace('/ data-ls-contentblock="[0-9a-f]+"/', '', $client->translateContentBlock('<p>Hello world</p></div><p>Tail</p>', 'UI')));
+        $this->assertSame([['Hello world', 'Tail']], array_values(array_map(function ($b) {
+            return $b['phrases'];
+        }, $client->getPendingContentBlocks())));
+
+        $this->assertSame('Hello world Tail', $this->client()->translateRich('Hello world</div> Tail', null, 'UI')['html']);
+    }
+
+    /**
      * A body on a page in another charset comes back in the charset the page
      * is written out in, as the rest of the page does.
      */

@@ -1000,7 +1000,7 @@ class HtmlParser
         }
 
         // Extract inner HTML of the wrapper div
-        $wrapper = $doc->getElementsByTagName('div')->item(0);
+        $wrapper = Document::fragmentRoot($doc);
         if ($wrapper === null) {
             return $html;
         }

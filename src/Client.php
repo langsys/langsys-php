@@ -2794,7 +2794,7 @@ class Client
         // render stamps a single host with the block's id, and that stamp is
         // this unit's identity, not a nested declaration.
         $source = strpos($html, 'data-ls-') === false && strpos($html, 'data-langsys-') === false ? null : $this->fragmentDocument($html);
-        $sourceRoot = $source === null ? null : $source->getElementsByTagName('div')->item(0);
+        $sourceRoot = \Langsys\SDK\Html\Document::fragmentRoot($source);
 
         $rendered = $this->translateBlockUnit($html, $category, $params, false);
 
@@ -3136,7 +3136,7 @@ class Client
     protected function renderNestedHostsIn($html, $category, array $params, $belowSingleHost)
     {
         $doc = $this->fragmentDocument($html);
-        $wrapper = $doc === null ? null : $doc->getElementsByTagName('div')->item(0);
+        $wrapper = \Langsys\SDK\Html\Document::fragmentRoot($doc);
 
         if ($wrapper === null) {
             return $html;
@@ -3383,7 +3383,7 @@ class Client
     protected function replaceChildrenWithHtml(\DOMElement $element, $html)
     {
         $source = $this->fragmentDocument($html);
-        $wrapper = $source === null ? null : $source->getElementsByTagName('div')->item(0);
+        $wrapper = \Langsys\SDK\Html\Document::fragmentRoot($source);
 
         if ($wrapper === null) {
             return;
@@ -3436,7 +3436,7 @@ class Client
         libxml_clear_errors();
         libxml_use_internal_errors($internalErrors);
 
-        $wrapper = $doc->getElementsByTagName('div')->item(0);
+        $wrapper = \Langsys\SDK\Html\Document::fragmentRoot($doc);
         if ($wrapper === null) {
             return $html;
         }
@@ -3490,7 +3490,7 @@ class Client
         }
 
         // Extract inner HTML of the wrapper div
-        $wrapper = $doc->getElementsByTagName('div')->item(0);
+        $wrapper = \Langsys\SDK\Html\Document::fragmentRoot($doc);
         if ($wrapper === null) {
             return $html;
         }

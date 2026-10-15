@@ -96,7 +96,7 @@ final class ValueMarkers
         }
 
         $doc = self::fragment($html);
-        $wrapper = $doc === null ? null : $doc->getElementsByTagName('div')->item(0);
+        $wrapper = Document::fragmentRoot($doc);
         if ($wrapper === null) {
             return $html;
         }
