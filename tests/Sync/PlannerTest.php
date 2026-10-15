@@ -353,6 +353,24 @@ class PlannerTest extends TestCase
     }
 
     /**
+     * Two source elements that differ only in what the phrase form collapses
+     * cannot be told apart in a translation read in that form: a reorder of
+     * them is not converted, never carried on the wrong element.
+     */
+    public function testElementsTheirPhraseFormCannotTellApartAreNotConverted(): void
+    {
+        list($source, $readers) = $this->files(
+            ['titles' => '<a href="/a" title="x  y">A</a> or <a href="/a" title="x y">B</a> here', 'brands' => '<span translate="no">%brand%</span> and <span translate="no">{brand}</span> here'],
+            ['titles' => '<a href="/a" title="x y">BB</a> o <a href="/a" title="x  y">AA</a> aquí', 'brands' => '<span translate="no">{brand}</span> y <span translate="no">%brand%</span> aquí']
+        );
+
+        $plan = (new Planner($source))->plan($this->hits("echo app('translator')->getHtml('legal.titles');\necho app('translator')->getHtml('legal.brands');"), $readers);
+
+        $this->assertSame([[], []], array_column($plan->items, 'translations'));
+        $this->assertSame(['not_converted', 'not_converted'], array_column($plan->skipped, 'reason'));
+    }
+
+    /**
      * A line of a rich runtime key's group that registers nothing - no text
      * of its own - reports nothing either.
      */

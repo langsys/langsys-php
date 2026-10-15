@@ -407,7 +407,8 @@ final class Planner
      * matched (see richTranslations()). An element kept whole renders its
      * source content, which its slot holds, so that content tells two of them
      * apart as well; any other slot holds no children. Both sides compare in
-     * the form a phrase takes, since a carried translation is read in it.
+     * the form a phrase takes, since a carried translation is read in it, and
+     * source elements that differ only outside that form cannot be told apart.
      *
      * @param \DOMElement[] $source
      * @param \DOMElement[] $target
@@ -425,10 +426,10 @@ final class Planner
 
             return $out;
         };
-        $identity = function (\DOMElement $slot) {
+        $identity = function (\DOMElement $slot, $canonical) {
             $attributes = [];
             foreach ($slot->attributes as $attribute) {
-                $attributes[$attribute->name] = Canonical::phrase($attribute->value);
+                $attributes[$attribute->name] = $canonical ? Canonical::phrase($attribute->value) : $attribute->value;
             }
             ksort($attributes);
 
@@ -437,7 +438,7 @@ final class Planner
                 $content .= $slot->ownerDocument->saveHTML($child);
             }
 
-            return json_encode([$attributes, Canonical::phrase($content)]);
+            return json_encode([$attributes, $canonical ? Canonical::phrase($content) : $content]);
         };
 
         $sourceTags = $byTag($source);
@@ -455,16 +456,19 @@ final class Planner
             }
 
             foreach ($targetSlots as $targetSlot) {
-                $match = null;
+                // The source elements the translation's could be, in the form
+                // it is read in; ones that differ only outside that form are
+                // not interchangeable, and cannot be told apart.
+                $candidates = [];
                 foreach ($free as $position => $sourceSlot) {
-                    if ($identity($source[$sourceSlot]) === $identity($target[$targetSlot])) {
-                        $match = $position;
-                        break;
+                    if ($identity($source[$sourceSlot], true) === $identity($target[$targetSlot], true)) {
+                        $candidates[$position] = $identity($source[$sourceSlot], false);
                     }
                 }
-                if ($match === null) {
+                if ($candidates === [] || count(array_unique($candidates)) > 1) {
                     return null;
                 }
+                $match = key($candidates);
 
                 $map[$targetSlot] = $free[$match];
                 unset($free[$match]);
