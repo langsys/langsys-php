@@ -386,9 +386,11 @@ final class Planner
                 continue;
             }
 
-            $carried[$locale] = (string) preg_replace_callback('/\{m(\d+)([oc])\}/', function ($m) use ($map) {
-                return '{m' . $map[(int) $m[1]] . $m[2] . '}';
-            }, $line['encoded']['text']);
+            // A token the translation writes as text names no element, and is
+            // dropped as the page drops it.
+            $carried[$locale] = Canonical::phrase((string) preg_replace_callback('/\{m(\d+)([oc])\}/', function ($m) use ($map) {
+                return isset($map[(int) $m[1]]) ? '{m' . $map[(int) $m[1]] . $m[2] . '}' : '';
+            }, $line['encoded']['text']));
         }
 
         return $carried;

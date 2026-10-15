@@ -315,6 +315,22 @@ class PlannerTest extends TestCase
     }
 
     /**
+     * A token written literally in a translation names no element of the
+     * source; it is dropped, as the page drops it, and the sync goes on.
+     */
+    public function testALiteralTokenInATranslationIsDropped(): void
+    {
+        list($source, $readers) = $this->files(['accept' => 'Accept <a href="/t">terms</a>', 'gap' => 'Read <a href="/t">terms</a>'], ['accept' => 'Acepta {m1o}x{m1c} <a href="/t">términos</a>', 'gap' => 'Lee {m1o}{m1c} los <a href="/t">términos</a>']);
+
+        $plan = (new Planner($source))->plan($this->hits("echo app('translator')->getHtml('legal.accept');\necho app('translator')->getHtml('legal.gap');"), $readers);
+
+        $this->assertSame([
+            ['legal', 'Accept {m0o}terms{m0c}', ['es-es' => 'Acepta x {m0o}términos{m0c}']],
+            ['legal', 'Read {m0o}terms{m0c}', ['es-es' => 'Lee los {m0o}términos{m0c}']],
+        ], self::items($plan), 'and the space a dropped pair leaves collapses');
+    }
+
+    /**
      * A line of a rich runtime key's group that registers nothing - no text
      * of its own - reports nothing either.
      */
