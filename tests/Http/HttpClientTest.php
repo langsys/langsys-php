@@ -148,6 +148,89 @@ class HttpClientTest extends TestCase
     }
 
     /**
+     * The reference lists arrive on the API's routes: currencies, countries
+     * and dial codes with the display locale in the path, the locale lists
+     * with it in the query.
+     */
+    public function testTheReferenceListsArriveOnTheirRoutes()
+    {
+        $requests = $this->requestsReceivedBy(function ($base) {
+            $client = new \Langsys\SDK\Client('test-api-key', 'project-ref', [
+                'cache' => new \Langsys\SDK\Cache\NullCache(),
+                'api_url' => $base,
+                'error_log' => false,
+            ]);
+            $client->setLocale('es-es');
+
+            $client->getCurrencies();
+            $client->getCountries();
+            $client->getDialCodes();
+            $client->getLocalesFormat();
+            $client->getLocalesFormat('flat');
+            $client->getLocalesFormat('data');
+        });
+
+        $reads = array_values(array_filter(array_column($requests, 'uri'), function ($uri) {
+            return strpos($uri, '/authorize-project/') !== 0;
+        }));
+
+        $this->assertSame([
+            '/currencies/es-es',
+            '/countries/es-es',
+            '/countries/dial-codes/es-es',
+            '/locales?locales%5B0%5D=es-es',
+            '/locales/flat?locales%5B0%5D=es-es',
+            '/locales/data?locales%5B0%5D=es-es',
+        ], $reads);
+    }
+
+    /**
+     * SRV-2: credentials live on each Client, never on the process, so two
+     * Clients for two projects taking turns in one process each send under
+     * their own key and project, and one given none sends under the
+     * environment's.
+     */
+    public function testTwoClientsInOneProcessEachSendUnderTheirOwnKey()
+    {
+        $key = getenv('LANGSYS_API_KEY');
+        $project = getenv('LANGSYS_PROJECT_ID');
+        putenv('LANGSYS_API_KEY=key-env');
+        putenv('LANGSYS_PROJECT_ID=project-env');
+
+        try {
+            $requests = $this->requestsReceivedBy(function ($base) {
+                $options = ['cache' => new \Langsys\SDK\Cache\NullCache(), 'api_url' => $base, 'error_log' => false];
+                $a = new \Langsys\SDK\Client('key-a', 'project-a', $options);
+                $b = new \Langsys\SDK\Client('key-b', 'project-b', $options);
+                $env = new \Langsys\SDK\Client(null, null, $options);
+
+                foreach ([$a, $b, $a, $env, $b] as $client) {
+                    $client->getTranslations('es-es', false);
+                }
+            });
+        } finally {
+            putenv($key === false ? 'LANGSYS_API_KEY' : 'LANGSYS_API_KEY=' . $key);
+            putenv($project === false ? 'LANGSYS_PROJECT_ID' : 'LANGSYS_PROJECT_ID=' . $project);
+        }
+
+        $sent = [];
+        foreach ($requests as $request) {
+            if (parse_url($request['uri'], PHP_URL_PATH) === '/translations') {
+                parse_str((string) parse_url($request['uri'], PHP_URL_QUERY), $query);
+                $sent[] = [$request['authorization'], isset($query['project_id']) ? $query['project_id'] : null];
+            }
+        }
+
+        $this->assertSame([
+            ['key-a', 'project-a'],
+            ['key-b', 'project-b'],
+            ['key-a', 'project-a'],
+            ['key-env', 'project-env'],
+            ['key-b', 'project-b'],
+        ], $sent);
+    }
+
+    /**
      * WIRE-4: a client built without credentials sends nothing, on every path,
      * asserted on what the stand-in API received. The control is the same
      * calls with credentials, which do arrive.

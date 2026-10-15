@@ -17,10 +17,14 @@ $log = getenv('LANGSYS_WIRE5_LOG');
 if ($log !== false) {
     $headers = function_exists('getallheaders') ? getallheaders() : [];
     $capabilities = null;
+    $authorization = null;
 
     foreach ($headers as $name => $value) {
         if (strtolower($name) === 'x-langsys-capabilities') {
             $capabilities = $value;
+        }
+        if (strtolower($name) === 'x-authorization') {
+            $authorization = $value;
         }
     }
 
@@ -30,6 +34,7 @@ if ($log !== false) {
         'host' => isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : null,
         'has_auth' => isset($headers['X-Authorization']) || isset($headers['x-authorization']),
         'capabilities' => $capabilities,
+        'authorization' => $authorization,
     ]) . "\n", FILE_APPEND);
 }
 

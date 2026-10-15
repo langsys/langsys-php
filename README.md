@@ -1718,7 +1718,23 @@ print_r($project['default_locales']); // Default locale per language
 
 ## Utilities
 
-The SDK includes utility methods for fetching countries, dial codes, and locales.
+### Reference lists for your own forms
+
+```php
+$client->getCurrencies();          // [['code' => 'USD', 'name' => 'dólar estadounidense', 'symbol' => '$', ...], ...]
+$client->getCountries('fr-fr');    // [['label' => 'Costa Rica', 'code' => 'CR', 'eu' => false], ...]
+$client->getDialCodes();           // [['country_code' => 'CR', 'dial_code' => '+506', 'name' => 'Costa Rica (+506)'], ...]
+$client->getLocalesFormat('flat'); // [['code' => 'es-cr', 'name' => 'Español (Costa Rica)'], ...]
+```
+
+Each list is named in the locale you pass, else the current one. They match the Langsys JS
+SDK's lists of the same names. `getLocalesFormat()` takes `''` (grouped by language name),
+`'flat'` (`code` and `name`) or `'data'` (`code`, `locale_name` and `lang_name`). A list is
+read once per locale for the client's life. If the API cannot answer, or the client has no
+credentials, you get an empty list and the cause is logged; nothing throws, unless
+`require_credentials` is on and the client has none.
+
+The `utilities()` resource below gives the raw, paginated endpoints.
 
 ### Countries
 

@@ -128,6 +128,12 @@ its id or re-registers it.
 
 ### Added
 
+- **Reference lists, as the JS SDK serves them.** `getCurrencies()`,
+  `getCountries()`, `getDialCodes()` and `getLocalesFormat($format)` on the
+  client return each list named in a display locale, the current one by
+  default, read once per locale for the client's life. A list the API cannot
+  give, or any list on a client without credentials, is an empty array with the
+  cause logged, never an exception.
 - **An app's own messages can state their sentence and code.** A class
   implementing `HasAppMessageTemplate` returns its template with `{name}`
   markers for its public properties and its code; `MessageCatalog::addMessage()`
