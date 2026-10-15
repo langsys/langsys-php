@@ -196,7 +196,7 @@ class PageTranslator
 
         // Create selector matcher if selector categories provided
         $this->selectorMatcher = !empty($selectorCategories)
-            ? new SelectorMatcher($selectorCategories)
+            ? $this->selectorMatcher($selectorCategories)
             : null;
 
         // Extract first: whether a seeded snapshot answers the page is decided
@@ -428,6 +428,30 @@ class PageTranslator
         }
 
         $root->setAttribute(HtmlParser::RESOLVED_MARKERS[0], $locale);
+    }
+
+    /**
+     * A matcher for the selector categories it can read. One it cannot - a
+     * pseudo-class, a combinator, an empty selector - is skipped with a
+     * warning, so the page still renders under the rest (WIRE-4).
+     *
+     * @param array $selectorCategories
+     * @return SelectorMatcher
+     */
+    protected function selectorMatcher(array $selectorCategories)
+    {
+        $readable = [];
+
+        foreach ($selectorCategories as $selector => $config) {
+            try {
+                new SelectorMatcher([$selector => $config]);
+                $readable[$selector] = $config;
+            } catch (\Exception $e) {
+                $this->logger->warning('A selector category is skipped: its selector cannot be matched', ['selector' => (string) $selector, 'error' => $e->getMessage()]);
+            }
+        }
+
+        return new SelectorMatcher($readable);
     }
 
     /**

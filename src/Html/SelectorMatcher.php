@@ -373,7 +373,9 @@ class SelectorMatcher
     /**
      * Parse an attribute selector and return XPath condition.
      *
-     * Supports: [attr], [attr="val"], [attr^="prefix"], [attr$="suffix"], [attr*="contains"]
+     * Supports: [attr], [attr="val"], [attr^="prefix"], [attr$="suffix"], [attr*="contains"],
+     * [attr~="word"], [attr|="lang"], each value quoted or, as CSS allows for an
+     * identifier, not
      *
      * @param string $str String starting with [
      * @return array ['condition' => string, 'remaining' => string]
@@ -382,7 +384,7 @@ class SelectorMatcher
     protected function parseAttributeSelector($str)
     {
         // Match attribute selector pattern
-        $pattern = '/^\[([a-zA-Z_][a-zA-Z0-9_-]*)(?:([~|^$*]?=)(["\'])([^\3]*?)\3)?\]/';
+        $pattern = '/^\[([a-zA-Z_][a-zA-Z0-9_-]*)(?:([~|^$*]?=)(?:(["\'])(.*?)\3|([a-zA-Z0-9_-]+)))?\]/';
 
         if (!preg_match($pattern, $str, $matches)) {
             throw new LangsysException('Invalid attribute selector: ' . substr($str, 0, 50));
@@ -391,7 +393,7 @@ class SelectorMatcher
         $fullMatch = $matches[0];
         $attr = $matches[1];
         $operator = isset($matches[2]) ? $matches[2] : '';
-        $value = isset($matches[4]) ? $matches[4] : '';
+        $value = isset($matches[5]) && $matches[5] !== '' ? $matches[5] : (isset($matches[4]) ? $matches[4] : '');
 
         $remaining = substr($str, strlen($fullMatch));
 

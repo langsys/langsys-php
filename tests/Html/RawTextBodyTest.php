@@ -187,6 +187,19 @@ class RawTextBodyTest extends TestCase
     }
 
     /**
+     * WIRE-4: a selector category the matcher cannot read - a pseudo-class,
+     * a combinator, an empty selector - is skipped with a warning, and the
+     * page still renders under the rest; an unquoted attribute value, which
+     * CSS allows, is read.
+     */
+    public function testASelectorTheMatcherCannotReadIsSkipped(): void
+    {
+        $page = $this->client(['Hello' => 'Hola'])->translatePage('<html><head><meta charset="utf-8"></head><body><form><input type="submit" value="Send"></form><ul><li>Hello</li></ul></body></html>', 'UI', ['li:first-child' => 'Lists', 'nav > *' => 'Nav', '' => 'x', 'input[type=submit]' => 'Forms']);
+
+        $this->assertStringContainsString('<li>Hola</li>', $page);
+    }
+
+    /**
      * WIRE-4: a page with no element - only whitespace, a comment or a
      * doctype - comes back as given, never an exception.
      */
