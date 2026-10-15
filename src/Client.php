@@ -3358,7 +3358,7 @@ class Client
 
         $doc = new \DOMDocument();
         $doc->encoding = 'UTF-8';
-        $loaded = \Langsys\SDK\Html\Document::load($doc, '<?xml encoding="UTF-8"><div>' . $html . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        $loaded = \Langsys\SDK\Html\Document::loadFragment($doc, $html);
 
         libxml_clear_errors();
         libxml_use_internal_errors($internalErrors);
@@ -3422,7 +3422,7 @@ class Client
 
         $doc = new \DOMDocument();
         $doc->encoding = 'UTF-8';
-        \Langsys\SDK\Html\Document::load($doc, '<?xml encoding="UTF-8"><div>' . $html . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        \Langsys\SDK\Html\Document::loadFragment($doc, $html);
 
         libxml_clear_errors();
         libxml_use_internal_errors($internalErrors);
@@ -3463,8 +3463,7 @@ class Client
 
         $doc = new \DOMDocument();
         $doc->encoding = 'UTF-8';
-        $wrapped = '<?xml encoding="UTF-8"><div>' . $html . '</div>';
-        \Langsys\SDK\Html\Document::load($doc, $wrapped, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        \Langsys\SDK\Html\Document::loadFragment($doc, $html);
 
         libxml_clear_errors();
         libxml_use_internal_errors($internalErrors);

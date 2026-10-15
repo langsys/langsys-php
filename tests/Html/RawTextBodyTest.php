@@ -179,6 +179,27 @@ class RawTextBodyTest extends TestCase
     }
 
     /**
+     * A fragment that leaves a script or style open ends it at the fragment's
+     * end, as a browser does, and none of the SDK's own wrapper reaches it.
+     */
+    public function testAFragmentThatLeavesABodyOpenEndsItAtTheFragmentsEnd(): void
+    {
+        $block = $this->client(['Hello' => 'Hola'])->translateContentBlock('<div><p>Hello</p><p>World</p><script>track("x");</div>', 'UI');
+        $this->assertStringEndsWith('<script>track("x");</div></script></div>', $block, 'its own text is its own');
+
+        foreach (['<p>Hello</p><p>World</p><script>track("x");' => '<script>track("x");</script>', '<p>Hello</p><p>World</p><style>p{color:red}' => '<style>p{color:red}</style>'] as $html => $body) {
+            $out = $this->client(['Hello' => 'Hola'])->translateContentBlock($html, 'UI');
+            $this->assertStringEndsWith($body, $out, $html);
+            $this->assertStringNotContainsString('ls-fragment', $out);
+        }
+
+        $this->assertSame('{name} says hi<style>p{}</style>', \Langsys\SDK\Html\ValueMarkers::placeholderHtml('<!--ls:name-->Bob<!--/ls--> says hi<style>p{}'));
+        $this->assertSame('Run <script>go()</script>', $this->client()->translateRich('Run <script>go()', null, 'UI')['html']);
+        $this->assertSame('<p>Hi</p>', \Langsys\SDK\Html\ValueMarkers::placeholderHtml('<p>Hi</p>'), 'a closed fragment is untouched');
+        $this->assertStringNotContainsString('ls-fragment', $this->client()->translateContentBlock('<div><p>Hello</p><p>World</p>', 'UI'), 'nor one leaving an element open');
+    }
+
+    /**
      * A body on a page in another charset comes back in the charset the page
      * is written out in, as the rest of the page does.
      */

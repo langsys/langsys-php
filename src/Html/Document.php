@@ -2,7 +2,10 @@
 
 namespace Langsys\SDK\Html;
 
+use DOMComment;
 use DOMDocument;
+use DOMText;
+use DOMXPath;
 
 /**
  * Loads HTML the way every path here reads it, with each `<script>` and
@@ -25,6 +28,9 @@ final class Document
     /** libxml's HTML_PARSE_RECOVER, for which PHP defines no constant. */
     const RECOVER = 1;
 
+    /** What closes the wrapper a fragment is parsed in: a `</div>` and a mark. */
+    const FRAGMENT_END = '</div><!--ls-fragment-end-->';
+
     /**
      * Load $html into $doc as DOMDocument::loadHTML() does, in recovery mode.
      *
@@ -36,5 +42,44 @@ final class Document
     public static function load(DOMDocument $doc, $html, $options = 0)
     {
         return $doc->loadHTML((string) $html, $options | self::RECOVER);
+    }
+
+    /**
+     * Load a fragment into $doc inside one `<div>`, the document's first
+     * element, as every fragment path reads it.
+     *
+     * A script or style the fragment leaves open reads on to the end in
+     * recovery mode, as a browser's does, which would take the wrapper's own
+     * end tag into its body. The wrapper ends with a mark, and whatever of
+     * it a body took is cut back off, so the body ends where the fragment
+     * does.
+     *
+     * @param DOMDocument $doc
+     * @param string $html
+     * @return bool Whether it loaded
+     */
+    public static function loadFragment(DOMDocument $doc, $html)
+    {
+        $loaded = self::load($doc, '<?xml encoding="UTF-8"><div>' . $html . self::FRAGMENT_END, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+
+        if (!$loaded) {
+            return false;
+        }
+
+        foreach ((new DOMXPath($doc))->query('//script|//style|//comment()') as $node) {
+            if ($node instanceof DOMComment) {
+                if ($node->data === 'ls-fragment-end') {
+                    $node->parentNode->removeChild($node);
+                }
+                continue;
+            }
+
+            $last = $node->lastChild;
+            if ($last instanceof DOMText && substr($last->data, -strlen(self::FRAGMENT_END)) === self::FRAGMENT_END) {
+                $last->data = substr($last->data, 0, -strlen(self::FRAGMENT_END));
+            }
+        }
+
+        return true;
     }
 }

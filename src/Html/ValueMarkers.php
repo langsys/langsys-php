@@ -436,7 +436,7 @@ final class ValueMarkers
         $internalErrors = libxml_use_internal_errors(true);
         $doc = new \DOMDocument();
         $doc->encoding = 'UTF-8';
-        $loaded = Document::load($doc, '<?xml encoding="UTF-8"><div>' . $html . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        $loaded = Document::loadFragment($doc, $html);
         libxml_clear_errors();
         libxml_use_internal_errors($internalErrors);
 
