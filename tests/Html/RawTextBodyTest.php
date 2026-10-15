@@ -168,6 +168,25 @@ class RawTextBodyTest extends TestCase
     }
 
     /**
+     * Every charset a page declares is UTF-8 once it is written out, so the
+     * declaration matches the bytes: on a page without a `<head>`, as a
+     * minifier leaves one, and on one declaring it twice.
+     */
+    public function testEveryCharsetThePageDeclaresIsUtf8(): void
+    {
+        foreach ([
+            "<!DOCTYPE html><html lang=\"de\"><meta charset=\"windows-1252\"><title>Caf\xE9</title><p>Hello world</p><p>M\xFCller</p></html>",
+            "<html><meta http-equiv=\"Content-Type\" content=\"text/html; charset=iso-8859-1\"><p>Hello world</p><p>M\xFCller</p></html>",
+            "<html><head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=iso-8859-1\"><meta charset=\"iso-8859-1\"></head><body><p>M\xFCller</p></body></html>",
+        ] as $html) {
+            $page = $this->client()->translatePage($html, 'UI');
+
+            $this->assertStringContainsString('<p>Müller</p>', $page, $html);
+            $this->assertSame(0, preg_match('/charset=["\']?(?!utf-8)[a-z0-9-]+/i', $page), 'no other charset declared: ' . $page);
+        }
+    }
+
+    /**
      * A doctype with public and system identifiers is written back as it was.
      */
     public function testALegacyDoctypeIsWrittenBack(): void

@@ -133,6 +133,10 @@ class HeadHandler
         // Set lang attribute on <html>
         $this->setLangAttribute($doc, $locale);
 
+        // The page is written out in UTF-8, so every charset it declares,
+        // in a head or not, says so.
+        $this->declareUtf8($doc);
+
         $head = $this->getHeadElement($doc);
         if ($head === null) {
             return;
@@ -164,7 +168,27 @@ class HeadHandler
     }
 
     /**
-     * Ensure <meta charset="utf-8"> exists in head.
+     * Make every charset the document declares UTF-8.
+     *
+     * @param DOMDocument $doc
+     * @return void
+     */
+    protected function declareUtf8(DOMDocument $doc)
+    {
+        foreach ($doc->getElementsByTagName('meta') as $meta) {
+            if ($meta->hasAttribute('charset')) {
+                $meta->setAttribute('charset', 'utf-8');
+            }
+
+            if (strtolower($meta->getAttribute('http-equiv')) === 'content-type') {
+                $meta->setAttribute('content', 'text/html; charset=utf-8');
+            }
+        }
+    }
+
+    /**
+     * Ensure the head declares a charset, <meta charset="utf-8"> when the
+     * page declares none.
      *
      * @param DOMElement $head The head element
      * @param DOMDocument $doc The document (for creating new elements)
@@ -172,23 +196,11 @@ class HeadHandler
      */
     protected function ensureCharsetMeta(DOMElement $head, DOMDocument $doc)
     {
-        $metas = $head->getElementsByTagName('meta');
         $hasCharset = false;
 
-        foreach ($metas as $meta) {
-            // Check for charset attribute
-            if ($meta->hasAttribute('charset')) {
-                $meta->setAttribute('charset', 'utf-8');
+        foreach ($head->getElementsByTagName('meta') as $meta) {
+            if ($meta->hasAttribute('charset') || strtolower($meta->getAttribute('http-equiv')) === 'content-type') {
                 $hasCharset = true;
-                break;
-            }
-
-            // Check for http-equiv="Content-Type"
-            $httpEquiv = strtolower($meta->getAttribute('http-equiv'));
-            if ($httpEquiv === 'content-type') {
-                $hasCharset = true;
-                // Update content to use utf-8
-                $meta->setAttribute('content', 'text/html; charset=utf-8');
                 break;
             }
         }
