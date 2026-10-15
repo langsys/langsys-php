@@ -345,6 +345,20 @@ class PlannerTest extends TestCase
     }
 
     /**
+     * A blank line registers nothing, so a language lacking it is not
+     * reported either, whether a call reaches it or only the lines do.
+     */
+    public function testABlankLineReportsNothing(): void
+    {
+        list($source, $readers) = $this->files(['blank' => '', 'space' => '   ', 'kept' => 'Kept'], ['kept' => 'Guardado']);
+
+        $plan = (new Planner($source))->plan($this->hits("echo e(__('legal.blank'));"), $readers);
+
+        $this->assertSame(['Kept'], array_column($plan->items, 'phrase'));
+        $this->assertSame([], $plan->skipped);
+    }
+
+    /**
      * A missing translation is reported once however many routes reach its
      * key: a rich literal and its rich runtime group, or a plain call and the
      * base-language lines.

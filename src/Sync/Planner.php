@@ -178,6 +178,12 @@ final class Planner
             // tokens, read exactly as translateRich() reads it at runtime, and
             // so do the translations carried for it (FRM-8). One with no text
             // of its own registers nothing there, and nothing here.
+            // A blank line registers nothing, and reports nothing.
+            if (Canonical::phrase($phrase) === '') {
+                array_splice($skipped, $skippedBefore);
+                continue;
+            }
+
             if (!empty($hit['rich'])) {
                 $rich = self::richLine($phrase, $hit['text'], $translations, $skipped);
                 if ($rich === null) {
@@ -235,7 +241,7 @@ final class Planner
 
         foreach ($this->source === null ? [] : $this->source->keys() as $key) {
             $entry = $this->source->resolve($key);
-            if ($entry === null) {
+            if ($entry === null || Canonical::phrase($entry['phrase']) === '') {
                 continue;
             }
 
