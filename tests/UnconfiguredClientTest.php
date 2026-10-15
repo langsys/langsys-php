@@ -571,4 +571,16 @@ class UnconfiguredClientTest extends TestCase
 
         $this->assertSame('Hola', $client->translate('Hello', 'es-es', 'UI'));
     }
+
+    /**
+     * With require_credentials, translateRich() throws at first use even for a
+     * line with no text of its own, as every read does.
+     */
+    public function testWithRequireCredentialsARichLineOfOnlyExcludedContentThrowsToo(): void
+    {
+        $client = new Client(null, null, ['require_credentials' => true, 'cache' => new NullCache(), 'error_log' => false]);
+
+        $this->expectException(ConfigurationException::class);
+        $client->translateRich('<b translate="no">Langsys</b>', 'es-es');
+    }
 }

@@ -1146,6 +1146,8 @@ class Client
      */
     public function translateRich($sourceHtml, $locale = null, $category = '__uncategorized__', array $params = [])
     {
+        $this->requireCredentialsAtUse();
+
         $line = \Langsys\SDK\Html\MarkupTokenizer::readLine((string) $sourceHtml);
         if ($line === null) {
             return ['html' => (string) $sourceHtml, 'from' => 'source'];
