@@ -168,6 +168,13 @@ class HeadHandler
     }
 
     /**
+     * Elements a meta inside declares nothing in: text (textarea, xmp), inert
+     * content (template, noscript, as this parser reads it), or another
+     * vocabulary (svg, math).
+     */
+    const NOT_DECLARING = ['textarea', 'xmp', 'template', 'noscript', 'svg', 'math'];
+
+    /**
      * Make every charset the document declares UTF-8.
      *
      * @param DOMDocument $doc
@@ -176,6 +183,12 @@ class HeadHandler
     protected function declareUtf8(DOMDocument $doc)
     {
         foreach ($doc->getElementsByTagName('meta') as $meta) {
+            for ($at = $meta->parentNode; $at instanceof DOMElement; $at = $at->parentNode) {
+                if (in_array(strtolower($at->nodeName), self::NOT_DECLARING, true)) {
+                    continue 2;
+                }
+            }
+
             if ($meta->hasAttribute('charset')) {
                 $meta->setAttribute('charset', 'utf-8');
             }

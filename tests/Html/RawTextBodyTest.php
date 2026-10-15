@@ -225,6 +225,19 @@ class RawTextBodyTest extends TestCase
     }
 
     /**
+     * A meta written where it declares nothing - the text of a textarea, an
+     * inert template, an SVG - is left as written.
+     */
+    public function testAMetaThatDeclaresNothingIsLeftAsWritten(): void
+    {
+        foreach (['<textarea><meta charset="windows-1252"></textarea>', '<xmp><meta charset="windows-1252"></xmp>', '<template><meta charset="windows-1252"></template>', '<noscript><meta charset="windows-1252"></noscript>', '<svg><meta charset="windows-1252"></meta></svg>', '<math><meta charset="windows-1252"></meta></math>'] as $body) {
+            $page = $this->client()->translatePage('<html><head><meta charset="utf-8"></head><body>' . $body . '</body></html>', 'UI');
+
+            $this->assertStringContainsString('windows-1252', $page, $body);
+        }
+    }
+
+    /**
      * A doctype with public and system identifiers is written back as it was.
      */
     public function testALegacyDoctypeIsWrittenBack(): void
