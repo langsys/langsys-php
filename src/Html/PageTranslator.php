@@ -1369,13 +1369,47 @@ class PageTranslator
      */
     protected function saveHtml(DOMDocument $doc)
     {
-        // saveHTML can add extra wrapper elements, clean up
-        $html = $doc->saveHTML();
+        // Node by node, in UTF-8, which the page declares (HeadHandler). The
+        // whole-document serializer of libxml 2.9 takes its output encoding
+        // only from an http-equiv meta, and otherwise writes every character
+        // outside ASCII as an entity, inside a script, JSON-LD or style too,
+        // where an entity is not decoded.
+        $html = '';
 
-        // Remove the XML declaration we may have added
-        $html = preg_replace('/^<\?xml[^>]*>\s*/i', '', $html);
+        foreach ($doc->childNodes as $child) {
+            if ($child instanceof \DOMDocumentType) {
+                $html .= self::doctype($child) . "\n";
+                continue;
+            }
 
-        return $html;
+            // The encoding hint parseDocument() adds is not the page's.
+            if ($child instanceof \DOMProcessingInstruction && strtolower($child->target) === 'xml') {
+                continue;
+            }
+
+            $html .= $doc->saveHTML($child);
+        }
+
+        return $html === '' ? '' : $html . "\n";
+    }
+
+    /**
+     * A doctype as libxml writes it.
+     *
+     * @param \DOMDocumentType $doctype
+     * @return string
+     */
+    private static function doctype(\DOMDocumentType $doctype)
+    {
+        $out = '<!DOCTYPE ' . $doctype->name;
+
+        if ($doctype->publicId !== '') {
+            $out .= ' PUBLIC "' . $doctype->publicId . '"' . ($doctype->systemId !== '' ? ' "' . $doctype->systemId . '"' : '');
+        } elseif ($doctype->systemId !== '') {
+            $out .= ' SYSTEM "' . $doctype->systemId . '"';
+        }
+
+        return $out . '>';
     }
 
     /**

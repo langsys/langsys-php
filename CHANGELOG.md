@@ -281,6 +281,13 @@ its id or re-registers it.
 
 ### Fixed
 
+- **A page is written out in the UTF-8 it declares.** `translatePage()` wrote
+  every character outside ASCII as an entity unless the page carried an
+  http-equiv charset meta, so a `<meta charset>` page's JSON-LD read
+  `Caf&eacute;`, a script string `se&ntilde;or` and a CSS `content` `&laquo;`,
+  none of which is decoded there. It now writes the page in UTF-8, and the
+  `<?xml encoding="UTF-8">` hint it parsed a doctype page with no charset meta
+  under is no longer left in the output.
 - **A page's own scripts and styles come back byte for byte.** PHP's HTML
   parser (libxml2 2.9) ends a `<script>` or `<style>` body at any end tag and
   drops it, so `translatePage()` turned `el.innerHTML = '<p>hi</p>'` into

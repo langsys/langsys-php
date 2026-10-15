@@ -149,6 +149,36 @@ class RawTextBodyTest extends TestCase
     }
 
     /**
+     * A page is written out in UTF-8, which it declares, so a script, JSON-LD
+     * or style body keeps its non-ASCII characters as written, where an
+     * entity would not be decoded; with `<meta charset>`, with the
+     * http-equiv form, and with no charset declared at all.
+     */
+    public function testAPageKeepsNonAsciiInItsBodiesAsWritten(): void
+    {
+        $bodies = '<script type="application/ld+json">{"name":"Café Müller"}</script><script>var msg = "¡Hola señor! 😀";</script><style>.q::before{content:"«"}</style>';
+
+        foreach (['<meta charset="utf-8">', '<meta http-equiv="Content-Type" content="text/html; charset=utf-8">', ''] as $meta) {
+            $page = $this->client(['Hello' => 'Hola'])->translatePage('<!DOCTYPE html><html><head>' . $meta . $bodies . '</head><body><p>Hello</p><p>Café</p></body></html>', 'UI');
+
+            $this->assertStringContainsString($bodies, $page, $meta);
+            $this->assertStringContainsString('<p>Café</p>', $page, $meta);
+            $this->assertSame(0, strpos($page, '<!DOCTYPE html>' . "\n" . '<html'), 'the doctype as written, and no encoding hint: ' . $meta);
+        }
+    }
+
+    /**
+     * A doctype with public and system identifiers is written back as it was.
+     */
+    public function testALegacyDoctypeIsWrittenBack(): void
+    {
+        $doctype = '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">';
+        $page = $this->client()->translatePage($doctype . '<html><head></head><body><p>Hello</p></body></html>', 'UI');
+
+        $this->assertSame(0, strpos($page, $doctype . "\n" . '<html'));
+    }
+
+    /**
      * A body on a page in another charset comes back in the charset the page
      * is written out in, as the rest of the page does.
      */
