@@ -198,6 +198,20 @@ class RawTextBodyTest extends TestCase
     }
 
     /**
+     * A page that opens with a byte-order mark is read as the UTF-8 it
+     * marks, its <html> and <head> intact.
+     */
+    public function testAPageOpeningWithAByteOrderMarkKeepsItsStructure(): void
+    {
+        $page = $this->client(['Hello' => 'Hola'])->translatePage("\xEF\xBB\xBF<html><head><title>T</title></head><body><p>Hello</p><p>Café</p></body></html>", 'UI');
+
+        $this->assertStringContainsString('<html lang="es-es"', $page);
+        $this->assertStringContainsString('<head><meta charset="utf-8">', $page);
+        $this->assertStringContainsString('<p>Hola</p><p>Café</p>', $page);
+        $this->assertStringNotContainsString("\u{FEFF}</p>", $page);
+    }
+
+    /**
      * A doctype with public and system identifiers is written back as it was.
      */
     public function testALegacyDoctypeIsWrittenBack(): void

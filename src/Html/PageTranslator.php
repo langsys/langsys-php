@@ -443,6 +443,12 @@ class PageTranslator
         $doc = new DOMDocument();
         $doc->encoding = 'UTF-8';
 
+        // A byte-order mark says the page is UTF-8, which the hint below says
+        // too; ahead of the hint it would be read as text, before <html>.
+        if (strncmp($html, "\xEF\xBB\xBF", 3) === 0) {
+            $html = substr($html, 3);
+        }
+
         // Use HTML5 doctype hint and preserve encoding
         $htmlWithEncoding = $html;
         if (stripos($html, '<meta charset') === false &&
