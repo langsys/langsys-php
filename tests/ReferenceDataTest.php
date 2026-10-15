@@ -186,6 +186,18 @@ class ReferenceDataTest extends TestCase
     }
 
     /**
+     * The first-use check comes before anything else, an unknown locales
+     * format included.
+     */
+    public function testRequireCredentialsThrowsBeforeAnUnknownFormatIsRefused(): void
+    {
+        $strict = $this->client(['require_credentials' => true], '', '');
+
+        $this->expectException(ConfigurationException::class);
+        $strict->getLocalesFormat('grouped');
+    }
+
+    /**
      * With no locale set or given, the list is read in the project's base
      * locale, as the TS core falls back to its base locale.
      */

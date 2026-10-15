@@ -513,7 +513,7 @@ class Client
      * gracefully to simple placeholder substitution rather than breaking the
      * render. The goal is that the operator is TOLD, not stopped.
      *
-     * Warnings go to both the SDK logger and trigger_error(), because a manual
+     * Warnings go to both the SDK logger and PHP's error_log(), because a manual
      * install typically has no log path configured, which would make a
      * logger-only warning invisible to exactly the users who need it.
      *
@@ -2392,6 +2392,8 @@ class Client
      */
     public function getLocalesFormat($format = '', $locale = null)
     {
+        $this->requireCredentialsAtUse();
+
         if (!in_array($format, ['', 'flat', 'data'], true)) {
             $this->logger->warning('Unknown locales format; expected "", "flat" or "data"', ['format' => $format]);
 
