@@ -96,7 +96,11 @@ class Client
     protected $locale;
 
     /**
-     * @var PageTranslator|null Page translator instance
+     * A PageTranslator to use in place of the one translatePage() builds for
+     * each call. The Client keeps none of its own: one holds the Client, and
+     * a Client in a cycle waits for PHP's cycle collector to be freed.
+     *
+     * @var PageTranslator|null
      */
     protected $pageTranslator;
 
@@ -2765,14 +2769,11 @@ class Client
             return $html;
         }
 
-        if ($this->pageTranslator === null) {
-            $this->pageTranslator = new PageTranslator(
-                $this,
-                $this->translatableItems->getTranslatableAttributes()
-            );
-        }
+        $translator = $this->pageTranslator !== null
+            ? $this->pageTranslator
+            : new PageTranslator($this, $this->translatableItems->getTranslatableAttributes());
 
-        return $this->pageTranslator->translate($html, $locale, $category, $selectorCategories, $params);
+        return $translator->translate($html, $locale, $category, $selectorCategories, $params);
     }
 
     /**
@@ -3342,15 +3343,7 @@ class Client
         $markers->finish($host);
 
         $targets = [$host];
-        $walk = function (\DOMElement $element) use (&$walk, &$targets) {
-            foreach ($element->childNodes as $child) {
-                if ($child instanceof \DOMElement && !HtmlParser::isMarkedHost($child)) {
-                    $targets[] = $child;
-                    $walk($child);
-                }
-            }
-        };
-        $walk($host);
+        self::attributeTargets($host, $targets);
 
         foreach ($targets as $target) {
             foreach ($this->translatableItems->getTranslatableAttributes() as $attr) {
@@ -3362,6 +3355,24 @@ class Client
                 if ($value !== '') {
                     $target->setAttribute($attr, $this->translateSource($value, null, $category, null, $params));
                 }
+            }
+        }
+    }
+
+    /**
+     * The elements below $element whose attributes its host translates, in
+     * document order, down to a marked host, which translates its own.
+     *
+     * @param \DOMElement $element
+     * @param \DOMElement[] $targets
+     * @return void
+     */
+    private static function attributeTargets(\DOMElement $element, array &$targets)
+    {
+        foreach ($element->childNodes as $child) {
+            if ($child instanceof \DOMElement && !HtmlParser::isMarkedHost($child)) {
+                $targets[] = $child;
+                self::attributeTargets($child, $targets);
             }
         }
     }

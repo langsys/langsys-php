@@ -324,6 +324,25 @@ class PhraseAttributeTest extends TestCase
         $this->assertStringContainsString('alt="Logotipo"', $out);
     }
 
+    public function testAContentBlockTranslatesAttributesAtEveryDepthBelowAMarkedHost()
+    {
+        $client = $this->makeClient([
+            'home' => [
+                'Tooltip' => 'Consejo',
+                'Deep' => 'Profundo',
+            ],
+        ]);
+        $client->setLocale('es-es');
+
+        $out = $client->translateContentBlock(
+            '<div><p data-langsys-phrase>Read the <a href="/d" title="Tooltip"><b title="Deep">docs</b></a> now</p></div>',
+            'home'
+        );
+
+        $this->assertStringContainsString('title="Consejo"', $out);
+        $this->assertStringContainsString('title="Profundo"', $out);
+    }
+
     public function testAttributesInsideAMarkedSubtreeAreRegistered()
     {
         $registered = $this->registeredFor(

@@ -70,6 +70,50 @@ class ShutdownFlushTest extends TestCase
         $atShutdown->invoke(null);
     }
 
+    public function uses(): array
+    {
+        return [
+            'a phrase' => [function (Client $client) {
+                $client->translate('A phrase the catalog lacks', null, 'UI');
+            }],
+            'a page' => [function (Client $client) {
+                $client->translatePage('<html><head><title>T</title></head><body><p>A phrase the catalog lacks</p></body></html>', 'UI');
+            }],
+            'a content block with a phrase host' => [function (Client $client) {
+                $client->translateContentBlock('<div><p data-langsys-phrase>Hi <b>there</b> friend</p></div>', 'UI');
+            }],
+        ];
+    }
+
+    /**
+     * Freed by reference counting alone: PHP's cycle collector runs only now
+     * and then, so a Client left in a cycle would wait for it, its queue with
+     * it, and a worker would hold every Client in between.
+     *
+     * @dataProvider uses
+     */
+    public function testAClientIsFreedTheMomentItIsLetGoWhateverItTranslated(callable $use): void
+    {
+        $http = new MockHttpClient();
+        $client = $this->client($http);
+        $use($client);
+        $this->assertNotEmpty(array_merge($client->getPendingPhrases(), $client->getPendingContentBlocks()));
+
+        $collecting = gc_enabled();
+        gc_disable();
+        try {
+            $held = \WeakReference::create($client);
+            unset($client);
+
+            $this->assertNull($held->get());
+            $this->assertGreaterThan(0, self::posts($http), 'its queue was sent as it went');
+        } finally {
+            if ($collecting) {
+                gc_enable();
+            }
+        }
+    }
+
     public function testAClientStillAliveAtTheEndOfTheProcessIsFlushedThen(): void
     {
         $http = new MockHttpClient();
@@ -105,23 +149,35 @@ class ShutdownFlushTest extends TestCase
         $this->assertSame([], $client->getPendingPhrases());
     }
 
-    public function testAWorkerBuildingAClientPerRequestHoldsNoMoreMemoryAsItServes(): void
+    /**
+     * With the cycle collector off, so nothing a request leaves in a cycle is
+     * freed for it.
+     *
+     * @dataProvider uses
+     */
+    public function testAWorkerBuildingAClientPerRequestHoldsNoMoreMemoryAsItServes(callable $use): void
     {
-        $serve = function () {
-            $this->client()->translate('A phrase the catalog lacks', null, 'UI');
+        $serve = function () use ($use) {
+            $use($this->client());
         };
-        for ($i = 0; $i < 100; $i++) {
-            $serve();
-        }
-        gc_collect_cycles();
-        $before = memory_get_usage();
+        $collecting = gc_enabled();
+        gc_disable();
+        try {
+            for ($i = 0; $i < 100; $i++) {
+                $serve();
+            }
+            $before = memory_get_usage();
 
-        for ($i = 0; $i < 1000; $i++) {
-            $serve();
-        }
-        gc_collect_cycles();
+            for ($i = 0; $i < 1000; $i++) {
+                $serve();
+            }
 
-        $this->assertLessThan(4096, memory_get_usage() - $before, 'a thousand requests later');
+            $this->assertLessThan(4096, memory_get_usage() - $before, 'a thousand requests later');
+        } finally {
+            if ($collecting) {
+                gc_enable();
+            }
+        }
     }
 }
 

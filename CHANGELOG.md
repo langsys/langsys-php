@@ -283,12 +283,15 @@ its id or re-registers it.
 
 - **A worker that builds a `Client` per request no longer keeps every one of
   them.** The end-of-process flush held each `Client` that had queued anything
-  until the process ended, so such a worker grew by a whole `Client`, caches
-  included, with every request. One shutdown handler now serves the process and
-  holds its clients weakly: a `Client` its framework lets go is freed, and sends
-  what it still has queued as it goes; one still alive at the end is sent from the
-  shutdown handler, while the framework is still up. Measured flat over 3,000
-  requests.
+  until the process ended, and a `Client` that had translated a page or a content
+  block sat in a reference cycle, through the page translator it kept and a
+  recursive closure, until PHP's cycle collector ran. Such a worker grew by a
+  whole `Client`, caches included, with every request. One shutdown handler now
+  serves the process and holds its clients weakly, and nothing a `Client` builds
+  holds it, so a `Client` its framework lets go is freed at once, whatever it
+  translated, and sends what it still has queued as it goes; one still alive at
+  the end is sent from the shutdown handler, while the framework is still up.
+  Measured flat over 1,000 requests of each kind with the cycle collector off.
 - **A page without `<html>`, or without a `<head>` or `<body>`, is translated
   whole.** Such a page is read inside an `<html>` as a browser reads it, so
   every top-level element is translated, where only the first was, and a

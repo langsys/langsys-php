@@ -367,6 +367,27 @@ final class ValueMarkers
     }
 
     /**
+     * The text nodes at or below $node holding a sentinel, in document order.
+     *
+     * @param DOMNode $node
+     * @param DOMText[] $found
+     * @return void
+     */
+    private static function sentinelTexts(DOMNode $node, array &$found)
+    {
+        if ($node instanceof DOMText) {
+            if (strpos($node->nodeValue, self::OPEN) !== false) {
+                $found[] = $node;
+            }
+
+            return;
+        }
+        foreach ($node->childNodes === null ? [] : iterator_to_array($node->childNodes) as $child) {
+            self::sentinelTexts($child, $found);
+        }
+    }
+
+    /**
      * Turn every sentinel in the text below $root into its marker.
      *
      * @param DOMNode $root
@@ -376,19 +397,7 @@ final class ValueMarkers
     {
         $doc = $root instanceof \DOMDocument ? $root : $root->ownerDocument;
         $found = [];
-        $collect = function (DOMNode $node) use (&$collect, &$found) {
-            if ($node instanceof DOMText) {
-                if (strpos($node->nodeValue, self::OPEN) !== false) {
-                    $found[] = $node;
-                }
-
-                return;
-            }
-            foreach ($node->childNodes === null ? [] : iterator_to_array($node->childNodes) as $child) {
-                $collect($child);
-            }
-        };
-        $collect($root);
+        self::sentinelTexts($root, $found);
 
         foreach ($found as $node) {
             $parent = $node->parentNode;

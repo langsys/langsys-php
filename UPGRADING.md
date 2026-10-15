@@ -100,3 +100,6 @@ longer exist.
 `Client` has a destructor, which sends what a freed `Client` still has queued. A subclass
 that defines `__destruct()` should call `parent::__destruct()`, or that queue is not sent.
 The protected `Client::$shutdownRegistered` property no longer exists.
+
+`Client::$pageTranslator` is no longer filled in: `translatePage()` builds a `PageTranslator`
+for each call and keeps none. A subclass that sets it still has that one used.
