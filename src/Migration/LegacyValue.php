@@ -178,7 +178,7 @@ final class LegacyValue
      * @param string $value
      * @return array
      */
-    private static function convertLaravelPipes($value, callable $convert = null)
+    private static function convertLaravelPipes($value, ?callable $convert = null)
     {
         $segments = array_map('trim', explode('|', $value));
 
@@ -232,7 +232,7 @@ final class LegacyValue
      * @param string[] $segments
      * @return array
      */
-    private static function convertRanges($value, array $segments, callable $convert = null)
+    private static function convertRanges($value, array $segments, ?callable $convert = null)
     {
         $exact = [];
         $other = null;
@@ -278,7 +278,7 @@ final class LegacyValue
      * @param callable|null $convert Placeholder conversion; every `:word` when null
      * @return string
      */
-    private static function plural(array $branches, callable $convert = null)
+    private static function plural(array $branches, ?callable $convert = null)
     {
         $parts = [];
 

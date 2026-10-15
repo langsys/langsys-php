@@ -130,7 +130,7 @@ final class ValueMarkers
      * @param DOMNode|null $scope
      * @return bool
      */
-    public function unnamedWithin(DOMNode $scope = null)
+    public function unnamedWithin(?DOMNode $scope = null)
     {
         foreach ($this->unnamed as $node) {
             if ($scope === null || self::within($node, $scope)) {

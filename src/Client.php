@@ -1293,7 +1293,7 @@ class Client
      * @param callable|null $fallback
      * @return $this
      */
-    public function useMissFallback(callable $fallback = null)
+    public function useMissFallback(?callable $fallback = null)
     {
         $this->missFallback = $fallback;
 
@@ -1312,7 +1312,7 @@ class Client
      * @param callable|null $earlier A miss's lookup under the phrase's earlier key (TOK-1)
      * @return string
      */
-    protected function translateCall($phrase, $locale, $category, $contentBlockId, array $params, &$from, callable $earlier = null)
+    protected function translateCall($phrase, $locale, $category, $contentBlockId, array $params, &$from, ?callable $earlier = null)
     {
         $this->requireCredentialsAtUse();
 
@@ -1363,7 +1363,7 @@ class Client
      * @param array|null $earlier The tokenizer's `earlier`
      * @return callable|null category slice => translation, or null
      */
-    private function earlierLookup(\Langsys\SDK\Html\MarkupTokenizer $tokenizer, array $earlier = null)
+    private function earlierLookup(\Langsys\SDK\Html\MarkupTokenizer $tokenizer, ?array $earlier = null)
     {
         if ($earlier === null) {
             return null;
@@ -1394,7 +1394,7 @@ class Client
      *                              key: category slice => translation or null
      * @return string
      */
-    protected function translateSource($phrase, $locale, $category, $contentBlockId, array $params, $fromCall = false, &$from = null, $argument = null, callable $earlier = null)
+    protected function translateSource($phrase, $locale, $category, $contentBlockId, array $params, $fromCall = false, &$from = null, $argument = null, ?callable $earlier = null)
     {
         $from = 'source';
 
@@ -2658,7 +2658,7 @@ class Client
      *                            RequestLocale's keys plus `send_vary`
      * @return array{locale: string|null, source: string, vary: string|null}
      */
-    public function resolveRequestLocale(array $request = null, array $options = null)
+    public function resolveRequestLocale(?array $request = null, ?array $options = null)
     {
         $this->requireCredentialsAtUse();
 

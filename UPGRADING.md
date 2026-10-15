@@ -85,12 +85,12 @@ parameters to its signature, or PHP refuses it as incompatible:
 |---|---|
 | `Client::applyBlockTranslations()` | `$customId = null` |
 | `HtmlParser::walkNode()` | `&$textNodes = null` |
-| `PageTranslator::interp()` | `DOMNode $scope = null` |
+| `PageTranslator::interp()` | `?DOMNode $scope = null` |
 | `Interpolator::chooseIcuBranch()` | `$locale = null` |
 | `Interpolator::formatIcu()` | `$template = null` |
-| `MarkupTokenizer::encode()` | `ValueMarkers $markers = null` |
+| `MarkupTokenizer::encode()` | `?ValueMarkers $markers = null` |
 | `MarkupTokenizer::render()`, `MarkupTokenizer::rebuild()` | `array $opaque = []` |
-| `MarkupTokenizer::encodeChildren()` | `array &$opaque = [], ValueMarkers $markers = null, &$excluded = false` |
+| `MarkupTokenizer::encodeChildren()` | `array &$opaque = [], ?ValueMarkers $markers = null, &$excluded = false` |
 
 `MarkupTokenizer::encode()` returns two more keys, `opaque` and `earlier`.
 

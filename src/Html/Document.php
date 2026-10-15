@@ -75,7 +75,7 @@ final class Document
      * @param DOMDocument|null $doc
      * @return \DOMElement|null
      */
-    public static function fragmentRoot(DOMDocument $doc = null)
+    public static function fragmentRoot(?DOMDocument $doc = null)
     {
         return $doc === null ? null : $doc->documentElement;
     }

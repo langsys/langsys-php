@@ -1390,7 +1390,7 @@ class PageTranslator
      * @param string $text
      * @return string
      */
-    protected function interp($text, DOMNode $scope = null)
+    protected function interp($text, ?DOMNode $scope = null)
     {
         // No early return on empty params: a translation can hold ICU the caller
         // knows nothing about - the backend promotes a plain {name} into a
@@ -1412,7 +1412,7 @@ class PageTranslator
      * @param string $text
      * @return array
      */
-    protected function paramsFor(DOMNode $scope = null, $text = '')
+    protected function paramsFor(?DOMNode $scope = null, $text = '')
     {
         if ($scope === null || $this->markers === null || !$this->markers->any()) {
             return $this->params;

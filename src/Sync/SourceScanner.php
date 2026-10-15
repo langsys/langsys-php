@@ -38,7 +38,7 @@ final class SourceScanner
     /**
      * @param array<string, string>|null $functions name => '__' or 'trans_choice'
      */
-    public function __construct(array $functions = null)
+    public function __construct(?array $functions = null)
     {
         $this->functions = $functions === null ? self::DEFAULT_FUNCTIONS : $functions;
     }

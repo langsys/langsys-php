@@ -50,7 +50,7 @@ final class Planner
      * @param LegacyKeys|null $source The base language's files
      * @param ValueSets|null $valueSets
      */
-    public function __construct(LegacyKeys $source = null, ValueSets $valueSets = null)
+    public function __construct(?LegacyKeys $source = null, ?ValueSets $valueSets = null)
     {
         $this->source = $source;
         $this->valueSets = $valueSets;
@@ -66,7 +66,7 @@ final class Planner
      * @param array $options As plan() takes them
      * @return SyncPlan
      */
-    public static function offline(array $hits, array $migration = null, array $valueSets = [], array $options = [])
+    public static function offline(array $hits, ?array $migration = null, array $valueSets = [], array $options = [])
     {
         $planner = new self($migration === null ? null : new LegacyKeys($migration), $valueSets === [] ? null : new ValueSets($valueSets));
 
@@ -88,7 +88,7 @@ final class Planner
      *                       whose sentences a call anywhere is covered by
      * @return SyncPlan
      */
-    public function plan(array $hits, array $readers = [], array $catalog = null, array $options = [])
+    public function plan(array $hits, array $readers = [], ?array $catalog = null, array $options = [])
     {
         $coveredGroups = isset($options['covered_groups']) && is_array($options['covered_groups']) ? array_map('strval', $options['covered_groups']) : [];
         $messageClasses = isset($options['message_classes']) && is_array($options['message_classes'])

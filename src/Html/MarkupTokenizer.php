@@ -109,7 +109,7 @@ class MarkupTokenizer
      * @param ValueMarkers|null $markers The value markers read below $element
      * @return array ['text' => string, 'slots' => DOMElement[], 'opaque' => int[], 'earlier' => array|null]
      */
-    public function encode(DOMElement $element, ValueMarkers $markers = null)
+    public function encode(DOMElement $element, ?ValueMarkers $markers = null)
     {
         $slots = [];
         $opaque = [];
@@ -414,7 +414,7 @@ class MarkupTokenizer
      * @param bool &$excluded Set when an author-excluded element is met
      * @return string
      */
-    protected function encodeChildren(DOMNode $node, array &$slots, array &$opaque = [], ValueMarkers $markers = null, &$excluded = false)
+    protected function encodeChildren(DOMNode $node, array &$slots, array &$opaque = [], ?ValueMarkers $markers = null, &$excluded = false)
     {
         $out = '';
 
