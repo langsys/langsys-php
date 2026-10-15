@@ -295,6 +295,26 @@ class PlannerTest extends TestCase
     }
 
     /**
+     * Two elements kept whole that share a tag and attributes are told apart
+     * by the source content they render, so a translation that swaps two
+     * excluded names keeps each on its own run.
+     */
+    public function testAReorderOfElementsKeptWholeFollowsTheirContent(): void
+    {
+        list($source, $readers) = $this->files(
+            ['names' => '<span translate="no">Alice</span> meets <span translate="no">Bob</span>', 'math' => 'If <math><mi>x</mi></math> then <math><mi>y</mi></math>'],
+            ['names' => '<span translate="no">Bob</span> trifft <span translate="no">Alice</span>', 'math' => 'Entonces <math><mi>y</mi></math> si <math><mi>x</mi></math>']
+        );
+
+        $plan = (new Planner($source))->plan($this->hits("echo app('translator')->getHtml('legal.names');\necho app('translator')->getHtml('legal.math');"), $readers);
+
+        $this->assertSame([
+            ['legal', '{m0o}{m0c} meets {m1o}{m1c}', ['es-es' => '{m1o}{m1c} trifft {m0o}{m0c}']],
+            ['legal', 'If {m0o}{m0c} then {m1o}{m1c}', ['es-es' => 'Entonces {m1o}{m1c} si {m0o}{m0c}']],
+        ], self::items($plan));
+    }
+
+    /**
      * A line of a rich runtime key's group that registers nothing - no text
      * of its own - reports nothing either.
      */

@@ -396,7 +396,9 @@ final class Planner
 
     /**
      * Each translation slot's source slot, or null when they cannot be
-     * matched (see richTranslations()).
+     * matched (see richTranslations()). An element kept whole renders its
+     * source content, which its slot holds, so that content tells two of them
+     * apart as well; any other slot holds no children.
      *
      * @param \DOMElement[] $source
      * @param \DOMElement[] $target
@@ -404,6 +406,7 @@ final class Planner
      */
     private static function slotMap(array $source, array $target)
     {
+
         $byTag = function (array $slots) {
             $out = [];
             foreach ($slots as $index => $slot) {
@@ -420,7 +423,12 @@ final class Planner
             }
             ksort($attributes);
 
-            return json_encode($attributes);
+            $content = '';
+            foreach ($slot->childNodes as $child) {
+                $content .= $slot->ownerDocument->saveHTML($child);
+            }
+
+            return json_encode([$attributes, $content]);
         };
 
         $sourceTags = $byTag($source);
