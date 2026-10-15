@@ -26,6 +26,13 @@ final class Document
     const RECOVER = 1;
 
     /**
+     * libxml's HTML_PARSE_IGNORE_ENC: the encoding is the one the input is
+     * given in, never one a meta inside it declares, which would switch
+     * libxml mid-parse and garble text already decoded (Charset).
+     */
+    const IGNORE_ENCODING = 2097152;
+
+    /**
      * Load $html into $doc as DOMDocument::loadHTML() does, in recovery mode.
      *
      * @param DOMDocument $doc
@@ -35,7 +42,7 @@ final class Document
      */
     public static function load(DOMDocument $doc, $html, $options = 0)
     {
-        return $doc->loadHTML((string) $html, $options | self::RECOVER);
+        return $doc->loadHTML((string) $html, $options | self::RECOVER | self::IGNORE_ENCODING);
     }
 
     /**
@@ -53,6 +60,6 @@ final class Document
      */
     public static function loadFragment(DOMDocument $doc, $html)
     {
-        return self::load($doc, '<?xml encoding="UTF-8"><div>' . $html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        return self::load($doc, '<?xml encoding="UTF-8"><div>' . Charset::scrub($html), LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
     }
 }

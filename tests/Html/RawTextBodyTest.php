@@ -238,6 +238,40 @@ class RawTextBodyTest extends TestCase
     }
 
     /**
+     * A page is decoded as a browser decodes it before anything reads it: a
+     * byte-order mark first, then the charset its first 1024 bytes declare -
+     * Latin-1 and ASCII labels read as windows-1252 - else UTF-8 when its
+     * bytes are UTF-8 and windows-1252 when they are not; a byte invalid in
+     * UTF-8 becomes U+FFFD, and the rest of the page is still UTF-8.
+     */
+    public function testAPageIsDecodedAsABrowserDecodesIt(): void
+    {
+        $quotes = "<p>He said \x93hi\x94 \x96 \x80 5</p>";
+        foreach ([
+            'iso-8859-1' => ['<html><head><meta charset="iso-8859-1"></head><body>' . $quotes . '</body></html>', '<p>He said “hi” – € 5</p>'],
+            'latin1' => ['<html><head><meta http-equiv="Content-Type" content="text/html; charset=latin1"></head><body>' . $quotes . '</body></html>', '<p>He said “hi” – € 5</p>'],
+            'undeclared, not UTF-8' => ['<html><head></head><body>' . $quotes . '</body></html>', '<p>He said “hi” – € 5</p>'],
+            'byte-order mark over a meta' => ["\xEF\xBB\xBF<html><head><meta charset=\"windows-1252\"></head><body><p>M\xC3\xBCller</p></body></html>", '<p>Müller</p>'],
+            'us-ascii, whole page kept' => ["<html><head><meta charset=\"us-ascii\"></head><body><p>caf\xC3\xA9</p><p>after</p></body></html>", '<p>after</p>'],
+            'one bad byte' => ["<html><head><meta charset=\"utf-8\"></head><body><p>caf\xE9</p><p>M\xC3\xBCller</p></body></html>", "<p>caf\u{FFFD}</p><p>Müller</p>"],
+            'a meta declaring UTF-16, read as UTF-8' => ["<html><head><meta charset=\"utf-16\"></head><body><p>M\xC3\xBCller</p></body></html>", '<p>Müller</p>'],
+            'shift_jis' => ["<html><head><meta charset=\"shift_jis\"></head><body><p>\x93\xfa\x96\x7b</p></body></html>", '<p>日本</p>'],
+            'utf-8, the control' => ['<html><head><meta charset="utf-8"></head><body><p>Müller</p></body></html>', '<p>Müller</p>'],
+        ] as $label => list($html, $expected)) {
+            $page = $this->client()->translatePage($html, 'UI');
+
+            $this->assertStringContainsString($expected, $page, $label);
+            $this->assertSame(1, preg_match('//u', $page), 'valid UTF-8: ' . $label);
+        }
+
+        $utf16 = "\xFF\xFE" . \UConverter::transcode('<html><head></head><body><p>Müller</p></body></html>', 'UTF-16LE', 'UTF-8');
+        $this->assertStringContainsString('<p>Müller</p>', $this->client()->translatePage($utf16, 'UI'), 'UTF-16, by its byte-order mark');
+
+        $block = $this->client()->translateContentBlock("<p>caf\xE9</p><p>M\xC3\xBCller</p>", 'UI');
+        $this->assertStringContainsString("<p>caf\u{FFFD}</p><p>Müller</p>", $block, 'a fragment is read as UTF-8, a bad byte as U+FFFD');
+    }
+
+    /**
      * A doctype with public and system identifiers is written back as it was.
      */
     public function testALegacyDoctypeIsWrittenBack(): void

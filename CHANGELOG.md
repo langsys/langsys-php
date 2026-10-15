@@ -281,6 +281,14 @@ its id or re-registers it.
 
 ### Fixed
 
+- **A page is read as a browser reads it.** `translatePage()` decodes a page
+  before anything reads it as a browser does: a byte-order mark first, then
+  the charset its first 1024 bytes declare, with Latin-1 and ASCII labels read
+  as windows-1252, else UTF-8 when the bytes are UTF-8 and windows-1252 when
+  they are not. Curly quotes, dashes and the euro sign on a Latin-1 page now
+  survive, a byte-order mark wins over a conflicting meta, a us-ascii page is
+  no longer cut off at its first non-ASCII byte, and one invalid byte becomes
+  U+FFFD instead of turning the rest of the page into mojibake.
 - **A page is written out in the UTF-8 it declares.** `translatePage()` wrote
   every character outside ASCII as an entity unless the page carried an
   http-equiv charset meta, so a `<meta charset>` page's JSON-LD read
