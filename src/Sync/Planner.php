@@ -179,14 +179,13 @@ final class Planner
             // so do the translations carried for it (FRM-8). One with no text
             // of its own registers nothing there, and nothing here.
             if (!empty($hit['rich'])) {
-                $line = MarkupTokenizer::readLine($phrase);
-                if ($line === null || !$line['tokenizer']->hasText($line['encoded']['text'])) {
+                $rich = self::richLine($phrase, $hit['text'], $translations, $skipped);
+                if ($rich === null) {
                     array_splice($skipped, $skippedBefore);
                     continue;
                 }
 
-                $translations = self::richTranslations($line, $hit['text'], $translations, $skipped);
-                $phrase = $line['encoded']['text'];
+                list($phrase, $translations) = $rich;
             }
 
             // A sentence the messages listing lists is covered by it,
@@ -213,25 +212,50 @@ final class Planner
         // A key a rich line reaches registers in that form, and a plain call
         // to it registers its raw line itself, so the lines here add no raw
         // copy of it - a phrase nothing would look up - unless a key built at
-        // runtime in its group may reach it plainly.
+        // runtime in its group may reach it plainly. A rich line building its
+        // key at runtime may reach any line of its group, each looked up
+        // tokenized, so every one of them registers in that form.
         $richKeys = [];
-        $runtimeGroups = [];
+        $richGroups = [];
+        $plainGroups = [];
         foreach ($hits as $hit) {
-            if ($hit['text'] !== null && !empty($hit['rich'])) {
-                $richKeys[$hit['text']] = true;
-            } elseif ($hit['text'] === null && isset($hit['group']) && $hit['group'] !== null) {
-                $runtimeGroups[] = $hit['group'];
+            $rich = !empty($hit['rich']);
+            if ($hit['text'] !== null) {
+                if ($rich) {
+                    $richKeys[$hit['text']] = true;
+                }
+            } elseif (isset($hit['group']) && $hit['group'] !== null) {
+                if ($rich) {
+                    $richGroups[] = $hit['group'];
+                } else {
+                    $plainGroups[] = $hit['group'];
+                }
             }
         }
 
         foreach ($this->source === null ? [] : $this->source->keys() as $key) {
-            if (isset($richKeys[$key]) && !self::inGroups($key, $runtimeGroups)) {
+            $entry = $this->source->resolve($key);
+            if ($entry === null) {
                 continue;
             }
 
-            $entry = $this->source->resolve($key);
-            if ($entry !== null) {
-                $add($entry['phrase'], $entry['category'], self::lineTranslations($key, $readers, $skipped), $key);
+            $inRichGroup = self::inGroups($key, $richGroups);
+            $raw = (!isset($richKeys[$key]) && !$inRichGroup) || self::inGroups($key, $plainGroups);
+            if (!$inRichGroup && !$raw) {
+                continue;
+            }
+
+            $translations = self::lineTranslations($key, $readers, $skipped);
+
+            if ($inRichGroup) {
+                $rich = self::richLine($entry['phrase'], $key, $translations, $skipped);
+                if ($rich !== null) {
+                    $add($rich[0], $entry['category'], $rich[1], $key);
+                }
+            }
+
+            if ($raw) {
+                $add($entry['phrase'], $entry['category'], $translations, $key);
             }
         }
 
@@ -294,6 +318,27 @@ final class Planner
         }
 
         return false;
+    }
+
+    /**
+     * A rich line as it registers, read as translateRich() reads it, with the
+     * translations carried for it; null when it has no text of its own and
+     * registers nothing.
+     *
+     * @param string $phrase
+     * @param string $key
+     * @param array<string, string> $translations
+     * @param array &$skipped
+     * @return array{0: string, 1: array<string, string>}|null
+     */
+    private static function richLine($phrase, $key, array $translations, array &$skipped)
+    {
+        $line = MarkupTokenizer::readLine($phrase);
+        if ($line === null || !$line['tokenizer']->hasText($line['encoded']['text'])) {
+            return null;
+        }
+
+        return [$line['encoded']['text'], self::richTranslations($line, $key, $translations, $skipped)];
     }
 
     /**

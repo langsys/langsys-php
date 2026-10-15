@@ -232,6 +232,44 @@ class PlannerTest extends TestCase
     }
 
     /**
+     * A key built at runtime in a rich line's group may be any of the
+     * group's lines, each looked up tokenized: every line registers
+     * tokenized, with no raw copy, unless a plain call can reach it too.
+     */
+    public function testARichLineBuildingItsKeyAtRuntimeRegistersItsGroupTokenized(): void
+    {
+        list($source, $readers) = $this->files(['built' => 'Mind <b>that</b>', 'terms' => 'Read our <a href="/terms">terms</a>'], ['built' => 'Ojo <b>eso</b>', 'terms' => 'Lee nuestros <a href="/terms">términos</a>']);
+
+        $plan = (new Planner($source))->plan($this->hits("echo app('translator')->getHtml(\"legal.\$k\");\necho app('translator')->getHtml('legal.terms');"), $readers);
+        $this->assertSame([
+            ['legal', 'Read our {m0o}terms{m0c}', ['es-es' => 'Lee nuestros {m0o}términos{m0c}']],
+            ['legal', 'Mind {m0o}that{m0c}', ['es-es' => 'Ojo {m0o}eso{m0c}']],
+        ], self::items($plan));
+        $this->assertCount(1, $plan->covered, 'the runtime key is covered by its group');
+
+        $plan = (new Planner($source))->plan($this->hits("echo app('translator')->getHtml(\"legal.\$k\");\necho e(__(\"legal.\$j\"));"), $readers);
+        $this->assertSame([
+            ['legal', 'Mind {m0o}that{m0c}', ['es-es' => 'Ojo {m0o}eso{m0c}']],
+            ['legal', 'Mind <b>that</b>', ['es-es' => 'Ojo <b>eso</b>']],
+            ['legal', 'Read our {m0o}terms{m0c}', ['es-es' => 'Lee nuestros {m0o}términos{m0c}']],
+            ['legal', 'Read our <a href="/terms">terms</a>', ['es-es' => 'Lee nuestros <a href="/terms">términos</a>']],
+        ], self::items($plan), 'a plain runtime key in the group reaches the raw lines too');
+    }
+
+    /**
+     * A translation a rich key's other languages lack is reported once, by
+     * the call that reached it, not again by the base-language lines.
+     */
+    public function testAMissingTranslationOfARichKeyIsReportedOnce(): void
+    {
+        list($source, $readers) = $this->files(['terms' => 'Read our <a href="/terms">terms</a>', 'gone' => 'Only in <b>English</b>'], ['terms' => 'Lee nuestros <a href="/terms">términos</a>']);
+
+        $plan = (new Planner($source))->plan($this->hits("echo app('translator')->getHtml('legal.terms');\necho app('translator')->getHtml('legal.gone');"), $readers);
+
+        $this->assertSame([['key' => 'legal.gone', 'locale' => 'es-es', 'reason' => 'missing']], $plan->skipped);
+    }
+
+    /**
      * A key a plain call reaches too, or a key built at runtime in its group
      * may reach, keeps its raw line beside the tokenized one: each is what
      * some lookup asks for.
