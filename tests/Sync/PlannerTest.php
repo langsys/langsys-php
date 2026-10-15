@@ -272,6 +272,29 @@ class PlannerTest extends TestCase
     }
 
     /**
+     * A translation that reorders elements of one tag carries each run on the
+     * element its attributes name, so the page rebuilds every run on the
+     * right link; one whose elements cannot be told apart that way is not
+     * converted.
+     */
+    public function testACarriedTranslationKeepsEachRunOnItsOwnElement(): void
+    {
+        list($source, $readers) = $this->files(
+            ['links' => 'Read the <a href="/terms">terms</a> and the <a href="/privacy">privacy policy</a>', 'local' => 'Read the <a href="/terms">terms</a> and the <a href="/privacy">privacy policy</a>.', 'twice' => 'Use <b>this</b> or <b>that</b>'],
+            ['links' => 'Lea la <a href="/privacy">política de privacidad</a> y los <a href="/terms">términos</a>', 'local' => 'Lea la <a href="/es/privacidad">política</a> y los <a href="/es/terminos">términos</a>.', 'twice' => 'Usa <b>eso</b> o <b>esto</b>']
+        );
+
+        $plan = (new Planner($source))->plan($this->hits("echo app('translator')->getHtml('legal.links');\necho app('translator')->getHtml('legal.local');\necho app('translator')->getHtml('legal.twice');"), $readers);
+
+        $this->assertSame([
+            ['legal', 'Read the {m0o}terms{m0c} and the {m1o}privacy policy{m1c}', ['es-es' => 'Lea la {m1o}política de privacidad{m1c} y los {m0o}términos{m0c}']],
+            ['legal', 'Read the {m0o}terms{m0c} and the {m1o}privacy policy{m1c}.', []],
+            ['legal', 'Use {m0o}this{m0c} or {m1o}that{m1c}', ['es-es' => 'Usa {m0o}eso{m0c} o {m1o}esto{m1c}']],
+        ], self::items($plan), 'two elements nothing tells apart keep their order');
+        $this->assertSame([['key' => 'legal.local', 'locale' => 'es-es', 'reason' => 'not_converted']], $plan->skipped);
+    }
+
+    /**
      * A translation a rich key's other languages lack is reported once, by
      * the call that reached it, not again by the base-language lines.
      */

@@ -149,8 +149,10 @@ its id or re-registers it.
   line with inline markup as tokens (`Read our {m0o}terms{m0c} today`), read by
   the same `MarkupTokenizer::readLine()` `translateRich()` uses, never as raw
   HTML. Translations carried from other languages' files are tokenized the same
-  way, and one whose elements don't line up with the source's is listed in
-  `SyncPlan::$skipped` as `not_converted`. A key only rich lines reach gets no
+  way, each run on the source element it belongs to: a tag the line holds once
+  is that element, and of a tag it holds more than once each is the element
+  with the same attributes. One whose elements cannot be matched so is listed
+  in `SyncPlan::$skipped` as `not_converted`. A key only rich lines reach gets no
   raw copy from the base-language lines.
 - **A sync can be planned offline.** `Sync\Planner::offline()` plans without a
   client or a key - every phrase new, non-literal calls, label lines and

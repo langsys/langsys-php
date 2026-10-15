@@ -342,11 +342,16 @@ final class Planner
     }
 
     /**
-     * The translations carried for a rich line, each read as the line is. One
-     * whose elements do not line up with the source's - another count, or
-     * another element in a slot - cannot be rebuilt around the source's own
-     * markup, and is listed as not converted rather than carried; the
-     * language file keeps serving it until the phrase is translated.
+     * The translations carried for a rich line, each read as the line is, with
+     * each run on the source element it belongs to. A tag the line holds once
+     * is that element whatever its attributes, so a localized `href` is no
+     * obstacle; of a tag it holds more than once, each element is the source
+     * element with the same attributes, so a translation may reorder two
+     * links. One whose elements cannot be matched so - another count or tag,
+     * or two of one tag whose attributes tell none of them apart - cannot be
+     * rebuilt around the source's own markup, and is listed as not converted
+     * rather than carried; the language file keeps serving it until the
+     * phrase is translated.
      *
      * @param array $source MarkupTokenizer::readLine() of the source line
      * @param string $key
@@ -360,28 +365,84 @@ final class Planner
 
         foreach ($translations as $locale => $text) {
             $line = MarkupTokenizer::readLine($text);
+            $map = $line === null || !$line['tokenizer']->hasText($line['encoded']['text'])
+                ? null
+                : self::slotMap($source['encoded']['slots'], $line['encoded']['slots']);
 
-            if ($line === null || !$line['tokenizer']->hasText($line['encoded']['text'])
-                || self::slotNames($line['encoded']['slots']) !== self::slotNames($source['encoded']['slots'])) {
+            if ($map === null) {
                 $skipped[] = ['key' => $key, 'locale' => $locale, 'reason' => 'not_converted'];
                 continue;
             }
 
-            $carried[$locale] = $line['encoded']['text'];
+            $carried[$locale] = (string) preg_replace_callback('/\{m(\d+)([oc])\}/', function ($m) use ($map) {
+                return '{m' . $map[(int) $m[1]] . $m[2] . '}';
+            }, $line['encoded']['text']);
         }
 
         return $carried;
     }
 
     /**
-     * @param \DOMElement[] $slots
-     * @return string[]
+     * Each translation slot's source slot, or null when they cannot be
+     * matched (see richTranslations()).
+     *
+     * @param \DOMElement[] $source
+     * @param \DOMElement[] $target
+     * @return array<int, int>|null
      */
-    private static function slotNames(array $slots)
+    private static function slotMap(array $source, array $target)
     {
-        return array_map(function (\DOMElement $slot) {
-            return strtolower($slot->tagName);
-        }, $slots);
+        $byTag = function (array $slots) {
+            $out = [];
+            foreach ($slots as $index => $slot) {
+                $out[strtolower($slot->tagName)][] = $index;
+            }
+            ksort($out);
+
+            return $out;
+        };
+        $identity = function (\DOMElement $slot) {
+            $attributes = [];
+            foreach ($slot->attributes as $attribute) {
+                $attributes[$attribute->name] = $attribute->value;
+            }
+            ksort($attributes);
+
+            return json_encode($attributes);
+        };
+
+        $sourceTags = $byTag($source);
+        $targetTags = $byTag($target);
+        if (array_map('count', $sourceTags) !== array_map('count', $targetTags)) {
+            return null;
+        }
+
+        $map = [];
+        foreach ($targetTags as $tag => $targetSlots) {
+            $free = $sourceTags[$tag];
+            if (count($free) === 1) {
+                $map[$targetSlots[0]] = $free[0];
+                continue;
+            }
+
+            foreach ($targetSlots as $targetSlot) {
+                $match = null;
+                foreach ($free as $position => $sourceSlot) {
+                    if ($identity($source[$sourceSlot]) === $identity($target[$targetSlot])) {
+                        $match = $position;
+                        break;
+                    }
+                }
+                if ($match === null) {
+                    return null;
+                }
+
+                $map[$targetSlot] = $free[$match];
+                unset($free[$match]);
+            }
+        }
+
+        return $map;
     }
 
     /**

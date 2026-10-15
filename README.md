@@ -1475,9 +1475,12 @@ human translations.
 A line a binding prints raw — `@lang` and `@t` compile to `app('translator')->getHtml(...)`, `@choice` to
 `->choiceHtml(...)` — registers with its inline markup as tokens, `Read our {m0o}terms{m0c}`, the phrase
 `translateRich()` looks up, and its translations from your other languages' files are
-tokenized the same way. One whose elements don't line up with your source's (another
-count, another tag) is listed in `$plan->skipped` as `not_converted`, and your language
-file keeps serving that line. Once the catalog answers, the page rebuilds your source's own
+tokenized the same way, each run on your source element it belongs to: a tag your line
+holds once is that element, and of a tag it holds more than once, each is the element with
+the same attributes, so a translation may reorder two links. One whose elements can't be
+matched so (another count or tag, or two links whose attributes tell neither apart) is
+listed in `$plan->skipped` as `not_converted`, and your language file keeps serving that
+line. Once the catalog answers, the page rebuilds your source's own
 elements, so an attribute a translated file changed, such as a localized `href`, gives way
 to the source's.
 
