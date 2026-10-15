@@ -257,6 +257,21 @@ class PlannerTest extends TestCase
     }
 
     /**
+     * A rich `@choice` line registers as its plural, with each inline
+     * element a token pair in every branch, the key translateRich() looks up
+     * for the same call.
+     */
+    public function testARichChoiceLineRegistersItsPluralTokenized(): void
+    {
+        $plan = Planner::offline($this->hits("echo app('translator')->choiceHtml('<b>One</b> apple|:count <b>apples</b>', \$n);"));
+
+        $runtime = \Langsys\SDK\Html\MarkupTokenizer::readLine(\Langsys\SDK\Migration\LegacyValue::fromCall('<b>One</b> apple|:count <b>apples</b>', [], 'trans_choice', 1)['text']);
+        $this->assertSame([$runtime['encoded']['text']], array_column($plan->items, 'phrase'));
+        $this->assertStringContainsString('{m0o}One{m0c}', $plan->items[0]['phrase']);
+        $this->assertStringNotContainsString('<b>', $plan->items[0]['phrase']);
+    }
+
+    /**
      * A translation a rich key's other languages lack is reported once, by
      * the call that reached it, not again by the base-language lines.
      */

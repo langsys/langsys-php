@@ -58,6 +58,22 @@ class SourceScannerTest extends TestCase
         $this->assertSame([true, false, false, false], array_column($hits, 'rich'));
     }
 
+    /**
+     * FRM-8: `@choice` compiles to the translator's `choiceHtml()` where a
+     * binding prints it raw, read as `choice()` is - key, number, replace,
+     * locale - and marked rich.
+     */
+    public function testARawPrintedChoiceIsReadAsChoiceAndMarkedRich(): void
+    {
+        $hits = $this->scan("echo app('translator')->choiceHtml('cart.apples', 3, ['name' => \$n]); echo app('translator')->choice('cart.pears', 2);");
+
+        $this->assertSame(['cart.apples', 'cart.pears'], array_column($hits, 'text'));
+        $this->assertSame(['Lang::choice', 'Lang::choice'], array_column($hits, 'entry_point'));
+        $this->assertSame(['trans_choice', 'trans_choice'], array_column($hits, 'kind'));
+        $this->assertSame(['name'], $hits[0]['replace_keys']);
+        $this->assertSame([true, false], array_column($hits, 'rich'));
+    }
+
     public function testANonLiteralCallIsReportedWithItsLine(): void
     {
         $hits = $this->scan("\n\n__(\$dynamic);\n__('Prefix ' . \$x);\n__(\"Hi {\$name}\");");

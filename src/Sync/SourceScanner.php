@@ -14,10 +14,11 @@ namespace Langsys\SDK\Sync;
  *
  * Recognised: the configured function names, static calls written
  * `Class::method`, and `app('translator')->get(...)` / `->choice(...)`, which
- * Blade's `@lang` and `@choice` compile to. `app('translator')->getHtml(...)`,
- * what a binding compiles `@lang` and `@t` to where it prints the line raw
- * (FRM-8), reads as `->get(...)` does and is marked rich: its line registers
- * with its inline markup as tokens.
+ * Blade's `@lang` and `@choice` compile to. `app('translator')->getHtml(...)`
+ * and `->choiceHtml(...)`, what a binding compiles `@lang`/`@t` and `@choice`
+ * to where it prints the line raw (FRM-8), read as `->get(...)` and
+ * `->choice(...)` do and are marked rich: the line registers with its inline
+ * markup as tokens.
  */
 final class SourceScanner
 {
@@ -221,12 +222,12 @@ final class SourceScanner
             && self::literal([$tokens[$i + 2]]) === 'translator'
             && self::is($tokens, $i + 3, ')')
             && isset($tokens[$i + 4]) && is_array($tokens[$i + 4]) && in_array($tokens[$i + 4][0], [T_OBJECT_OPERATOR, defined('T_NULLSAFE_OBJECT_OPERATOR') ? T_NULLSAFE_OBJECT_OPERATOR : -1], true)
-            && isset($tokens[$i + 5]) && is_array($tokens[$i + 5]) && in_array(strtolower($tokens[$i + 5][1]), ['get', 'choice', 'gethtml'], true)
+            && isset($tokens[$i + 5]) && is_array($tokens[$i + 5]) && in_array(strtolower($tokens[$i + 5][1]), ['get', 'choice', 'gethtml', 'choicehtml'], true)
             && self::is($tokens, $i + 6, '(')) {
             $method = strtolower($tokens[$i + 5][1]);
-            $name = $method === 'choice' ? 'Lang::choice' : 'Lang::get';
+            $name = $method === 'choice' || $method === 'choicehtml' ? 'Lang::choice' : 'Lang::get';
 
-            return isset($this->functions[$name]) ? [$name, $i + 6, $token[2], $method === 'gethtml'] : null;
+            return isset($this->functions[$name]) ? [$name, $i + 6, $token[2], $method === 'gethtml' || $method === 'choicehtml'] : null;
         }
 
         if (!is_array($token)) {
