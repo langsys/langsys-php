@@ -50,6 +50,7 @@ class RawTextBodyTest extends TestCase
             'a template literal' => ['<script>const t = `<div class="x"><span>${n}</span></div>`;</script>'],
             'JSON-LD' => ['<script type="application/ld+json">{"desc": "<b>bold</b>"}</script>'],
             'a style comment' => ['<style>/* </p> */ p{color:red}</style>'],
+            'a longer end tag' => ['<script>a = "</scripts>"; b = "</b>";</script>'],
             'a comparison, the control' => ['<script>if (a < b && c > d) go();</script>'],
         ];
     }
@@ -90,6 +91,46 @@ class RawTextBodyTest extends TestCase
             $this->assertSame($line, $client->translateRich($line, null, 'UI', ['email' => 'ana@example.com'])['html']);
             $this->assertSame(['Run {m0o}{m0c} now'], array_values(array_column($client->getPendingPhrases(), 'phrase')));
         }
+    }
+
+    /**
+     * Only an element is a script or a style. The words written in a comment,
+     * an attribute value or a title or textarea body, and a custom element
+     * whose name merely starts with one, are text the parser leaves alone, and
+     * so is everything after them.
+     */
+    public function testAMentionOfScriptOrStyleIsNotAnElement(): void
+    {
+        $page = $this->client(['Hello' => 'Hola'])->translatePage('<html><head><meta charset="utf-8"><!-- critical <style> inlined below --><style>body{margin:0}</style></head><body><p>Hello</p></body></html>', 'UI');
+        $this->assertStringContainsString('<!-- critical <style> inlined below --><style>body{margin:0}</style>', $page);
+        $this->assertStringContainsString('<p>Hola</p>', $page);
+
+        $page = $this->client(['Hello' => 'Hola'])->translatePage('<html><head><meta charset="utf-8"><meta name="description" content="Learn the <script> tag"><script>var a = "</b>";</script></head><body><p>Hello</p></body></html>', 'UI');
+        $this->assertStringContainsString('content="Learn the &lt;script&gt; tag"', $page);
+        $this->assertStringContainsString('<script>var a = "</b>";</script>', $page);
+        $this->assertStringContainsString('<p>Hola</p>', $page);
+
+        $client = $this->client();
+        $block = $client->translateContentBlock('<div><p title="the <style> element">Hello</p><p>World</p><style>p{}</style></div>', 'UI');
+        $this->assertStringContainsString('<p title="the &lt;style&gt; element">Hello</p>', $block);
+        $this->assertSame([['the <style> element', 'Hello', 'World']], array_values(array_map(function ($b) {
+            return $b['phrases'];
+        }, $client->getPendingContentBlocks())));
+
+        foreach (['<div><style-guide><p>Hello</p></style-guide><p>World</p><style>p{color:red}</style></div>', '<div><script-loader>Hello</script-loader><p>World</p><script>go("</b>")</script></div>', '<div><textarea>Type <script> here</script></textarea><p>World</p><script>go("</b>")</script></div>'] as $html) {
+            $this->assertSame($html, preg_replace('/ data-ls-contentblock="[0-9a-f]+"/', '', $this->client()->translateContentBlock($html, 'UI')), $html);
+        }
+    }
+
+    /**
+     * A script written in an attribute value stays the value as written,
+     * a bare `&` included.
+     */
+    public function testAScriptWrittenInAnAttributeValueKeepsTheValue(): void
+    {
+        $page = $this->client()->translatePage('<html><head><meta charset="utf-8"></head><body><div data-x="<script>a && b</script>"><p>Hello</p></div></body></html>', 'UI');
+
+        $this->assertStringContainsString('data-x="&lt;script&gt;a &amp;&amp; b&lt;/script&gt;"', $page);
     }
 
     /**
