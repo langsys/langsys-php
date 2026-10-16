@@ -498,13 +498,14 @@ class PageTranslator
         // opened after its doctype and never closed, so every top-level
         // element is part of the page. One that is a document - a doctype, a
         // head, a body or a title - keeps it; a fragment is written back as
-        // the fragment it was.
+        // the fragment it was. Both are read from the page's tags, never from
+        // text that mentions one.
         $this->fragmentRoot = false;
-        if (!preg_match('/<html[\s>\/]/i', $html) && preg_match('/<[a-z]/i', $html)) {
+        $tags = Document::startTags($html);
+        if ($tags !== [] && !in_array('html', $tags, true)) {
             preg_match('/^(?:\s|<!--.*?-->|<!doctype[^>]*>)*/is', $html, $prolog);
-            $rest = (string) substr($html, strlen($prolog[0]));
-            $this->fragmentRoot = stripos($prolog[0], '<!doctype') === false && !preg_match('/<(?:head|body|title)[\s>\/]/i', $rest);
-            $html = $prolog[0] . '<html>' . $rest;
+            $this->fragmentRoot = stripos($prolog[0], '<!doctype') === false && array_intersect(['head', 'body', 'title'], $tags) === [];
+            $html = $prolog[0] . '<html>' . substr($html, strlen($prolog[0]));
         }
 
         $loaded = Document::load($doc, '<?xml encoding="UTF-8">' . $html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);

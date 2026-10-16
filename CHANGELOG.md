@@ -297,8 +297,11 @@ its id or re-registers it.
   every top-level element is translated, where only the first was, and a
   page that is a document - a doctype, a head, a body or a title - is written
   back with the `<html>` and the head a browser implies, so its title and
-  `lang` are set; one that is a fragment comes back as the fragment it was.
-  A minified page whose `<meta charset>` came first no longer loses
+  `lang` are set; one that is a fragment comes back as the fragment it was,
+  each of its top-level elements marked as translated output. Both are read
+  from the page's tags as a browser reads them, so `<html>` written in a
+  script, a comment or an attribute, or an inline svg's `<title>`, changes
+  neither. A minified page whose `<meta charset>` came first no longer loses
   everything after it, and on a page with no `<body>` the head is no longer
   read as body text.
 - **A page is read as a browser reads it.** `translatePage()` decodes a page

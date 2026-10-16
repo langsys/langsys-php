@@ -223,6 +223,25 @@ class RawTextBodyTest extends TestCase
     }
 
     /**
+     * Whether a page has an <html>, and whether it is a document, is read
+     * from its tags as a browser reads them: a tag written in a script, a
+     * comment or an attribute is text, and an svg's <title> is the drawing's,
+     * not the page's.
+     */
+    public function testAPageIsReadFromItsTagsNotFromTextThatMentionsThem(): void
+    {
+        $catalog = ['Hello world' => 'Hola mundo', 'Title' => 'Título', 'Close' => 'Cerrar'];
+        foreach ([
+            '<button><svg viewBox="0 0 10 10"><title>Close dialog</title><path d="M0 0"/></svg>Close</button>' => '<button data-ls-contentblock="07e0ea6985fb5f6df2cbbd800a5fcd12" data-ls-resolved="es-es"><svg viewbox="0 0 10 10"><title>Close dialog</title><path d="M0 0"></path></svg>Close</button>' . "\n",
+            '<p>Hello world</p><script>document.write("<html>");</script>' => '<p data-ls-resolved="es-es">Hola mundo</p><script data-ls-resolved="es-es">document.write("<html>");</script>' . "\n",
+            '<p data-note="<html>">Hello world</p>' => '<p data-note="&lt;html&gt;" data-ls-resolved="es-es">Hola mundo</p>' . "\n",
+            '<!DOCTYPE html><!-- from the <html> boilerplate --><title>Title</title><p>Hello world</p>' => '<!DOCTYPE html>' . "\n" . '<!-- from the <html> boilerplate --><html lang="es-es" data-ls-resolved="es-es"><head><meta charset="utf-8"><title>Título</title></head><p>Hola mundo</p></html>' . "\n",
+        ] as $html => $expected) {
+            $this->assertSame($expected, $this->client($catalog)->translatePage($html, 'UI'), $html);
+        }
+    }
+
+    /**
      * WIRE-4: a page with no element - only whitespace, a comment or a
      * doctype - comes back as given, never an exception.
      */

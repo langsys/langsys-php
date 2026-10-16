@@ -69,6 +69,102 @@ final class Document
         return self::load($doc, '<?xml encoding="UTF-8"><' . self::FRAGMENT_ROOT . '>' . Charset::scrub($html), LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
     }
 
+    /** Elements whose body a browser reads as text, up to their own end tag. */
+    const TEXT_BODIES = ['iframe', 'noembed', 'noframes', 'script', 'style', 'textarea', 'title', 'xmp'];
+
+    /** Elements whose content is not HTML: an svg's <title> is the drawing's. */
+    const FOREIGN = ['math', 'svg'];
+
+    /**
+     * Start tags that end svg or math content, as in a browser's tree
+     * builder: one written inside it is the page's again.
+     */
+    const BREAKOUT = [
+        'b', 'big', 'blockquote', 'body', 'br', 'center', 'code', 'dd', 'div', 'dl', 'dt', 'em', 'embed',
+        'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'head', 'hr', 'i', 'img', 'li', 'listing', 'menu', 'meta',
+        'nobr', 'ol', 'p', 'pre', 'ruby', 's', 'small', 'span', 'strike', 'strong', 'sub', 'sup', 'table',
+        'tt', 'u', 'ul', 'var',
+    ];
+
+    /**
+     * The names of the HTML elements $html opens, in order and lowercase, as
+     * a browser reads its tags: one written in a comment, a doctype, an
+     * attribute value or a text body - a script's, a title's - is text, one
+     * inside svg or math is not the page's, and nothing after <plaintext> is
+     * a tag. A comment ends at the first `-->`, or at once as `<!-->`.
+     *
+     * @param string $html
+     * @return string[]
+     */
+    public static function startTags($html)
+    {
+        $html = (string) $html;
+        $names = [];
+        $foreign = null;
+        $depth = 0;
+        $at = 0;
+
+        while (($lt = strpos($html, '<', $at)) !== false) {
+            if (substr_compare($html, '<!--', $lt, 4) === 0) {
+                if (!preg_match('/\G<!--(?:-?>|.*?-->)/s', $html, $m, 0, $lt)) {
+                    break;
+                }
+                $at = $lt + strlen($m[0]);
+                continue;
+            }
+            if (preg_match('/\G<[!?\/][^>]*>?/', $html, $m, 0, $lt) && !preg_match('/\G<\/[a-zA-Z]/', $html, $unused, 0, $lt)) {
+                $at = $lt + strlen($m[0]);
+                continue;
+            }
+            if (preg_match('/\G<\/([a-zA-Z][^\s\/>]*)[^>]*>?/', $html, $m, 0, $lt)) {
+                if ($foreign !== null && strtolower($m[1]) === $foreign && --$depth === 0) {
+                    $foreign = null;
+                }
+                $at = $lt + strlen($m[0]);
+                continue;
+            }
+            if (!preg_match('/\G<([a-zA-Z][^\s\/>]*)(?:[^>"\']|"[^"]*"|\'[^\']*\')*>?/', $html, $m, 0, $lt)) {
+                $at = $lt + 1;
+                continue;
+            }
+
+            $name = strtolower($m[1]);
+            $at = $lt + strlen($m[0]);
+            $closed = substr($m[0], -2) === '/>';
+
+            if ($foreign !== null) {
+                if (!in_array($name, self::BREAKOUT, true)) {
+                    if ($name === $foreign && !$closed) {
+                        $depth++;
+                    }
+                    continue;
+                }
+                $foreign = null;
+            }
+
+            $names[] = $name;
+
+            if (in_array($name, self::FOREIGN, true)) {
+                if (!$closed) {
+                    $foreign = $name;
+                    $depth = 1;
+                }
+                continue;
+            }
+            if ($name === 'plaintext') {
+                break;
+            }
+            if (in_array($name, self::TEXT_BODIES, true)) {
+                if (!preg_match('/<\/' . $name . '[\s\/>]/i', $html, $end, PREG_OFFSET_CAPTURE, $at)) {
+                    break;
+                }
+                $at = $end[0][1];
+            }
+        }
+
+        return $names;
+    }
+
     /**
      * The wrapper loadFragment() read a fragment inside, or null.
      *
