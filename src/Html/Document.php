@@ -364,6 +364,7 @@ final class Document
         $foreign = null;
         $depth = 0;
         $points = [];
+        $pointSelects = 0;
         $at = 0;
 
         while (($lt = strpos($html, '<', $at)) !== false) {
@@ -385,12 +386,15 @@ final class Document
                 $name = strtolower($m[1]);
                 if ($foreign === null) {
                     self::closeNearest($open, $counts, [$name], []);
+                } elseif ($points !== [] && $name === 'select' && $pointSelects > 0) {
+                    $pointSelects--;
                 } elseif ($points !== [] && $name === end($points)) {
                     array_pop($points);
                 } elseif ($name === $foreign && --$depth === 0) {
                     self::closeNearest($open, $counts, [$foreign], []);
                     $foreign = null;
                     $points = [];
+                    $pointSelects = 0;
                 }
                 $at = $lt + strlen($m[0]);
                 continue;
@@ -415,7 +419,9 @@ final class Document
                         $depth++;
                     } elseif (!$inPoint && !$closed && self::integrationPoint($foreign, $name, $m[0])) {
                         $points[] = $name;
-                    } elseif ($inPoint && in_array($name, self::TEXT_BODIES, true)) {
+                    } elseif ($inPoint && $name === 'select' && !$closed) {
+                        $pointSelects++;
+                    } elseif ($inPoint && in_array($name, self::TEXT_BODIES, true) && !($pointSelects > 0 && in_array($name, self::RAW_BODIES, true))) {
                         $at = self::textBody($html, $name, $at, $edits);
                         if ($at === null) {
                             break;
@@ -444,7 +450,9 @@ final class Document
             if (!in_array($name, self::VOID, true)) {
                 self::push($open, $counts, $name);
             }
-            if (in_array($name, self::TEXT_BODIES, true)) {
+            // Inside a <select> a browser reads no raw-body element, and its
+            // text as markup.
+            if (in_array($name, self::TEXT_BODIES, true) && !(!empty($counts['select']) && in_array($name, self::RAW_BODIES, true))) {
                 $at = self::textBody($html, $name, $at, $edits);
                 if ($at === null) {
                     break;

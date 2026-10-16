@@ -166,7 +166,7 @@ class DocumentTest extends TestCase
      * points, or in an element that ends them. Inside svg or math otherwise
      * it is the drawing's element, and inside a <select> a browser reads no
      * xmp, iframe, noembed or noframes element at all and its text as
-     * markup: there it stays escaped.
+     * markup: there it is read, and written, as markup.
      */
     public function testARawBodyIsWrittenAsItsTextOnlyWhereABrowserReadsItSo(): void
     {
@@ -182,9 +182,13 @@ class DocumentTest extends TestCase
             '<svg><p><xmp>a <b>x</b> & y</xmp></p></svg>' => '<svg><p></p><xmp>a <b>x</b> & y</xmp></svg>',
             '<svg><g><p>x</p></g><iframe>a <b>x</b></iframe></svg>' => '<svg><g><p>x</p></g><iframe>a <b>x</b></iframe></svg>',
             '<svg><foreignObject><p>x</p></foreignObject><xmp>a &amp; y</xmp></svg>' => '<svg><foreignobject><p>x</p></foreignobject><xmp>a &amp; y</xmp></svg>',
-            '<select><xmp>a <b>x</b></xmp></select>' => '<select><xmp>a &lt;b&gt;x&lt;/b&gt;</xmp></select>',
-            '<select><option>A</option><noembed>a <b>x</b></noembed></select>' => '<select><option>A</option><noembed>a &lt;b&gt;x&lt;/b&gt;</noembed></select>',
-            '<svg><foreignObject><select><iframe>a <b>x</b></iframe></select></foreignObject></svg>' => '<svg><foreignobject><select><iframe>a &lt;b&gt;x&lt;/b&gt;</iframe></select></foreignobject></svg>',
+            '<select><xmp>a &amp; b &lt;</xmp></select>' => '<select><xmp>a &amp; b &lt;</xmp></select>',
+            '<select><option>A</option><noembed>a &amp; b</noembed></select>' => '<select><option>A</option><noembed>a &amp; b</noembed></select>',
+            '<svg><foreignObject><select><iframe>a &amp; b</iframe></select></foreignObject></svg>' => '<svg><foreignobject><select><iframe>a &amp; b</iframe></select></foreignobject></svg>',
+            '<svg><foreignObject><select></select><iframe>a &amp; b</iframe></foreignObject></svg>' => '<svg><foreignobject><select></select><iframe>a &amp; b</iframe></foreignobject></svg>',
+            '<span><select></select><xmp>a &amp; b</xmp></span>' => '<span><select></select><xmp>a &amp; b</xmp></span>',
+            '<select><script>if (a < b) go("</p>");</script></select>' => '<select><script>if (a < b) go("</p>");</script></select>',
+            '<span><svg><foreignObject><select><option>x</option></foreignObject></svg><svg><foreignObject><iframe>a &amp; b</iframe></foreignObject></svg></span>' => '<span><svg><foreignobject><select><option>x</option></select></foreignobject></svg><svg><foreignobject><iframe>a &amp; b</iframe></foreignobject></svg></span>',
         ];
 
         foreach ($cases as $fragment => $expected) {

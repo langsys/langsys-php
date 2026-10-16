@@ -334,6 +334,26 @@ class RawTextBodyTest extends TestCase
     }
 
     /**
+     * Inside a <select> a raw body's text is markup to a browser, entities
+     * and all: it reads and comes back as such, the same on every pass.
+     */
+    public function testARawBodyInsideASelectReadsAsABrowserReadsIt(): void
+    {
+        foreach (['xmp', 'iframe', 'noembed', 'noframes'] as $name) {
+            $html = "<div><select><$name>a &amp; b</$name></select></div>";
+
+            $client = $this->client();
+            $once = $client->translateContentBlock($html, 'UI');
+            $this->assertSame($html, $once, $name . ', once');
+            $this->assertSame($once, $client->translateContentBlock($once, 'UI'), $name . ', twice');
+            $this->assertSame(['a & b'], (new HtmlParser())->fragmentUnit($html)['tokens'], $name . ', the text a browser shows');
+
+            $page = $this->client()->translatePage('<html><head></head><body>' . $html . '</body></html>', 'UI');
+            $this->assertStringContainsString($html, $page, $name . ', page');
+        }
+    }
+
+    /**
      * A raw body inside an svg's foreignObject or a MathML text element is
      * HTML: it comes back as written, the same on every pass, and the svg's
      * registers as written (MathML registers nothing).

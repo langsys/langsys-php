@@ -301,9 +301,9 @@ its id or re-registers it.
   is the text a browser reads, so a content block holding one with markup in it
   takes the JS SDKs' id, re-keying once. The bodies of xmp, iframe, noembed and
   noframes, which a browser reads without decoding, come back as written, in an
-  svg's foreignObject or a MathML text element too. Inside a `<select>`, where a
-  browser reads such a body as markup, and as an svg or MathML element of the
-  same name, they stay escaped.
+  svg's foreignObject or a MathML text element too. Inside a `<select>` a
+  browser reads such a body as markup, and so does the SDK; an svg or MathML
+  element of the same name holds ordinary text.
 - **`<!-->` no longer swallows the rest of a page.** A browser reads it, and
   `<!--->`, as an empty comment; libxml read either as opening one that ran to
   a later `-->` or to the end, so `translatePage()` returned an empty page, or
