@@ -205,6 +205,43 @@ class DocumentTest extends TestCase
     }
 
     /**
+     * Inside a textarea or title, which a browser reads as text up to its
+     * own end tag, and after a <plaintext>, after which it reads nothing as
+     * markup, no raw body is written as its text: what it holds stays
+     * escaped, so nothing in it can end the element around it.
+     */
+    public function testNoRawBodyIsWrittenAsItsTextInsideATextBodyOrAfterPlaintext(): void
+    {
+        foreach (['textarea', 'title', 'plaintext'] as $around) {
+            foreach (['xmp', 'iframe', 'noembed', 'noframes'] as $name) {
+                $doc = new \DOMDocument();
+                $p = $doc->appendChild($doc->createElement('body'))->appendChild($doc->createElement('p'));
+                $outer = $p->appendChild($doc->createElement($around));
+                $inner = $outer->appendChild($doc->createElement($name));
+                $inner->appendChild($doc->createTextNode("</$around><img src=x onerror=alert(1)>"));
+
+                $escaped = "<$name>&lt;/$around&gt;&lt;img src=x onerror=alert(1)&gt;</$name>";
+                $this->assertStringContainsString($escaped, Document::html($p), "$name in $around");
+                $this->assertSame($escaped, Document::html($inner), "$name in $around, written on its own");
+            }
+        }
+
+        $doc = new \DOMDocument();
+        $errors = libxml_use_internal_errors(true);
+        Document::loadFragment($doc, '<div><p>Hi</p><plaintext><xmp>a &lt;b&gt; &amp; c</xmp></div>');
+        libxml_clear_errors();
+        libxml_use_internal_errors($errors);
+        $this->assertStringContainsString('<xmp>a &lt;b&gt; &amp; c</xmp>', Document::html(Document::fragmentRoot($doc)->firstChild), 'what follows a <plaintext> comes back as written');
+
+        $doc = new \DOMDocument();
+        $errors = libxml_use_internal_errors(true);
+        Document::loadFragment($doc, '<div><plaintext></plaintext><xmp>a &lt;b&gt; &amp; c</xmp></div>');
+        libxml_clear_errors();
+        libxml_use_internal_errors($errors);
+        $this->assertStringContainsString('<xmp>a &lt;b&gt; &amp; c</xmp>', Document::html(Document::fragmentRoot($doc)->firstChild), 'and so does what follows its end tag');
+    }
+
+    /**
      * A raw-body element holding an element, which only a tree built in code
      * can, is written as saveHTML() writes it.
      */

@@ -334,6 +334,27 @@ class RawTextBodyTest extends TestCase
     }
 
     /**
+     * A translation that nests one of a line's elements inside another
+     * cannot end a textarea or title with what it puts in a raw body there.
+     */
+    public function testATranslationNestingARawBodyInATextBodyCannotEndIt(): void
+    {
+        $evil = '</title></textarea><img src=x onerror=alert(1)>';
+        foreach (['Read <title>a</title> <xmp>b</xmp>' => 'Read {m0o}a{m0c} {m1o}b{m1c}', 'Read <textarea>a</textarea> <noframes>b</noframes>' => 'Read {m0o}a{m0c} {m1o}b{m1c}'] as $source => $key) {
+            $catalog = [$key => 'Lee {m0o}{m1o}' . $evil . '{m1c}{m0c}'];
+
+            $rich = $this->client($catalog)->translateRich($source, null, 'UI')['html'];
+            $block = $this->client($catalog)->translateContentBlock('<div><span data-langsys-phrase>' . $source . '</span></div>', 'UI');
+            $page = $this->client($catalog)->translatePage('<html><head></head><body><div><span data-langsys-phrase>' . $source . '</span></div></body></html>', 'UI');
+
+            foreach (['rich' => $rich, 'block' => $block, 'page' => $page] as $path => $out) {
+                $this->assertStringContainsString('&lt;img src=x onerror=alert(1)&gt;', $out, $source . ', ' . $path);
+                $this->assertStringNotContainsString('<img', $out, $source . ', ' . $path);
+            }
+        }
+    }
+
+    /**
      * Inside a <select> a raw body's text is markup to a browser, entities
      * and all: it reads and comes back as such, the same on every pass.
      */

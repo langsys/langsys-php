@@ -147,8 +147,10 @@ final class Document
      * body a browser reads as written: an HTML element holding only text,
      * outside svg and math or inside one of their integration points, or
      * after an element that ends svg or math content. Inside svg or math
-     * otherwise it is the drawing's element, and inside a <select> a browser
-     * reads no such element at all, and its text as markup.
+     * otherwise it is the drawing's element; inside a <select> a browser
+     * reads no such element at all, and its text as markup; and inside a
+     * textarea or title, or anywhere after a <plaintext>, it reads it as
+     * text, which written raw could end the element around it.
      *
      * $node is read in the content its ancestors put it in.
      *
@@ -174,7 +176,8 @@ final class Document
         }
 
         $found = [];
-        self::walk($node instanceof DOMDocument ? $node->childNodes : [$node], $content, $found);
+        $plaintext = false;
+        self::walk($node instanceof DOMDocument ? $node->childNodes : [$node], $content, $found, $plaintext);
 
         return $found;
     }
@@ -188,9 +191,10 @@ final class Document
      * @param iterable $nodes
      * @param string|null $content
      * @param \DOMElement[] $found
+     * @param bool $plaintext Whether a <plaintext> has been read, after which nothing is markup
      * @return bool Whether the svg or math content $nodes are in ends among them
      */
-    private static function walk($nodes, $content, array &$found)
+    private static function walk($nodes, $content, array &$found, &$plaintext)
     {
         $ended = false;
         foreach ($nodes as $node) {
@@ -199,6 +203,13 @@ final class Document
             }
 
             $name = strtolower($node->nodeName);
+            if ($content === null && $name === 'plaintext') {
+                $plaintext = true;
+            }
+            if ($plaintext) {
+                return $ended;
+            }
+
             if ($content !== null && in_array($name, self::BREAKOUT, true)) {
                 $content = null;
                 $ended = true;
@@ -215,7 +226,7 @@ final class Document
             }
 
             $inner = self::contentIn($node, $content);
-            if ($inner !== false && self::walk($node->childNodes, $inner, $found) && $content !== null) {
+            if ($inner !== false && self::walk($node->childNodes, $inner, $found, $plaintext) && $content !== null) {
                 $content = null;
                 $ended = true;
             }
@@ -226,8 +237,9 @@ final class Document
 
     /**
      * The content a browser reads $element's children in, given the content
-     * $element is in: null for HTML, svg or math for theirs, and false inside
-     * a <select>.
+     * $element is in: null for HTML, svg or math for theirs, and false where
+     * no raw body is read as written - inside a <select>, a textarea, a title
+     * or a <plaintext>.
      *
      * @param \DOMElement $element
      * @param string|null $content
@@ -237,7 +249,7 @@ final class Document
     {
         $name = strtolower($element->nodeName);
         if ($content === null) {
-            if ($name === 'select') {
+            if ($name === 'select' || $name === 'plaintext' || in_array($name, self::DECODED_BODIES, true)) {
                 return false;
             }
 
