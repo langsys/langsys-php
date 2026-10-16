@@ -312,12 +312,17 @@ its id or re-registers it.
   read as body text.
 - **A page is read as a browser reads it.** `translatePage()` decodes a page
   before anything reads it as a browser does: a byte-order mark first, then
-  the charset its first 1024 bytes declare, with Latin-1 and ASCII labels read
-  as windows-1252, else UTF-8 when the bytes are UTF-8 and windows-1252 when
-  they are not. Curly quotes, dashes and the euro sign on a Latin-1 page now
-  survive, a byte-order mark wins over a conflicting meta, a us-ascii page is
-  no longer cut off at its first non-ASCII byte, and one invalid byte becomes
-  U+FFFD instead of turning the rest of the page into mojibake.
+  the charset its first 1024 bytes declare, else UTF-8 when the bytes are
+  UTF-8 and windows-1252 when they are not. A declared label is read through
+  the browser's label table and decoded by the browser's decoder for it:
+  Latin-1 and ASCII labels as windows-1252, `gb2312` and `chinese` as GBK,
+  `euc-kr` as windows-949, Big5 with HKSCS, and a label browsers do not know,
+  such as `utf-7`, as no declaration. Curly quotes, dashes and the euro sign on
+  a Latin-1 page now survive, a byte-order mark wins over a conflicting meta, a
+  us-ascii page is no longer cut off at its first non-ASCII byte, and an
+  invalid byte becomes U+FFFD instead of turning the rest of the page into
+  mojibake. UTF-8, UTF-16, windows-1252 and ISO-8859-16 are decoded without
+  intl; without it, a page in another encoding is read as windows-1252.
 - **A page is written out in the UTF-8 it declares.** `translatePage()` wrote
   every character outside ASCII as an entity unless the page carried an
   http-equiv charset meta, so a `<meta charset>` page's JSON-LD read
