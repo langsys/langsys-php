@@ -150,6 +150,19 @@ class CharsetTest extends TestCase
      * Read in windows that never split a sequence, so a long page with a bad
      * byte near a window's edge comes back whole.
      */
+    /**
+     * However a window's edge falls across a character followed by stray
+     * continuation bytes, the result is the one-pass decode's.
+     */
+    public function testAWindowEdgeNeverSplitsACharacter(): void
+    {
+        foreach (["\xF0\x9F\x98\x80\x94" => "\u{1F600}\u{FFFD}", "\xE2\x82\xAC\x80\x80" => "€\u{FFFD}\u{FFFD}", "\xC3\xA9\x80\x80\x80" => "é\u{FFFD}\u{FFFD}\u{FFFD}"] as $bytes => $decoded) {
+            for ($offset = 65530; $offset <= 65537; $offset++) {
+                $this->assertSame(str_repeat('a', $offset) . $decoded . 'end', Charset::scrub(str_repeat('a', $offset) . $bytes . 'end'), bin2hex($bytes) . ' at ' . $offset);
+            }
+        }
+    }
+
     public function testALongPageIsScrubbedWhole(): void
     {
         foreach ([65535, 65536, 65537, 65538] as $offset) {

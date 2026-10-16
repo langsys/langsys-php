@@ -168,16 +168,19 @@ final class Charset
             return $text;
         }
 
-        // Read in windows, each ending where no sequence is split: before a
-        // byte that does not continue one, or after three that do, which no
-        // sequence begun before them can still be reading. A window that is
-        // UTF-8 is kept as it is.
+        // Read in windows, each ending where no sequence is split. A sequence
+        // is at most four bytes from its lead, so only a lead in the last
+        // three bytes can reach past the edge, and the window then ends
+        // before it. A window that is UTF-8 is kept as it is.
         $out = '';
         $length = strlen($text);
         for ($at = 0; $at < $length; $at = $end) {
             $end = min($at + 65536, $length);
-            for ($back = 0; $end < $length && $back < 3 && (ord($text[$end]) & 0xC0) === 0x80; $back++) {
-                $end--;
+            for ($lead = $end - 1; $end < $length && $lead > $at && $lead >= $end - 3; $lead--) {
+                if (ord($text[$lead]) >= 0xC0) {
+                    $end = $lead;
+                    break;
+                }
             }
             $window = substr($text, $at, $end - $at);
             $out .= preg_match('//u', $window) ? $window : self::scrubBytes($window);
