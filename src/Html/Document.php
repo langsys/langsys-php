@@ -200,7 +200,9 @@ final class Document
                 $at = $lt + strlen($m[0]);
                 continue;
             }
-            if (!preg_match('/\G<([a-zA-Z][^\s\/>]*+)(?:[^>"\']++|"[^"]*+"|\'[^\']*+\')*+>?/', $html, $m, 0, $lt)) {
+            // A quote opens a value only after `=`; anywhere else in a tag it
+            // is a character, as in a browser's tokenizer.
+            if (!preg_match('/\G<([a-zA-Z][^\s\/>]*+)(?:[^>=]++|=[\t\n\f\r ]*+(?:"[^"]*+"?|\'[^\']*+\'?|[^\t\n\f\r >]*+))*+>?/', $html, $m, 0, $lt)) {
                 $at = $lt + 1;
                 continue;
             }
