@@ -1594,9 +1594,10 @@ for its placeholder never registers and renders as a placeholder.
 $html = $client->markResolved($html, 'es-es');
 ```
 
-Adds `data-ls-resolved="es-es"` to the page's `<html>` tag and changes nothing else, so a
-browser SDK hydrating the page registers none of its translated text. A page in your base
-language, or one already marked, is returned as it was.
+Adds `data-ls-resolved="es-es"` to the page's `<html>` tag, or, for a fragment response with
+no `<html>`, to each of its top-level elements, and changes nothing else, so a browser SDK
+hydrating the page registers none of its translated text. A page in your base language, or
+an element already marked, is left as it was.
 
 ## Catalog Snapshots
 

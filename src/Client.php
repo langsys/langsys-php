@@ -1231,11 +1231,12 @@ class Client
 
     /**
      * Mark a page rendered in a non-base locale as resolved (GATE-10), on the
-     * HTML as it is: `data-ls-resolved="<locale>"` is added to the first
-     * `<html>` start tag, or to the first start tag when there is none, and
+     * HTML as it is: `data-ls-resolved="<locale>"` is added to its `<html>`
+     * start tag, or, when it has none - a fragment response - to each of its
+     * top-level elements' start tags, read as a browser reads its tags, and
      * nothing else in the page changes. A page in the base locale, a page
-     * whose base locale is unknown, and a root already carrying the marker in
-     * either spelling are returned unchanged.
+     * whose base locale is unknown, and an element already carrying the
+     * marker in either spelling are left as they are.
      *
      * @param string $html
      * @param string|null $locale The locale the page was rendered in
@@ -1264,25 +1265,29 @@ class Client
             return $html;
         }
 
-        if (!preg_match('/<html(?=[\s>\/])[^>]*>/i', $html, $match, PREG_OFFSET_CAPTURE)
-            && !preg_match('/^(?:\s*(?:<!--.*?-->|<![^>]*>|<\?[^>]*>))*\s*<[a-zA-Z][^\s\/>]*[^>]*>/s', $html, $match, PREG_OFFSET_CAPTURE)) {
-            return $html;
+        $tags = \Langsys\SDK\Html\Document::startTagsAt($html);
+        $roots = array_values(array_filter($tags, function ($tag) {
+            return $tag[0] === 'html';
+        }));
+        $roots = $roots !== [] ? [$roots[0]] : array_filter($tags, function ($tag) {
+            return $tag[3] === 0;
+        });
+
+        $marker = ' ' . HtmlParser::RESOLVED_MARKERS[0] . '="' . htmlspecialchars($locale, ENT_QUOTES) . '"';
+        foreach (array_reverse($roots) as $root) {
+            list(, $offset, $length) = $root;
+            $startTag = substr($html, $offset, $length);
+
+            // One the input ends inside, and one carrying a marker, stay as written.
+            if (substr($startTag, -1) !== '>' || preg_match('/\sdata-(?:ls|langsys)-resolved(?=[\s=\/>])/i', $startTag)) {
+                continue;
+            }
+
+            $close = substr($startTag, -2) === '/>' ? $length - 2 : $length - 1;
+            $html = substr($html, 0, $offset) . substr($startTag, 0, $close) . $marker . substr($startTag, $close) . substr($html, $offset + $length);
         }
 
-        list($tag, $offset) = $match[0];
-
-        // Only the start tag itself: a prolog before it is part of the match.
-        $start = strrpos($tag, '<');
-        $startTag = substr($tag, $start);
-
-        if (preg_match('/\sdata-(?:ls|langsys)-resolved(?=[\s=\/>])/i', $startTag)) {
-            return $html;
-        }
-
-        $close = substr($startTag, -2) === '/>' ? strlen($startTag) - 2 : strlen($startTag) - 1;
-        $marked = substr($startTag, 0, $close) . ' ' . HtmlParser::RESOLVED_MARKERS[0] . '="' . htmlspecialchars($locale, ENT_QUOTES) . '"' . substr($startTag, $close);
-
-        return substr($html, 0, $offset + $start) . $marked . substr($html, $offset + $start + strlen($startTag));
+        return $html;
     }
 
     /**

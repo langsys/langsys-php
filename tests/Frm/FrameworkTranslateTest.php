@@ -284,9 +284,34 @@ class FrameworkTranslateTest extends TestCase
         );
     }
 
-    public function testWithoutAnHtmlTagTheFirstElementIsTheRoot(): void
+    /**
+     * A page without an <html>, a fragment response, has no root of its own:
+     * each of its top-level elements is marked, as a browser builds them, and
+     * nothing else changes.
+     *
+     * @dataProvider fragmentProvider
+     */
+    public function testWithoutAnHtmlTagEachTopLevelElementIsMarked(string $html, string $marked): void
     {
-        $this->assertSame('<!-- c --><div id="app" data-ls-resolved="es-es"><p>x</p></div>', $this->client()->markResolved('<!-- c --><div id="app"><p>x</p></div>'));
+        $this->assertSame($marked, $this->client()->markResolved($html));
+    }
+
+    public function fragmentProvider(): array
+    {
+        $m = ' data-ls-resolved="es-es"';
+
+        return [
+            'one element' => ['<!-- c --><div id="app"><p>x</p></div>', '<!-- c --><div id="app"' . $m . '><p>x</p></div>'],
+            'siblings' => ['<div>a</div><footer><p>b</p></footer>', '<div' . $m . '>a</div><footer' . $m . '><p>b</p></footer>'],
+            'a void element among them' => ["<link rel=\"x\">\n<p>a<br>b</p><img src=\"i\"/>", "<link rel=\"x\"" . $m . ">\n<p" . $m . ">a<br>b</p><img src=\"i\"" . $m . "/>"],
+            'paragraphs a browser closes' => ['<p>One<p>Two<div>Three</div>', '<p' . $m . '>One<p' . $m . '>Two<div' . $m . '>Three</div>'],
+            'list items and cells stay inside' => ['<ul><li>a<li>b</ul><table><tr><td>1<td>2</table>', '<ul' . $m . '><li>a<li>b</ul><table' . $m . '><tr><td>1<td>2</table>'],
+            'a script and an svg' => ['<script>x = "<p>";</script><svg><g><text>a</text></g></svg><p>b</p>', '<script' . $m . '>x = "<p>";</script><svg' . $m . '><g><text>a</text></g></svg><p' . $m . '>b</p>'],
+            'an element marked already' => ['<p data-ls-resolved="false">a</p><p>b</p>', '<p data-ls-resolved="false">a</p><p' . $m . '>b</p>'],
+            'an <html> mentioned in a comment' => ['<!-- <html> --><p>a</p><p>b</p>', '<!-- <html> --><p' . $m . '>a</p><p' . $m . '>b</p>'],
+            'a start tag the input ends inside' => ['<p>a</p><p class="x', '<p' . $m . '>a</p><p class="x'],
+            'an <html> after a comment that mentions one' => ['<!-- <html> --><html><body>x</body></html>', '<!-- <html> --><html' . $m . '><body>x</body></html>'],
+        ];
     }
 
     /**

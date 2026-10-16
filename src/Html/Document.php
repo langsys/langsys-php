@@ -124,21 +124,52 @@ final class Document
     {
         $empty = [];
 
-        return self::scan((string) $html, $empty);
+        return array_column(self::scan((string) $html, $empty), 0);
     }
 
     /**
-     * The scan startTags() reads: the names of the elements $html opens, and,
-     * into $empty, the offset and length of each comment that is empty as
-     * `<!-->` or `<!--->`.
+     * The start tags of the elements startTags() names, each as [name, offset,
+     * length, depth]: the depth is how many elements are open around it as a
+     * browser builds the page, a void element opening none, and a tag that
+     * ends an open one implicitly - a block after a <p>, an <li> after an
+     * <li> - closing it first. A tag at depth 0 is a top-level element.
+     *
+     * @param string $html
+     * @return array[]
+     */
+    public static function startTagsAt($html)
+    {
+        $empty = [];
+
+        return self::scan((string) $html, $empty);
+    }
+
+    /** Elements that hold no content, so their start tag opens nothing. */
+    const VOID = [
+        'area', 'base', 'basefont', 'bgsound', 'br', 'col', 'embed', 'frame', 'hr', 'img', 'input', 'keygen',
+        'link', 'meta', 'param', 'source', 'track', 'wbr',
+    ];
+
+    /** Start tags that close an open <p>. */
+    const CLOSES_P = [
+        'address', 'article', 'aside', 'blockquote', 'center', 'dd', 'details', 'dialog', 'dir', 'div', 'dl', 'dt',
+        'fieldset', 'figcaption', 'figure', 'footer', 'form', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header', 'hgroup',
+        'hr', 'li', 'listing', 'main', 'menu', 'nav', 'ol', 'p', 'plaintext', 'pre', 'section', 'summary', 'table', 'ul', 'xmp',
+    ];
+
+    /**
+     * The scan startTags() reads: each start tag as startTagsAt() gives it,
+     * and, into $empty, the offset and length of each comment that is empty
+     * as `<!-->` or `<!--->`.
      *
      * @param string $html
      * @param array $empty
-     * @return string[]
+     * @return array[]
      */
     private static function scan($html, array &$empty)
     {
-        $names = [];
+        $tags = [];
+        $open = [];
         $foreign = null;
         $depth = 0;
         $at = 0;
@@ -159,7 +190,11 @@ final class Document
                 continue;
             }
             if (preg_match('/\G<\/([a-zA-Z][^\s\/>]*)[^>]*>?/', $html, $m, 0, $lt)) {
-                if ($foreign !== null && strtolower($m[1]) === $foreign && --$depth === 0) {
+                $name = strtolower($m[1]);
+                if ($foreign === null) {
+                    self::closeNearest($open, [$name], []);
+                } elseif ($name === $foreign && --$depth === 0) {
+                    self::closeNearest($open, [$foreign], []);
                     $foreign = null;
                 }
                 $at = $lt + strlen($m[0]);
@@ -181,20 +216,26 @@ final class Document
                     }
                     continue;
                 }
+                self::closeNearest($open, [$foreign], []);
                 $foreign = null;
             }
 
-            $names[] = $name;
+            self::closeImplied($open, $name);
+            $tags[] = [$name, $lt, strlen($m[0]), count($open)];
 
             if (in_array($name, self::FOREIGN, true)) {
                 if (!$closed) {
                     $foreign = $name;
                     $depth = 1;
+                    $open[] = $name;
                 }
                 continue;
             }
             if ($name === 'plaintext') {
                 break;
+            }
+            if (!in_array($name, self::VOID, true)) {
+                $open[] = $name;
             }
             if (in_array($name, self::TEXT_BODIES, true)) {
                 if (!preg_match('/<\/' . $name . '[\s\/>]/i', $html, $end, PREG_OFFSET_CAPTURE, $at)) {
@@ -204,7 +245,60 @@ final class Document
             }
         }
 
-        return $names;
+        return $tags;
+    }
+
+    /**
+     * Close what a start tag named $name ends implicitly, as a browser's tree
+     * builder does: an open <p> before a block, an <li> before an <li> of the
+     * same list, a <dt> or <dd> before either, an <option> before an option
+     * or a group, and a cell, row or row group before the next.
+     *
+     * @param string[] $open
+     * @param string $name
+     * @return void
+     */
+    private static function closeImplied(array &$open, $name)
+    {
+        if (in_array($name, self::CLOSES_P, true)) {
+            self::closeNearest($open, ['p'], ['button', 'table', 'td', 'th', 'caption', 'object', 'template', 'applet', 'marquee']);
+        }
+        if ($name === 'li') {
+            self::closeNearest($open, ['li'], ['ul', 'ol', 'menu', 'table', 'td', 'th', 'template']);
+        } elseif ($name === 'dd' || $name === 'dt') {
+            self::closeNearest($open, ['dd', 'dt'], ['dl', 'table', 'td', 'th', 'template']);
+        } elseif (($name === 'option' || $name === 'optgroup') && end($open) === 'option') {
+            array_pop($open);
+        } elseif ($name === 'td' || $name === 'th') {
+            self::closeNearest($open, ['td', 'th'], ['tr', 'table', 'template']);
+        } elseif ($name === 'tr') {
+            self::closeNearest($open, ['tr'], ['table', 'template']);
+        } elseif ($name === 'tbody' || $name === 'thead' || $name === 'tfoot') {
+            self::closeNearest($open, ['tbody', 'thead', 'tfoot'], ['table', 'template']);
+        }
+    }
+
+    /**
+     * Close the innermost open element named one of $names, and all inside
+     * it, unless one named in $bounds is open inside that one first.
+     *
+     * @param string[] $open
+     * @param string[] $names
+     * @param string[] $bounds
+     * @return void
+     */
+    private static function closeNearest(array &$open, array $names, array $bounds)
+    {
+        for ($at = count($open) - 1; $at >= 0; $at--) {
+            if (in_array($open[$at], $names, true)) {
+                array_splice($open, $at);
+
+                return;
+            }
+            if (in_array($open[$at], $bounds, true)) {
+                return;
+            }
+        }
     }
 
     /**
