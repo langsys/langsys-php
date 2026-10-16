@@ -281,6 +281,11 @@ its id or re-registers it.
 
 ### Fixed
 
+- **`<!-->` no longer swallows the rest of a page.** A browser reads it, and
+  `<!--->`, as an empty comment; libxml read either as opening one that ran to
+  a later `-->` or to the end, so `translatePage()` returned an empty page, or
+  one with its body emptied, and a block lost what followed. Each is read as the
+  empty comment it is, and written back as `<!---->`.
 - **A display locale cannot steer a reference-list request.** The client's
   `getCountries()` and the other lists refuse a locale that is not shaped as
   one, logged, and send nothing. On the raw `utilities()` resource the locale is
@@ -312,7 +317,10 @@ its id or re-registers it.
   read as body text.
 - **A page is read as a browser reads it.** `translatePage()` decodes a page
   before anything reads it as a browser does: a byte-order mark first, then
-  the charset its first 1024 bytes declare, else UTF-8 when the bytes are
+  the charset its first 1024 bytes declare, read as a browser's prescan reads
+  their metas (a `charset`, or a `content`'s `charset=` beside
+  `http-equiv="content-type"`, never a description that mentions one), else
+  UTF-8 when the bytes are
   UTF-8 and windows-1252 when they are not. A declared label is read through
   the browser's label table and decoded by the browser's decoder for it:
   Latin-1 and ASCII labels as windows-1252, `gb2312` and `chinese` as GBK,

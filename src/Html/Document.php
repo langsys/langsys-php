@@ -42,7 +42,31 @@ final class Document
      */
     public static function load(DOMDocument $doc, $html, $options = 0)
     {
-        return $doc->loadHTML((string) $html, $options | self::RECOVER | self::IGNORE_ENCODING);
+        return $doc->loadHTML(self::closeEmptyComments((string) $html), $options | self::RECOVER | self::IGNORE_ENCODING);
+    }
+
+    /**
+     * $html with each `<!-->` and `<!--->` that opens a comment written
+     * `<!---->`. A browser reads either as an empty comment; libxml 2.9
+     * reads it as opening one that runs to a later `-->`, or to the end,
+     * and the page after it is lost.
+     *
+     * @param string $html
+     * @return string
+     */
+    private static function closeEmptyComments($html)
+    {
+        if (strpos($html, '<!-->') === false && strpos($html, '<!--->') === false) {
+            return $html;
+        }
+
+        $empty = [];
+        self::scan($html, $empty);
+        foreach (array_reverse($empty) as $comment) {
+            $html = substr_replace($html, '<!---->', $comment[0], $comment[1]);
+        }
+
+        return $html;
     }
 
     /** The element a fragment is read inside, one no fragment's end tag can close. */
@@ -98,7 +122,22 @@ final class Document
      */
     public static function startTags($html)
     {
-        $html = (string) $html;
+        $empty = [];
+
+        return self::scan((string) $html, $empty);
+    }
+
+    /**
+     * The scan startTags() reads: the names of the elements $html opens, and,
+     * into $empty, the offset and length of each comment that is empty as
+     * `<!-->` or `<!--->`.
+     *
+     * @param string $html
+     * @param array $empty
+     * @return string[]
+     */
+    private static function scan($html, array &$empty)
+    {
         $names = [];
         $foreign = null;
         $depth = 0;
@@ -109,6 +148,9 @@ final class Document
                 $at = self::commentEnd($html, $lt);
                 if ($at === null) {
                     break;
+                }
+                if ($at - $lt <= 6) {
+                    $empty[] = [$lt, $at - $lt];
                 }
                 continue;
             }

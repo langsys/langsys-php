@@ -262,6 +262,25 @@ class RawTextBodyTest extends TestCase
     }
 
     /**
+     * `<!-->` is a whole comment, as a browser reads it, on every path: what
+     * follows it is the page's, not more of the comment.
+     */
+    public function testAnEmptyCommentKeepsWhatFollowsIt(): void
+    {
+        $catalog = ['Hello world' => 'Hola mundo'];
+        foreach ([
+            '<!--><p>Hello world</p>' => '<!----><p data-ls-resolved="es-es">Hola mundo</p>' . "\n",
+            '<html><body><!--><p>Hello world</p><!---><p>Hello world</p></body></html>' => '<html lang="es-es" data-ls-resolved="es-es"><head><meta charset="utf-8"></head><body><!----><p>Hola mundo</p><!----><p>Hola mundo</p></body></html>' . "\n",
+        ] as $html => $expected) {
+            $this->assertSame($expected, $this->client($catalog)->translatePage($html, 'UI'), $html);
+        }
+
+        $this->assertSame('<div><!----><p>Hola mundo</p></div>', $this->client($catalog)->translateContentBlock('<div><!--><p>Hello world</p></div>', 'UI'));
+        $this->assertSame('<div><!----><p>Hola mundo</p></div>', $this->client($catalog)->translateContentBlock('<div><!---><p>Hello world</p></div>', 'UI'));
+        $this->assertSame('<script>a = "<!-->";</script><p>Hola mundo</p>', $this->client($catalog)->translateContentBlock('<script>a = "<!-->";</script><p>Hello world</p>', 'UI'), 'a script keeps its text as written');
+    }
+
+    /**
      * A page led by a long comment, a build banner or an inlined licence, is
      * read past it, whole.
      */

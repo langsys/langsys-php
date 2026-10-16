@@ -145,17 +145,7 @@ final class Charset
             return self::utf16(substr($html, 2), false);
         }
 
-        $label = self::declared($html);
-        $encoding = $label === null ? null : self::encoding($label);
-
-        // What a meta can declare: UTF-16 there means UTF-8, as the bytes of
-        // a page whose meta was read as ASCII cannot be UTF-16.
-        if ($encoding === 'UTF-16BE' || $encoding === 'UTF-16LE') {
-            $encoding = 'UTF-8';
-        } elseif ($encoding === 'x-user-defined') {
-            $encoding = 'windows-1252';
-        }
-
+        $encoding = self::declared($html);
         if ($encoding === null) {
             $encoding = preg_match('//u', $html) ? 'UTF-8' : 'windows-1252';
         }
@@ -269,17 +259,214 @@ final class Charset
     }
 
     /**
-     * The charset a meta in the first 1024 bytes declares, as written, or
-     * null.
+     * The encoding a meta in the first 1024 bytes declares, as a browser's
+     * prescan reads them (HTML, "prescan a byte stream to determine its
+     * encoding"), or null. A meta declares by its charset attribute, or by
+     * the charset= in its content when it also says http-equiv="content-type";
+     * one whose label names no encoding is passed over for the next. A
+     * comment, which `<!-->` already closes, another tag's attributes and a
+     * `<!`, `</` or `<?` construct are skipped. UTF-16 declared there means
+     * UTF-8, since bytes a meta was read from as ASCII are not UTF-16, and
+     * x-user-defined windows-1252.
      *
      * @param string $html
      * @return string|null
      */
     private static function declared($html)
     {
-        $head = (string) preg_replace('/<!--.*?(?:-->|$)/s', '', substr($html, 0, 1024));
+        $bytes = substr($html, 0, 1024);
+        $length = strlen($bytes);
 
-        return preg_match('/<meta\b[^>]*?\bcharset\s*=\s*["\']?\s*([A-Za-z0-9._:\-]+)/i', $head, $m) ? $m[1] : null;
+        for ($at = 0; $at < $length; $at++) {
+            if (substr($bytes, $at, 4) === '<!--') {
+                $end = strpos($bytes, '-->', $at + 2);
+                if ($end === false) {
+                    return null;
+                }
+                $at = $end + 2;
+                continue;
+            }
+
+            if (preg_match('/\G<meta[\t\n\f\r \/]/i', $bytes, $unused, 0, $at)) {
+                $at += 5;
+                $seen = [];
+                $gotPragma = false;
+                $needPragma = null;
+                $charset = null;
+                while (($attribute = self::attribute($bytes, $at)) !== null) {
+                    if ($attribute === false) {
+                        return null;
+                    }
+                    list($name, $value) = $attribute;
+                    if (isset($seen[$name])) {
+                        continue;
+                    }
+                    $seen[$name] = true;
+
+                    if ($name === 'http-equiv') {
+                        $gotPragma = $gotPragma || $value === 'content-type';
+                    } elseif ($name === 'content' && $charset === null) {
+                        $label = self::charsetIn($value);
+                        $encoding = $label === null ? null : self::encoding($label);
+                        if ($encoding !== null) {
+                            $charset = $encoding;
+                            $needPragma = true;
+                        }
+                    } elseif ($name === 'charset') {
+                        $encoding = self::encoding($value);
+                        $charset = $encoding === null ? false : $encoding;
+                        $needPragma = false;
+                    }
+                }
+
+                if ($needPragma === null || ($needPragma && !$gotPragma) || !is_string($charset)) {
+                    continue;
+                }
+                if ($charset === 'UTF-16BE' || $charset === 'UTF-16LE') {
+                    return 'UTF-8';
+                }
+
+                return $charset === 'x-user-defined' ? 'windows-1252' : $charset;
+            }
+
+            if (preg_match('/\G<\/?[A-Za-z]/', $bytes, $unused, 0, $at)) {
+                $at += strcspn($bytes, "\t\n\f\r >", $at);
+                while (($attribute = self::attribute($bytes, $at)) !== null) {
+                    if ($attribute === false) {
+                        return null;
+                    }
+                }
+                continue;
+            }
+
+            if (preg_match('/\G<[!\/?]/', $bytes, $unused, 0, $at)) {
+                $end = strpos($bytes, '>', $at + 1);
+                if ($end === false) {
+                    return null;
+                }
+                $at = $end;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The attribute at $at, as the prescan's "get an attribute" reads it:
+     * [name, value], both in ASCII lowercase, with $at left after it; null at
+     * the tag's end; false when the bytes run out first.
+     *
+     * @param string $bytes
+     * @param int $at
+     * @return array|false|null
+     */
+    private static function attribute($bytes, &$at)
+    {
+        $length = strlen($bytes);
+        $at += strspn($bytes, "\t\n\f\r /", $at);
+        if ($at >= $length) {
+            return false;
+        }
+        if ($bytes[$at] === '>') {
+            return null;
+        }
+
+        $name = '';
+        for (;; $at++) {
+            if ($at >= $length) {
+                return false;
+            }
+            $byte = $bytes[$at];
+            if ($byte === '=' && $name !== '') {
+                $at++;
+                break;
+            }
+            if (strpos("\t\n\f\r ", $byte) !== false) {
+                $at += strspn($bytes, "\t\n\f\r ", $at);
+                if ($at >= $length) {
+                    return false;
+                }
+                if ($bytes[$at] !== '=') {
+                    return [$name, ''];
+                }
+                $at++;
+                break;
+            }
+            if ($byte === '/' || $byte === '>') {
+                return [$name, ''];
+            }
+            $name .= self::lower($byte);
+        }
+
+        $at += strspn($bytes, "\t\n\f\r ", $at);
+        if ($at >= $length) {
+            return false;
+        }
+        $quote = $bytes[$at];
+        if ($quote === '"' || $quote === "'") {
+            $end = strpos($bytes, $quote, $at + 1);
+            if ($end === false) {
+                return false;
+            }
+            $value = substr($bytes, $at + 1, $end - $at - 1);
+            $at = $end + 1;
+
+            return [$name, self::lower($value)];
+        }
+        if ($quote === '>') {
+            return [$name, ''];
+        }
+
+        $run = strcspn($bytes, "\t\n\f\r >", $at);
+        if ($at + $run >= $length) {
+            return false;
+        }
+        $value = substr($bytes, $at, $run);
+        $at += $run;
+
+        return [$name, self::lower($value)];
+    }
+
+    /**
+     * The label a content attribute's charset= gives, as the HTML standard's
+     * "extracting a character encoding from a meta element" reads it, or null.
+     *
+     * @param string $content
+     * @return string|null
+     */
+    private static function charsetIn($content)
+    {
+        $at = 0;
+        while (($found = stripos($content, 'charset', $at)) !== false) {
+            $at = $found + 7;
+            $at += strspn($content, "\t\n\f\r ", $at);
+            if (substr($content, $at, 1) !== '=') {
+                continue;
+            }
+            $at++;
+            $at += strspn($content, "\t\n\f\r ", $at);
+
+            $quote = substr($content, $at, 1);
+            if ($quote === '"' || $quote === "'") {
+                $end = strpos($content, $quote, $at + 1);
+
+                return $end === false ? null : substr($content, $at + 1, $end - $at - 1);
+            }
+            $label = substr($content, $at, strcspn($content, "\t\n\f\r ;", $at));
+
+            return $label === '' ? null : $label;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param string $text
+     * @return string $text with A to Z lowercased, whatever the locale
+     */
+    private static function lower($text)
+    {
+        return strtr($text, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz');
     }
 
     /**

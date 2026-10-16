@@ -68,6 +68,44 @@ class CharsetTest extends TestCase
         $this->assertStringContainsString('<p>café</p>', Charset::toUtf8(self::page('utf-7', "caf\xE9")));
     }
 
+    public function prescans(): array
+    {
+        $cafe = "<p>Caf\xE9</p>";
+
+        return [
+            'charset= in a description, no http-equiv' => ['<meta name="description" content="How to set charset=utf-8 in a meta">' . $cafe, 'Café'],
+            'charset= in a content without http-equiv' => ['<meta content="text/html; charset=koi8-r">' . $cafe, 'Café'],
+            'http-equiv with charset= in its content' => ['<meta http-equiv="Content-Type" content="text/html; charset=koi8-r">' . $cafe, 'CafИ'],
+            'http-equiv after the content' => ['<meta content="text/html;charset=\'koi8-r\'" http-equiv=content-type>' . $cafe, 'CafИ'],
+            'a comment closed as <!-->' => ["<!--><meta charset=\"windows-1251\"><p>\xCF\xF0\xE8\xE2\xE5\xF2</p>", 'Привет'],
+            'a meta in a comment' => ['<!-- <meta charset="koi8-r"> -->' . $cafe, 'Café'],
+            'a meta in another tag\'s attribute' => ['<a title=\'<meta charset="koi8-r">\'>x</a>' . $cafe, 'Café'],
+            'a label naming nothing, then one that does' => ['<meta charset="utf-7"><meta charset="koi8-r">' . $cafe, 'CafИ'],
+            'a charset naming nothing outranks its content' => ['<meta charset="bogus" http-equiv="content-type" content="charset=koi8-r"><meta charset="windows-1252">' . $cafe, 'Café'],
+            'the first of a repeated attribute' => ['<meta charset="koi8-r" charset="windows-1252">' . $cafe, 'CafИ'],
+            'a quoted label with spaces' => ['<meta charset=" KOI8-R ">' . $cafe, 'CafИ'],
+            'an unquoted label' => ['<meta charset=koi8-r>' . $cafe, 'CafИ'],
+            'an unquoted label before another attribute' => ['<meta charset=koi8-r data-x="1">' . $cafe, 'CafИ'],
+            'a meta in capitals' => ['<META HTTP-EQUIV="Content-Type" CONTENT="text/html; CHARSET=KOI8-R">' . $cafe, 'CafИ'],
+            'a self-closed meta' => ['<meta charset="koi8-r"/>' . $cafe, 'CafИ'],
+            'a meta inside a <! construct' => ['<!x <meta charset="koi8-r">' . $cafe, 'Café'],
+            'a meta after a processing instruction' => ['<?xml version="1.0"?><meta charset="koi8-r">' . $cafe, 'CafИ'],
+            'a metadata tag is no meta' => ['<metadata charset="koi8-r">' . $cafe, 'Café'],
+            'a meta past the first 1024 bytes' => [str_repeat(' ', 1024) . '<meta charset="koi8-r">' . $cafe, 'Café'],
+        ];
+    }
+
+    /**
+     * A meta declares an encoding as a browser's prescan of the first 1024
+     * bytes reads it.
+     *
+     * @dataProvider prescans
+     */
+    public function testAMetaDeclaresAsABrowsersPrescanReadsIt(string $html, string $text): void
+    {
+        $this->assertStringContainsString('<p>' . $text . '</p>', Charset::toUtf8($html));
+    }
+
     public function testAReplacementLabelReadsAsOneReplacementCharacter(): void
     {
         $this->assertSame("\u{FFFD}", Charset::toUtf8(self::page('iso-2022-kr', 'Hello')));
