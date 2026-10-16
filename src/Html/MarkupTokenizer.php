@@ -45,6 +45,10 @@ class MarkupTokenizer
      * sentinel as literal text rather than trying to parse it as an argument.
      * These are transient: they are never registered and never sent over the
      * wire. The catalog only ever contains {m<i>o}/{m<i>c}.
+     *
+     * Each sentinel carries its tokenizer's random nonce, and a tokenizer
+     * reads back only its own, so text shaped like one - a caller's param -
+     * stays text.
      */
     const OPEN_START = "\xEE\x80\x80";  // U+E000
     const OPEN_END = "\xEE\x80\x81";    // U+E001
@@ -52,10 +56,13 @@ class MarkupTokenizer
     const CLOSE_END = "\xEE\x80\x83";   // U+E003
 
     /**
-     * Matches either sentinel form, capturing the slot index. Matched as
-     * bytes, so text holding invalid UTF-8 still rebuilds.
+     * Matches either sentinel form, capturing its nonce and slot index.
+     * Matched as bytes, so text holding invalid UTF-8 still rebuilds.
      */
-    const SENTINEL_PATTERN = '/\xEE\x80\x80(\d+)\xEE\x80\x81|\xEE\x80\x82(\d+)\xEE\x80\x83/';
+    const SENTINEL_PATTERN = '/\xEE\x80\x80([0-9a-f]{32})(\d+)\xEE\x80\x81|\xEE\x80\x82([0-9a-f]{32})(\d+)\xEE\x80\x83/';
+
+    /** @var string|null The random nonce this tokenizer's sentinels carry. */
+    private $nonce = null;
 
     /**
      * Elements whose contents must never be translated or registered.
@@ -330,11 +337,23 @@ class MarkupTokenizer
         $params = [];
 
         for ($i = 0; $i < $slotCount; $i++) {
-            $params['m' . $i . 'o'] = self::OPEN_START . $i . self::OPEN_END;
-            $params['m' . $i . 'c'] = self::CLOSE_START . $i . self::CLOSE_END;
+            $params['m' . $i . 'o'] = self::OPEN_START . $this->nonce() . $i . self::OPEN_END;
+            $params['m' . $i . 'c'] = self::CLOSE_START . $this->nonce() . $i . self::CLOSE_END;
         }
 
         return $params;
+    }
+
+    /**
+     * @return string
+     */
+    private function nonce()
+    {
+        if ($this->nonce === null) {
+            $this->nonce = bin2hex(random_bytes(16));
+        }
+
+        return $this->nonce;
     }
 
     /**
@@ -498,6 +517,12 @@ class MarkupTokenizer
         foreach ($matches[0] as $position => $match) {
             $marker = $match[0];
             $markerOffset = $match[1];
+            $isOpen = $matches[1][$position][1] !== -1;
+
+            // One this tokenizer did not issue is text.
+            if (($isOpen ? $matches[1][$position][0] : $matches[3][$position][0]) !== $this->nonce()) {
+                continue;
+            }
 
             // Text preceding this marker.
             if ($markerOffset > $offset) {
@@ -510,8 +535,7 @@ class MarkupTokenizer
 
             $offset = $markerOffset + strlen($marker);
 
-            $isOpen = $matches[1][$position][1] !== -1;
-            $index = (int) ($isOpen ? $matches[1][$position][0] : $matches[2][$position][0]);
+            $index = (int) ($isOpen ? $matches[2][$position][0] : $matches[4][$position][0]);
 
             if (!isset($slots[$index])) {
                 return null; // Unknown slot index.

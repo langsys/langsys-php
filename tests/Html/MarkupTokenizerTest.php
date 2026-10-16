@@ -45,12 +45,12 @@ class MarkupTokenizerTest extends TestCase
 
     protected function open($i)
     {
-        return self::OPEN_START . $i . self::OPEN_END;
+        return $this->tokenizer->tokenParams($i + 1)['m' . $i . 'o'];
     }
 
     protected function close($i)
     {
-        return self::CLOSE_START . $i . self::CLOSE_END;
+        return $this->tokenizer->tokenParams($i + 1)['m' . $i . 'c'];
     }
 
     /**
@@ -147,14 +147,22 @@ class MarkupTokenizerTest extends TestCase
         $this->assertEquals('Hello {m0o}world{m0c}', $result['text']);
     }
 
+    /**
+     * Each token maps to a sentinel carrying its index and the tokenizer's
+     * own nonce: the same for every token of one tokenizer, another for the
+     * next tokenizer.
+     */
     public function testTokenParamsMapToSentinels()
     {
         $params = $this->tokenizer->tokenParams(2);
+        $this->assertSame(['m0o', 'm0c', 'm1o', 'm1c'], array_keys($params));
+        $this->assertSame(1, preg_match('/^\xEE\x80\x80([0-9a-f]{32})0\xEE\x80\x81$/', $params['m0o'], $nonce));
+        $this->assertSame(self::CLOSE_START . $nonce[1] . '0' . self::CLOSE_END, $params['m0c']);
+        $this->assertSame(self::OPEN_START . $nonce[1] . '1' . self::OPEN_END, $params['m1o']);
+        $this->assertSame(self::CLOSE_START . $nonce[1] . '1' . self::CLOSE_END, $params['m1c']);
+        $this->assertSame($params, $this->tokenizer->tokenParams(2));
 
-        $this->assertEquals($this->open(0), $params['m0o']);
-        $this->assertEquals($this->close(0), $params['m0c']);
-        $this->assertEquals($this->open(1), $params['m1o']);
-        $this->assertEquals($this->close(1), $params['m1c']);
+        $this->assertNotSame($params['m0o'], (new MarkupTokenizer())->tokenParams(1)['m0o']);
     }
 
     public function testDetectsTokens()

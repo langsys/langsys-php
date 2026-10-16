@@ -49,7 +49,7 @@ class ExcludedElementTest extends TestCase
      *
      * @return array{0: string, 1: string[]}
      */
-    private function render($route, $source, array $catalog = [], array $seed = null)
+    private function render($route, $source, array $catalog = [], array $seed = null, array $params = [])
     {
         $client = $this->client($catalog);
         if ($seed !== null) {
@@ -58,16 +58,38 @@ class ExcludedElementTest extends TestCase
         }
 
         if ($route === 'rich') {
-            $html = $client->translateRich($source, null, 'UI')['html'];
+            $html = $client->translateRich($source, null, 'UI', $params)['html'];
         } elseif ($route === 'page') {
-            $page = $client->translatePage('<html><body><p data-ls-phrase>' . $source . '</p></body></html>', 'UI');
+            $page = $client->translatePage('<html><body><p data-ls-phrase>' . $source . '</p></body></html>', 'UI', [], $params);
             $html = preg_replace('#^.*<p data-ls-phrase>|</p>.*$#s', '', $page);
         } else {
-            $block = $client->translateContentBlock('<p data-ls-phrase>' . $source . '</p>', 'UI');
+            $block = $client->translateContentBlock('<p data-ls-phrase>' . $source . '</p>', 'UI', $params);
             $html = preg_replace('#^<p data-ls-phrase>|</p>$#', '', $block);
         }
 
         return [$html, array_values(array_column($client->getPendingPhrases(), 'phrase'))];
+    }
+
+    /**
+     * A param shaped like the placeholders a phrase's elements are rebuilt
+     * from is text: it cannot wrap itself in one of the source's elements or
+     * repeat one, on any route.
+     *
+     * @dataProvider routeProvider
+     */
+    public function testAParamShapedLikeAnElementPlaceholderIsText($route): void
+    {
+        foreach (['no nonce' => '', 'made-up nonce' => str_repeat('0', 32)] as $kind => $nonce) {
+            $wrap = "\u{E000}{$nonce}0\u{E001}CLICK\u{E002}{$nonce}0\u{E003}";
+            list($html) = $this->render($route, 'Hi {name}, read the <a href="/terms">terms</a>', [], null, ['name' => $wrap]);
+            $this->assertSame(1, substr_count($html, '<a '), $kind . ': ' . $html);
+            $this->assertStringContainsString('CLICK', $html, $kind);
+            $this->assertStringContainsString('<a href="/terms">terms</a>', $html, $kind);
+
+            $repeat = "\u{E000}{$nonce}0\u{E001}\u{E002}{$nonce}0\u{E003}";
+            list($html) = $this->render($route, 'Hi {name}<script>track()</script>', [], null, ['name' => $repeat]);
+            $this->assertSame(1, substr_count($html, '<script>'), $kind . ': ' . $html);
+        }
     }
 
     public function routeProvider()
