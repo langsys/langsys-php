@@ -319,6 +319,28 @@ class RawTextBodyTest extends TestCase
     }
 
     /**
+     * The page goes out in UTF-8, and the first charset a browser's prescan
+     * finds in it says so, even when a meta is written in its title's text.
+     */
+    public function testThePrescanOfTheOutputFindsUtf8First(): void
+    {
+        $title = '<title>Never write <meta charset="windows-1252"> again</title>';
+        $cafe = "<p>Caf\xE9</p>";
+        foreach ([
+            '<html><head>' . $title . '<meta charset="windows-1252"></head><body>' . $cafe . '</body></html>',
+            '<html><head>' . $title . '</head><body>' . $cafe . '</body></html>',
+            '<html><head><noscript><meta charset="windows-1252"></noscript></head><body>' . $cafe . '</body></html>',
+            "<html><head><meta charset=\"windows-1252\"><title>Caf\xE9</title></head><body>" . $cafe . '</body></html>',
+        ] as $html) {
+            $page = $this->client()->translatePage($html, 'UI');
+
+            $this->assertStringContainsString('<p>Café</p>', \Langsys\SDK\Html\Charset::toUtf8($page), $html);
+            $this->assertSame(1, substr_count($page, '<head><meta charset="utf-8">'), $html);
+        }
+        $this->assertStringContainsString($title, $this->client()->translatePage('<html><head>' . $title . '</head><body></body></html>', 'UI'), 'the title is left as written');
+    }
+
+    /**
      * A meta written where it declares nothing - the text of a textarea or a
      * title, an inert template, an SVG - is left as written.
      */

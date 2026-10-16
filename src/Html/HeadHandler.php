@@ -176,6 +176,23 @@ class HeadHandler
     const NOT_DECLARING = ['textarea', 'title', 'xmp', 'iframe', 'noembed', 'noframes', 'plaintext', 'template', 'noscript', 'svg', 'math'];
 
     /**
+     * Whether $meta is written where it declares nothing.
+     *
+     * @param DOMElement $meta
+     * @return bool
+     */
+    protected function declaresNothing(DOMElement $meta)
+    {
+        for ($at = $meta->parentNode; $at instanceof DOMElement; $at = $at->parentNode) {
+            if (in_array(strtolower($at->nodeName), self::NOT_DECLARING, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Make every charset the document declares UTF-8.
      *
      * @param DOMDocument $doc
@@ -184,10 +201,8 @@ class HeadHandler
     protected function declareUtf8(DOMDocument $doc)
     {
         foreach ($doc->getElementsByTagName('meta') as $meta) {
-            for ($at = $meta->parentNode; $at instanceof DOMElement; $at = $at->parentNode) {
-                if (in_array(strtolower($at->nodeName), self::NOT_DECLARING, true)) {
-                    continue 2;
-                }
+            if ($this->declaresNothing($meta)) {
+                continue;
             }
 
             if ($meta->hasAttribute('charset')) {
@@ -201,8 +216,11 @@ class HeadHandler
     }
 
     /**
-     * Ensure the head declares a charset, <meta charset="utf-8"> when the
-     * page declares none.
+     * Ensure the first charset the head declares, as a browser's prescan
+     * reads the page, is UTF-8: <meta charset="utf-8"> ahead of the rest when
+     * the head declares none, or when its first is a meta written where it
+     * declares nothing - a title's text - which the prescan, reading bytes,
+     * takes for one.
      *
      * @param DOMElement $head The head element
      * @param DOMDocument $doc The document (for creating new elements)
@@ -210,26 +228,19 @@ class HeadHandler
      */
     protected function ensureCharsetMeta(DOMElement $head, DOMDocument $doc)
     {
-        $hasCharset = false;
-
         foreach ($head->getElementsByTagName('meta') as $meta) {
-            if ($meta->hasAttribute('charset') || strtolower($meta->getAttribute('http-equiv')) === 'content-type') {
-                $hasCharset = true;
-                break;
+            if (!$meta->hasAttribute('charset') && strtolower($meta->getAttribute('http-equiv')) !== 'content-type') {
+                continue;
             }
+            if (!$this->declaresNothing($meta)) {
+                return;
+            }
+            break;
         }
 
-        // If no charset found, insert <meta charset="utf-8"> at the beginning
-        if (!$hasCharset) {
-            $charsetMeta = $doc->createElement('meta');
-            $charsetMeta->setAttribute('charset', 'utf-8');
-
-            if ($head->firstChild) {
-                $head->insertBefore($charsetMeta, $head->firstChild);
-            } else {
-                $head->appendChild($charsetMeta);
-            }
-        }
+        $charsetMeta = $doc->createElement('meta');
+        $charsetMeta->setAttribute('charset', 'utf-8');
+        $head->insertBefore($charsetMeta, $head->firstChild);
     }
 
     /**
