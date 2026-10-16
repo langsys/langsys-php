@@ -1910,7 +1910,8 @@ class Client
      * this locale and disagree with what the server sent. The message is never
      * used as a lookup key: it is filled, possibly localised, text.
      *
-     * A miss queues the template for registration, as any rendered phrase does.
+     * A miss queues the template for registration, as emitMessage() does,
+     * unless runtime registration is off (FRM-2).
      *
      * @param ServerMessage|array $entry An entry, or its wire form
      * @param string|null $locale
@@ -1959,7 +1960,9 @@ class Client
         list($listed, $translation) = $found;
 
         if (!$listed) {
-            $this->queuePhraseForRegistration($entry->getTemplate(), $category);
+            if ($this->runtimeRegistration) {
+                $this->queuePhraseForRegistration($entry->getTemplate(), $category);
+            }
 
             return $entry->getMessage();
         }

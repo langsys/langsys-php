@@ -1487,8 +1487,8 @@ line. Once the catalog answers, the page rebuilds your source's own
 elements, so an attribute a translated file changed, such as a localized `href`, gives way
 to the source's.
 
-With `'runtime_registration' => false`, `translate()` and `emitMessage()` register
-nothing; `translatePage()` and `translateContentBlock()` still discover what they render.
+With `'runtime_registration' => false`, `translate()`, `translateMessage()` and
+`emitMessage()` register nothing; `translatePage()` and `translateContentBlock()` still discover what they render.
 
 A line that still holds a label placeholder — `:attribute`, `:other`, `:values` — is
 never registered on its own: at runtime the field's label is written in, so the raw line

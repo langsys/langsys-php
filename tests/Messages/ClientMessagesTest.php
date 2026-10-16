@@ -133,6 +133,32 @@ class ClientMessagesTest extends TestCase
         }
     }
 
+    public function testARenderedTemplateTheCatalogLacksIsQueued(): void
+    {
+        $client = $this->client(['Errors' => []]);
+        $client->setLocale('es-es');
+
+        $client->translateMessage($this->entry());
+
+        $this->assertSame([self::TEMPLATE], array_values(array_column($client->getPendingPhrases(), 'phrase')));
+    }
+
+    /**
+     * With runtime registration off (FRM-2) a server message registers
+     * nothing at runtime, rendered or emitted: its templates are the sync's
+     * to list. A miss still renders the server's message.
+     */
+    public function testWithRuntimeRegistrationOffARenderedMessageRegistersNothing(): void
+    {
+        $client = $this->client(['Errors' => []], ['runtime_registration' => false]);
+        $client->setLocale('es-es');
+
+        $this->assertSame($this->entry()->getMessage(), $client->translateMessage($this->entry()));
+        $client->emitMessage($this->entry(['min' => 8]));
+
+        $this->assertFalse($client->hasPendingRegistrations());
+    }
+
     public function testRenderingAndEmittingTheSameTemplateQueuesItOnce(): void
     {
         $client = $this->client(['Errors' => []]);

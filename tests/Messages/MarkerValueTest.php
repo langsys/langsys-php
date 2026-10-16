@@ -24,7 +24,7 @@ class MarkerValueTest extends TestCase
      */
     private $logger;
 
-    private function client()
+    private function client(array $options = [])
     {
         $http = new MockHttpClient();
         $http->setResponse('GET', 'authorize-project/project-id', ['data' => ['key_type' => 'read', 'write_enabled' => false]]);
@@ -35,7 +35,7 @@ class MarkerValueTest extends TestCase
         ]]);
 
         $this->logger = new SpyLogger();
-        $client = new Client('test-api-key', 'project-id', ['cache' => new NullCache(), 'logger' => $this->logger]);
+        $client = new Client('test-api-key', 'project-id', ['cache' => new NullCache(), 'logger' => $this->logger] + $options);
         $reflection = new \ReflectionClass($client);
         foreach (['http', 'translations', 'translatableItems'] as $property) {
             $prop = $reflection->getProperty($property);
@@ -77,6 +77,19 @@ class MarkerValueTest extends TestCase
         $reports = $this->reports();
         $this->assertCount(1, $reports, 'once per template and marker');
         $this->assertSame(['template' => self::TEMPLATE, 'marker' => 'status', 'value' => 'shipped'], $reports[0]['context']);
+    }
+
+    /**
+     * A template the catalog does not list is still read for its markers
+     * when it may not register at runtime.
+     */
+    public function testAnUnlistedTemplateIsReportedWithRuntimeRegistrationOff(): void
+    {
+        $client = $this->client(['runtime_registration' => false]);
+        $client->translateMessage(new ServerMessage('order_shipped', 'Your order is shipped.', 'Your order is {status}.', ['status' => 'shipped']));
+
+        $this->assertCount(1, $this->reports());
+        $this->assertFalse($client->hasPendingRegistrations());
     }
 
     public function testEmittingTheMessageReportsItToo(): void
