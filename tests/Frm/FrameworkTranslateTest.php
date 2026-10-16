@@ -310,6 +310,7 @@ class FrameworkTranslateTest extends TestCase
             'an element marked already' => ['<p data-ls-resolved="false">a</p><p>b</p>', '<p data-ls-resolved="false">a</p><p' . $m . '>b</p>'],
             'an <html> mentioned in a comment' => ['<!-- <html> --><p>a</p><p>b</p>', '<!-- <html> --><p' . $m . '>a</p><p' . $m . '>b</p>'],
             'an unquoted value ending in a slash' => ['<a href=/docs/>Docs</a><img src=x/><br/><svg a/>', '<a href=/docs/' . $m . '>Docs</a><img src=x/' . $m . '><br' . $m . '/><svg a' . $m . '/>'],
+            'a chart label in a foreignObject' => ["<svg viewBox=\"0 0 10 10\"><foreignObject><div>Label</div></foreignObject><rect width=\"1\"/></svg>\n<p>Next</p>", "<svg viewBox=\"0 0 10 10\"" . $m . "><foreignObject><div>Label</div></foreignObject><rect width=\"1\"/></svg>\n<p" . $m . ">Next</p>"],
             'a stray quote in a tag' => ['<img src="a.png"" alt="Logo"><p class="x">Hi</p>', '<img src="a.png"" alt="Logo"' . $m . '><p class="x"' . $m . '>Hi</p>'],
             'a start tag the input ends inside' => ['<p>a</p><p class="x', '<p' . $m . '>a</p><p class="x'],
             'an <html> after a comment that mentions one' => ['<!-- <html> --><html><body>x</body></html>', '<!-- <html> --><html' . $m . '><body>x</body></html>'],

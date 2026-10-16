@@ -100,8 +100,16 @@ final class Document
     const FOREIGN = ['math', 'svg'];
 
     /**
+     * The elements of svg and math whose content a browser reads as HTML
+     * that stays the drawing's (HTML integration points, and MathML's text
+     * integration points); an annotation-xml is one when its encoding is HTML.
+     */
+    const INTEGRATION_POINTS = ['svg' => ['foreignobject', 'desc', 'title'], 'math' => ['mi', 'mo', 'mn', 'ms', 'mtext']];
+
+    /**
      * Start tags that end svg or math content, as in a browser's tree
-     * builder: one written inside it is the page's again.
+     * builder: one written inside it is the page's again, unless it is inside
+     * an integration point.
      */
     const BREAKOUT = [
         'b', 'big', 'blockquote', 'body', 'br', 'center', 'code', 'dd', 'div', 'dl', 'dt', 'em', 'embed',
@@ -173,6 +181,7 @@ final class Document
         $counts = [];
         $foreign = null;
         $depth = 0;
+        $points = [];
         $at = 0;
 
         while (($lt = strpos($html, '<', $at)) !== false) {
@@ -194,9 +203,12 @@ final class Document
                 $name = strtolower($m[1]);
                 if ($foreign === null) {
                     self::closeNearest($open, $counts, [$name], []);
+                } elseif ($points !== [] && $name === end($points)) {
+                    array_pop($points);
                 } elseif ($name === $foreign && --$depth === 0) {
                     self::closeNearest($open, $counts, [$foreign], []);
                     $foreign = null;
+                    $points = [];
                 }
                 $at = $lt + strlen($m[0]);
                 continue;
@@ -213,9 +225,17 @@ final class Document
             $closed = self::selfClosing($m[0]);
 
             if ($foreign !== null) {
-                if (!in_array($name, self::BREAKOUT, true)) {
+                $inPoint = $points !== [];
+                if ($inPoint || !in_array($name, self::BREAKOUT, true)) {
                     if ($name === $foreign && !$closed) {
                         $depth++;
+                    } elseif (!$inPoint && !$closed && self::integrationPoint($foreign, $name, $m[0])) {
+                        $points[] = $name;
+                    } elseif ($inPoint && in_array($name, self::TEXT_BODIES, true)) {
+                        if (!preg_match('/<\/' . $name . '[\s\/>]/i', $html, $end, PREG_OFFSET_CAPTURE, $at)) {
+                            break;
+                        }
+                        $at = $end[0][1];
                     }
                     continue;
                 }
@@ -280,6 +300,24 @@ final class Document
         } elseif ($name === 'tbody' || $name === 'thead' || $name === 'tfoot') {
             self::closeNearest($open, $counts, ['tbody', 'thead', 'tfoot'], ['table', 'template']);
         }
+    }
+
+    /**
+     * Whether a start tag in $foreign content opens an integration point.
+     *
+     * @param string $foreign svg or math
+     * @param string $name
+     * @param string $startTag
+     * @return bool
+     */
+    private static function integrationPoint($foreign, $name, $startTag)
+    {
+        if (in_array($name, self::INTEGRATION_POINTS[$foreign], true)) {
+            return true;
+        }
+
+        return $foreign === 'math' && $name === 'annotation-xml'
+            && preg_match('/\sencoding[\t\n\f\r ]*+=[\t\n\f\r ]*+["\']?(?:text\/html|application\/xhtml\+xml)["\'\s>\/]/i', $startTag);
     }
 
     /**

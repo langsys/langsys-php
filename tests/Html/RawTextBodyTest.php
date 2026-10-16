@@ -254,6 +254,7 @@ class RawTextBodyTest extends TestCase
         foreach ([
             '<button><svg viewBox="0 0 10 10"><title>Close dialog</title><path d="M0 0"/></svg>Close</button>' => '<button data-ls-contentblock="07e0ea6985fb5f6df2cbbd800a5fcd12" data-ls-resolved="es-es"><svg viewbox="0 0 10 10"><title>Close dialog</title><path d="M0 0"></path></svg>Close</button>' . "\n",
             '<p>Hello world</p><script>document.write("<html>");</script>' => '<p data-ls-resolved="es-es">Hola mundo</p><script data-ls-resolved="es-es">document.write("<html>");</script>' . "\n",
+            '<div class="chart"><svg><foreignObject><span>Label</span></foreignObject><title>Chart</title></svg></div><p>Hello world</p>' => '<div class="chart" data-ls-contentblock="6a6e31c537d8574e5cbe643d2b90c194" data-ls-resolved="es-es"><svg><foreignobject><span>Label</span></foreignobject><title>Chart</title></svg></div><p data-ls-resolved="es-es">Hola mundo</p>' . "\n",
             '<p data-note="<html>">Hello world</p>' => '<p data-note="&lt;html&gt;" data-ls-resolved="es-es">Hola mundo</p>' . "\n",
             '<!DOCTYPE html><!-- from the <html> boilerplate --><title>Title</title><p>Hello world</p>' => '<!DOCTYPE html>' . "\n" . '<!-- from the <html> boilerplate --><html lang="es-es" data-ls-resolved="es-es"><head><meta charset="utf-8"><title>Título</title></head><p>Hola mundo</p></html>' . "\n",
         ] as $html => $expected) {
