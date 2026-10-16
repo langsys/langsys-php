@@ -285,7 +285,9 @@ its id or re-registers it.
   block's translations wrote into every text node matching one of its phrases,
   including a `<script>`, `<style>`, `<noscript>`, `<template>` or MathML body
   that registration never reads, so a script whose text read like a phrase was
-  rewritten with the translation. Those elements are left as written.
+  rewritten with the translation. Their text is left as written, and so is the
+  text of an element excluded from translation: a translation is written only
+  into the text it was registered from, in a block of one phrase as in any other.
 - **Text after a `<` that starts no tag is kept.** libxml read a `<` a browser
   shows as text as opening a tag, and lost what followed it to the next `>`:
   "Price < 10 and > 5" was translated to "Price  5", "if a < b then" lost

@@ -207,4 +207,32 @@ class ContentBlockUnitTest extends TestCase
         $page = $this->client($catalog)->translatePage('<html><head></head><body>' . str_replace('<div>', '<div data-langsys-contentblock>', $body) . '</body></html>', 'UI');
         $this->assertStringContainsString('<p>Hola</p><p>Amigo</p>' . $kept, $page, 'the page path');
     }
+
+    /**
+     * A one-phrase fragment's translation is written into the text node it
+     * registered, never into text registration does not read, ahead of it,
+     * that holds the same words.
+     */
+    public function testAOnePhraseFragmentWritesItsTranslationIntoTheTextItRegistered(): void
+    {
+        $skipped = [
+            '<script>Hello</script>',
+            '<style>Hello</style>',
+            '<noscript>Hello</noscript>',
+            '<template>Hello</template>',
+            '<math><mi>Hello</mi></math>',
+            '<span translate="no">Hello</span>',
+            '<span data-notrans>Hello</span>',
+            '<span translate="no"><b translate="yes">Hello</b></span>',
+        ];
+
+        foreach ($skipped as $before) {
+            $body = '<div>' . $before . '<p>Hello</p></div>';
+            $this->assertSame(['Hello'], (new HtmlParser())->fragmentUnit($body)['tokens'], $before);
+
+            $block = $this->client(['UI' => ['Hello' => '</script><img src=x onerror=alert(1)>']])->translateContentBlock($body, 'UI');
+
+            $this->assertSame('<div>' . $before . '<p>&lt;/script&gt;&lt;img src=x onerror=alert(1)&gt;</p></div>', $block, $before);
+        }
+    }
 }

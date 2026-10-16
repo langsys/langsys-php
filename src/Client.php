@@ -3445,8 +3445,29 @@ class Client
     }
 
     /**
+     * Whether a node sits inside an element below $root whose text
+     * registration does not read: one excluded from translation, or a
+     * script, style, noscript, template or math.
+     *
+     * @param \DOMNode $node
+     * @param \DOMElement $root
+     * @return bool
+     */
+    private static function insideUnreadElement(\DOMNode $node, \DOMElement $root)
+    {
+        for ($parent = $node->parentNode; $parent !== null && !$parent->isSameNode($root); $parent = $parent->parentNode) {
+            if ($parent instanceof \DOMElement && (HtmlParser::isTranslationExcluded($parent) || in_array(strtolower($parent->nodeName), HtmlParser::NON_PROSE_ELEMENTS, true))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Write a rendered phrase into the one text node of a fragment that holds
-     * it, keeping the node's surrounding whitespace and every element around it.
+     * it - the node registration read - keeping the node's surrounding
+     * whitespace and every element around it.
      *
      * @param string $html
      * @param string $phrase The canonical text the node holds
@@ -3473,7 +3494,7 @@ class Client
 
         $xpath = new \DOMXPath($doc);
         foreach ($xpath->query('.//text()', $wrapper) as $node) {
-            if (\Langsys\SDK\Html\Canonical::phrase($node->textContent) !== $phrase || $this->insideMarkedHost($node, $wrapper)) {
+            if (\Langsys\SDK\Html\Canonical::phrase($node->textContent) !== $phrase || $this->insideMarkedHost($node, $wrapper) || self::insideUnreadElement($node, $wrapper)) {
                 continue;
             }
 
