@@ -405,7 +405,8 @@ final class Planner
     /**
      * Each translation slot's source slot, or null when they cannot be
      * matched (see richTranslations()). An element kept whole renders its
-     * source content, which its slot holds, so that content tells two of them
+     * source content, which its slot holds, so that content - each marked
+     * value in it as ValueMarkers::comparable() writes it - tells two of them
      * apart as well; any other slot holds no children. Both sides compare in
      * the form a phrase takes, since a carried translation is read in it, and
      * source elements that differ only outside that form cannot be told apart.
@@ -435,7 +436,7 @@ final class Planner
 
             $content = '';
             foreach ($slot->childNodes as $child) {
-                $content .= \Langsys\SDK\Html\Document::html($child);
+                $content .= \Langsys\SDK\Html\ValueMarkers::comparable(\Langsys\SDK\Html\Document::html($child));
             }
 
             return json_encode([$attributes, $canonical ? Canonical::phrase($content) : $content]);

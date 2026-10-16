@@ -32,6 +32,11 @@ use DOMText;
  * restores any collapsed node nothing rewrote and expands every sentinel into
  * the marker it came from, so the output carries the same markers a later
  * reader, such as a browser SDK hydrating the page, reads again.
+ *
+ * A sentinel carries the random nonce of the reader that issued it, and is
+ * read as one only while that reader is alive. Text that merely has a
+ * sentinel's shape - a caller's param, a catalog translation - stays text: it
+ * never becomes a marker, and a plural or select chooses on it as written.
  */
 final class ValueMarkers
 {
@@ -47,8 +52,24 @@ final class ValueMarkers
     const OPEN = "\u{E010}";
     const CLOSE = "\u{E011}";
 
+    /**
+     * A sentinel: the delimiters around its reader's nonce and its base64
+     * JSON. Matched as bytes, so text holding invalid UTF-8 still splits.
+     */
+    const SENTINEL_PATTERN = '/\xEE\x80\x90([0-9a-f]{32})([A-Za-z0-9+\/=]*)\xEE\x80\x91/';
+
     /** Subtrees whose text is not prose, or holds no comments (RCDATA). */
     const SKIPPED = ['script', 'style', 'template', 'noscript', 'math', 'title', 'textarea', 'head'];
+
+    /**
+     * The nonces of the readers alive in this process.
+     *
+     * @var array<string, true>
+     */
+    private static $live = [];
+
+    /** @var string The random nonce this reader's sentinels carry. */
+    private $nonce;
 
     /**
      * Collapsed runs: each a text node and the markers it replaced.
@@ -67,6 +88,17 @@ final class ValueMarkers
 
     /** @var bool Whether the unnamed-marker notice has been given this process. */
     private static $noticed = false;
+
+    public function __construct()
+    {
+        $this->nonce = bin2hex(random_bytes(16));
+        self::$live[$this->nonce] = true;
+    }
+
+    public function __destruct()
+    {
+        unset(self::$live[$this->nonce]);
+    }
 
     /**
      * Collapse every marker run below $root.
@@ -232,7 +264,7 @@ final class ValueMarkers
             }
 
             foreach ($run['values'] as $name => $entry) {
-                $params[$name] = self::sentinel($name, $entry);
+                $params[$name] = $this->sentinel($name, $entry);
             }
         }
 
@@ -252,7 +284,7 @@ final class ValueMarkers
         foreach ($this->runs as $run) {
             foreach ($run['values'] as $name => $entry) {
                 if (!isset($params[$name])) {
-                    $params[$name] = self::sentinel($name, $entry);
+                    $params[$name] = $this->sentinel($name, $entry);
                 }
             }
         }
@@ -276,9 +308,9 @@ final class ValueMarkers
                 continue;
             }
 
-            if (preg_match('/\{\s*' . preg_quote((string) $name, '/') . '\s*,/', (string) $text)) {
-                $decoded = json_decode((string) base64_decode(substr($value, strlen(self::OPEN), -strlen(self::CLOSE))), true);
-                if (is_array($decoded) && isset($decoded[1])) {
+            if (preg_match('/\{\s*' . preg_quote((string) $name, '/') . '\s*,/', (string) $text) && preg_match(self::SENTINEL_PATTERN, $value, $m)) {
+                $decoded = self::issued($m[1], $m[2]);
+                if ($decoded !== null) {
                     $params[$name] = $decoded[1];
                 }
             }
@@ -302,7 +334,7 @@ final class ValueMarkers
                 continue;
             }
 
-            $node->nodeValue = self::sealed($run);
+            $node->nodeValue = $this->sealed($run);
         }
 
         self::expand($root);
@@ -335,7 +367,7 @@ final class ValueMarkers
         if ($from instanceof DOMText) {
             foreach ($this->runs as $run) {
                 if ($run['node'] === $from) {
-                    $to->nodeValue = self::sealed($run);
+                    $to->nodeValue = $this->sealed($run);
                 }
             }
 
@@ -357,12 +389,12 @@ final class ValueMarkers
      * @param array $run
      * @return string
      */
-    private static function sealed(array $run)
+    private function sealed(array $run)
     {
         $values = $run['values'];
 
         return (string) preg_replace_callback('/\{([a-z][a-z0-9_]*)\}/', function ($m) use ($values) {
-            return isset($values[$m[1]]) ? self::sentinel($m[1], $values[$m[1]]) : $m[0];
+            return isset($values[$m[1]]) ? $this->sentinel($m[1], $values[$m[1]]) : $m[0];
         }, $run['node']->textContent);
     }
 
@@ -388,7 +420,8 @@ final class ValueMarkers
     }
 
     /**
-     * Turn every sentinel in the text below $root into its marker.
+     * Turn every sentinel a live reader issued in the text below $root into
+     * its marker. Anything else shaped like one is left as text.
      *
      * @param DOMNode $root
      * @return void
@@ -401,21 +434,26 @@ final class ValueMarkers
 
         foreach ($found as $node) {
             $parent = $node->parentNode;
-            $parts = preg_split('/' . self::OPEN . '([A-Za-z0-9+\/=]*)' . self::CLOSE . '/u', $node->nodeValue, -1, PREG_SPLIT_DELIM_CAPTURE);
+            $parts = preg_split(self::SENTINEL_PATTERN, $node->nodeValue, -1, PREG_SPLIT_DELIM_CAPTURE);
+            $text = '';
 
-            foreach ($parts as $i => $part) {
-                if ($i % 2 === 0) {
-                    if ($part !== '') {
-                        $parent->insertBefore($doc->createTextNode($part), $node);
-                    }
-                    continue;
+            for ($i = 0; $i < count($parts); $i += 3) {
+                $text .= $parts[$i];
+                if (!isset($parts[$i + 2])) {
+                    break;
                 }
 
-                $decoded = json_decode((string) base64_decode($part), true);
-                if (!is_array($decoded) || count($decoded) !== 3) {
+                $decoded = self::issued($parts[$i + 1], $parts[$i + 2]);
+                if ($decoded === null) {
+                    $text .= self::OPEN . $parts[$i + 1] . $parts[$i + 2] . self::CLOSE;
                     continue;
                 }
                 list($name, $value, $form) = $decoded;
+
+                if ($text !== '') {
+                    $parent->insertBefore($doc->createTextNode($text), $node);
+                    $text = '';
+                }
 
                 if (is_array($form)) {
                     $span = $doc->createElement('span');
@@ -432,8 +470,36 @@ final class ValueMarkers
                 $parent->insertBefore($doc->createComment('/ls'), $node);
             }
 
+            if ($text !== '') {
+                $parent->insertBefore($doc->createTextNode($text), $node);
+            }
             $parent->removeChild($node);
         }
+    }
+
+    /**
+     * $text with each sentinel's nonce left out, so the same values read by
+     * two readers compare equal: a form for comparing, never for rendering.
+     *
+     * @param string $text
+     * @return string
+     */
+    public static function comparable($text)
+    {
+        return strpos((string) $text, self::OPEN) === false ? (string) $text : (string) preg_replace(self::SENTINEL_PATTERN, self::OPEN . '$2' . self::CLOSE, (string) $text);
+    }
+
+    /**
+     * The name, value and form a sentinel carries, when a reader alive in
+     * this process issued it; null for anything else.
+     *
+     * @param string $nonce
+     * @param string $payload
+     * @return array{0: string, 1: string, 2: array|null}|null
+     */
+    private static function issued($nonce, $payload)
+    {
+        return isset(self::$live[$nonce]) ? json_decode((string) base64_decode($payload), true) : null;
     }
 
     /**
@@ -457,9 +523,9 @@ final class ValueMarkers
      * @param array{value: string, form: array|null} $entry
      * @return string
      */
-    private static function sentinel($name, array $entry)
+    private function sentinel($name, array $entry)
     {
-        return self::OPEN . base64_encode((string) json_encode([$name, $entry['value'], $entry['form']])) . self::CLOSE;
+        return self::OPEN . $this->nonce . base64_encode((string) json_encode([$name, $entry['value'], $entry['form']])) . self::CLOSE;
     }
 
     /**

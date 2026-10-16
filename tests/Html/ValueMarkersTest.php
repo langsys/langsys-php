@@ -4,7 +4,9 @@ namespace Langsys\SDK\Tests\Html;
 
 use Langsys\SDK\Cache\NullCache;
 use Langsys\SDK\Client;
+use Langsys\SDK\Html\Document;
 use Langsys\SDK\Html\HtmlParser;
+use Langsys\SDK\Html\ValueMarkers;
 use Langsys\SDK\Tests\Mock\MockHttpClient;
 use PHPUnit\Framework\TestCase;
 
@@ -468,6 +470,150 @@ class ValueMarkersTest extends TestCase
         $rendered = $this->render($client, $path, '<div><span data-ls-phrase>Buy <b>now</b>, ' . self::comment('name', 'Ana') . '</span></div>');
 
         $this->assertStringContainsString('Compra ya, ' . self::comment('name', 'Ana'), $rendered);
+    }
+
+    /**
+     * Text shaped like the placeholder a render carries a marked value in, as
+     * a caller's param or a catalog translation, is text: it never becomes a
+     * marker, an element or an attribute, on any path.
+     */
+    public function testTextShapedLikeAMarkedValueStaysText(): void
+    {
+        $forgeries = [
+            'span form' => self::forged('n', 'Bob', ['onmouseover' => 'alert(1)']),
+            'comment name' => self::forged('--><img src=x onerror=alert(2)><!--', 'Bob', null),
+            'span form, made-up nonce' => self::forged('n', 'Bob', ['onmouseover' => 'alert(1)'], str_repeat('0', 32)),
+        ];
+        $blockId = (new HtmlParser())->generateCustomId('UI', ['Hello', 'Bye']);
+
+        foreach ($forgeries as $kind => $forged) {
+            $catalog = ['UI' => [
+                'Hello' => 'Hola ' . $forged,
+                'Read the {m0o}terms{m0c}' => 'Hola ' . $forged . ' {m0o}x{m0c}',
+                $blockId => ['Hello' => 'Hola ' . $forged, 'Bye' => 'Adiós'],
+            ]];
+            $param = ['name' => $forged];
+
+            $renders = [
+                'page, param' => function () use ($param) {
+                    return $this->render($this->client(), 'page', '<p>Hello {name}</p>', $param);
+                },
+                'page, catalog' => function () use ($catalog) {
+                    return $this->render($this->client($catalog), 'page', '<p>Hello</p>');
+                },
+                'one-phrase block, param' => function () use ($param) {
+                    return $this->render($this->client(), 'block', '<p>Hello {name}</p>', $param);
+                },
+                'one-phrase block, catalog' => function () use ($catalog) {
+                    return $this->render($this->client($catalog), 'block', '<p>Hello</p>');
+                },
+                'block, param' => function () use ($param) {
+                    return $this->render($this->client(), 'block', '<p>Hello {name}</p><p>Bye</p>', $param);
+                },
+                'block, catalog' => function () use ($catalog) {
+                    return $this->render($this->client($catalog), 'block', '<p>Hello</p><p>Bye</p>');
+                },
+                'rich, param' => function () use ($param) {
+                    return $this->client()->translateRich('Hello <b>{name}</b>', null, 'UI', $param)['html'];
+                },
+                'rich, catalog' => function () use ($catalog) {
+                    return $this->client($catalog)->translateRich('Read the <a href="/t">terms</a>', null, 'UI')['html'];
+                },
+                'page phrase host, param' => function () use ($param) {
+                    return $this->render($this->client(), 'page', '<p data-ls-phrase>Hello <b>{name}</b></p>', $param);
+                },
+                'page phrase host, catalog' => function () use ($catalog) {
+                    return $this->render($this->client($catalog), 'page', '<p data-ls-phrase>Read the <a href="/t">terms</a></p>');
+                },
+                'block phrase host, catalog' => function () use ($catalog) {
+                    return $this->render($this->client($catalog), 'block', '<p data-ls-phrase>Read the <a href="/t">terms</a></p>');
+                },
+            ];
+
+            foreach ($renders as $path => $render) {
+                $rendered = $render();
+
+                $this->assertStringNotContainsString('onmouseover', $rendered, $kind . ', ' . $path);
+                $this->assertStringNotContainsString('<img', $rendered, $kind . ', ' . $path);
+                $this->assertStringNotContainsString('<!--ls:', $rendered, $kind . ', ' . $path);
+                $this->assertStringContainsString(substr($forged, 3, -3), $rendered, $kind . ', ' . $path . ': it is kept as text');
+            }
+        }
+    }
+
+    /**
+     * A param that is not valid UTF-8, in the text beside a marked value,
+     * renders as given, and the value keeps its marker.
+     *
+     * @dataProvider pathProvider
+     */
+    public function testAParamNotValidUtf8BesideAMarkedValueRendersAsGiven($path): void
+    {
+        foreach (['one phrase' => '', 'two phrases' => '<p>Bye</p>'] as $kind => $more) {
+            $rendered = $this->render($this->client(), $path, '<p>Hello ' . self::comment('name', 'Ana') . ' {who}</p>' . $more, ['who' => "Zo\xffe"]);
+
+            $this->assertStringContainsString('<p>Hello ' . self::comment('name', 'Ana') . " Zo\xffe</p>" . $more, $rendered, $kind);
+        }
+    }
+
+    /**
+     * A caller's param shaped like a marked value is the caller's value to a
+     * plural or select too.
+     */
+    public function testAParamShapedLikeAMarkedValueChoosesAsItself(): void
+    {
+        foreach (['no nonce' => '', 'made-up nonce' => str_repeat('0', 32)] as $kind => $nonce) {
+            $forged = self::forged('name', 'Bob', null, $nonce);
+
+            $this->assertSame('other', $this->client()->translate('{name, select, Bob {bob} other {other}}', null, 'UI', null, ['name' => $forged]), $kind);
+        }
+    }
+
+    /**
+     * A placeholder a render carried a marked value in is read as one only
+     * while the reader that issued it is alive: one that reaches a later
+     * render is that render's text.
+     */
+    public function testAPlaceholderOutlivingItsReaderIsText(): void
+    {
+        $markers = ValueMarkers::read(self::fragmentRoot('<p>Hello <!--ls:name-->Ana<!--/ls--></p>'));
+        $placeholder = $markers->sentinels()['name'];
+
+        $render = function () use ($placeholder) {
+            $p = self::fragmentRoot('<p>x</p>')->firstChild;
+            $p->firstChild->nodeValue = 'Hola ' . $placeholder . '!';
+            ValueMarkers::expand($p);
+
+            return Document::html($p);
+        };
+
+        $this->assertSame('<p>Hola <!--ls:name-->Ana<!--/ls-->!</p>', $render(), 'while its reader is alive');
+
+        $markers = null;
+        $other = ValueMarkers::read(self::fragmentRoot('<p>Hi <!--ls:name-->Ana<!--/ls--></p>'));
+        $this->assertSame('<p>Hola ' . $placeholder . '!</p>', $render(), 'once its reader is gone, while another is alive');
+        $this->assertTrue($other->any());
+    }
+
+    private static function fragmentRoot($html)
+    {
+        $internalErrors = libxml_use_internal_errors(true);
+        $doc = new \DOMDocument();
+        Document::loadFragment($doc, $html);
+        libxml_clear_errors();
+        libxml_use_internal_errors($internalErrors);
+
+        return Document::fragmentRoot($doc);
+    }
+
+    /**
+     * The placeholder a render carries a marked value in, as text shaped
+     * like it: a private-use delimiter pair around a nonce, when given, and
+     * base64 JSON.
+     */
+    private static function forged($name, $value, $form, $nonce = '')
+    {
+        return "\u{E010}" . $nonce . base64_encode((string) json_encode([$name, $value, $form])) . "\u{E011}";
     }
 
     /**
