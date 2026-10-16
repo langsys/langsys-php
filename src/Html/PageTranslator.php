@@ -417,7 +417,14 @@ class PageTranslator
         // A fragment's marker goes on its first element, the <html> it was
         // read in being the SDK's.
         if ($this->fragmentRoot && $root instanceof DOMElement) {
-            $root = $root->firstElementChild;
+            $first = null;
+            foreach ($root->childNodes as $child) {
+                if ($child instanceof DOMElement) {
+                    $first = $child;
+                    break;
+                }
+            }
+            $root = $first;
         }
 
         if (!$root instanceof DOMElement) {
