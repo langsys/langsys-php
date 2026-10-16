@@ -281,6 +281,11 @@ its id or re-registers it.
 
 ### Fixed
 
+- **A param holding invalid UTF-8 keeps its line's markup.** A phrase host or a
+  `translateRich()` line rebuilt its elements with a UTF-8 pattern, which fails
+  on invalid UTF-8, so a param such as `"Zo\xFFe"` cost the line its `<b>` and
+  `<a>` and left stray digits where they were. The line renders with its markup
+  and the param as given.
 - **A content block's script, style and noscript keep their text.** Applying a
   block's translations wrote into every text node matching one of its phrases,
   including a `<script>`, `<style>`, `<noscript>`, `<template>` or MathML body

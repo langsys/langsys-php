@@ -286,6 +286,24 @@ class MarkupTokenizerTest extends TestCase
         $this->assertStringNotContainsString('E000', $html);
     }
 
+    /**
+     * Text holding invalid UTF-8 - a caller's param, say - still rebuilds
+     * its markup, and stripping removes each whole sentinel, digits and all.
+     */
+    public function testInvalidUtf8KeepsTheMarkupAndLeavesNoDigits()
+    {
+        $slots = [$this->element('<b>x</b>')->firstChild->cloneNode(false)];
+        $text = "Hello " . $this->open(0) . "Zo\xffe" . $this->close(0);
+
+        $nodes = $this->tokenizer->render($text, $slots, $slots[0]->ownerDocument);
+        $this->assertCount(2, $nodes);
+        $this->assertSame('Hello ', $nodes[0]->nodeValue);
+        $this->assertSame('b', $nodes[1]->nodeName);
+        $this->assertSame("Zo\xffe", $nodes[1]->textContent);
+
+        $this->assertSame("Hello Zo\xffe", $this->tokenizer->stripSentinels($text));
+    }
+
     public function testStripSentinelsHandlesInvalidUtf8()
     {
         $text = "abc\xC3\x28 " . $this->open(0) . 'x' . $this->close(0);

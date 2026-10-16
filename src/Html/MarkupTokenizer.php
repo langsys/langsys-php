@@ -52,9 +52,10 @@ class MarkupTokenizer
     const CLOSE_END = "\xEE\x80\x83";   // U+E003
 
     /**
-     * Matches either sentinel form, capturing the slot index.
+     * Matches either sentinel form, capturing the slot index. Matched as
+     * bytes, so text holding invalid UTF-8 still rebuilds.
      */
-    const SENTINEL_PATTERN = '/\x{E000}(\d+)\x{E001}|\x{E002}(\d+)\x{E003}/u';
+    const SENTINEL_PATTERN = '/\xEE\x80\x80(\d+)\xEE\x80\x81|\xEE\x80\x82(\d+)\xEE\x80\x83/';
 
     /**
      * Elements whose contents must never be translated or registered.
@@ -383,8 +384,8 @@ class MarkupTokenizer
         $stripped = preg_replace(self::SENTINEL_PATTERN, '', $text);
 
         if ($stripped === null) {
-            // The /u pattern fails outright on invalid UTF-8; without a
-            // byte-level fallback the sentinels would ship to the browser.
+            // PCRE failed outright; the byte-level pass below still keeps the
+            // sentinels from shipping to the browser.
             $stripped = $text;
         }
 
@@ -480,9 +481,8 @@ class MarkupTokenizer
         $found = preg_match_all(self::SENTINEL_PATTERN, $text, $matches, PREG_OFFSET_CAPTURE);
 
         if ($found === false) {
-            // PCRE failed outright (invalid UTF-8 against the /u pattern).
-            // Must NOT be treated as "no sentinels", or the raw private-use
-            // characters would be emitted as visible text.
+            // PCRE failed outright. Must NOT be treated as "no sentinels", or
+            // the raw private-use characters would be emitted as visible text.
             return null;
         }
 
