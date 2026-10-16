@@ -88,7 +88,8 @@ final class Document
      * $node as HTML, as DOMDocument::saveHTML() writes it, but with each xmp,
      * iframe, noembed and noframes body as the text it holds: libxml writes
      * that text escaped, which a browser, reading those bodies as written,
-     * would show. A body holding its own end tag stays escaped.
+     * would show. A body holding its own end tag, or a noscript's, stays
+     * escaped.
      *
      * @param \DOMNode $node
      * @return string
@@ -111,11 +112,13 @@ final class Document
             if ($end === false) {
                 break;
             }
-            // Raw only when nothing in it can end the element: the page's own
-            // body never holds its end tag, so one there came with a
-            // translation, and stays escaped.
+            // Raw only when nothing in it can end the element, or a
+            // <noscript> around it, which a browser reads as raw text too: the
+            // page's own body never holds either end tag, so one there came
+            // with a translation, and stays escaped.
             $text = html_entity_decode(substr($html, $body, $end - $body), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-            $out .= substr($html, $at, $body - $at) . (stripos($text, '</' . $tag[0]) === false ? $text : substr($html, $body, $end - $body));
+            $raw = stripos($text, '</' . $tag[0]) === false && stripos($text, '</noscript') === false;
+            $out .= substr($html, $at, $body - $at) . ($raw ? $text : substr($html, $body, $end - $body));
             $at = $end;
         }
 

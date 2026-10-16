@@ -141,6 +141,26 @@ class DocumentTest extends TestCase
     }
 
     /**
+     * A browser reads a <noscript> as raw text up to its end tag, so a raw
+     * body inside one stays escaped when it holds that end tag: written raw,
+     * it would close the noscript and what follows would be live markup.
+     */
+    public function testARawBodyCannotCloseANoscriptAroundIt(): void
+    {
+        foreach (['xmp', 'iframe', 'noembed', 'noframes'] as $name) {
+            $doc = new \DOMDocument();
+            $errors = libxml_use_internal_errors(true);
+            Document::loadFragment($doc, "<div><noscript><$name>x</$name></noscript></div>");
+            libxml_clear_errors();
+            libxml_use_internal_errors($errors);
+            $div = Document::fragmentRoot($doc)->firstChild;
+            $div->firstChild->firstChild->firstChild->nodeValue = '</NoScript><b>OUT</b>';
+
+            $this->assertSame("<div><noscript><$name>&lt;/NoScript&gt;&lt;b&gt;OUT&lt;/b&gt;</$name></noscript></div>", Document::html($div), $name);
+        }
+    }
+
+    /**
      * Every path writes HTML through Document::html(), so none writes a raw
      * body escaped.
      */
