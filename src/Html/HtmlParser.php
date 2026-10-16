@@ -1007,7 +1007,7 @@ class HtmlParser
 
         $result = '';
         foreach ($wrapper->childNodes as $child) {
-            $result .= $doc->saveHTML($child);
+            $result .= Document::html($child);
         }
 
         return $result;

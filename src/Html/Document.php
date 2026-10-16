@@ -42,31 +42,84 @@ final class Document
      */
     public static function load(DOMDocument $doc, $html, $options = 0)
     {
-        return $doc->loadHTML(self::closeEmptyComments((string) $html), $options | self::RECOVER | self::IGNORE_ENCODING);
+        return $doc->loadHTML(self::forLibxml((string) $html), $options | self::RECOVER | self::IGNORE_ENCODING);
     }
 
     /**
-     * $html with each `<!-->` and `<!--->` that opens a comment written
-     * `<!---->`. A browser reads either as an empty comment; libxml 2.9
-     * reads it as opening one that runs to a later `-->`, or to the end,
-     * and the page after it is lost.
+     * $html written so libxml 2.9 reads the text a browser reads, which it
+     * would not as written: a `<` that starts no tag, comment or doctype -
+     * "Price < 10" - which libxml takes for a tag, losing the text up to the
+     * next `>`, is written `&lt;`, as is every `<` in a textarea or a title,
+     * whose bodies libxml parses as markup; in xmp, iframe, noembed and
+     * noframes, which a browser reads without decoding, `<` and `&` are
+     * escaped too, and html() writes them back as they were. A browser reads
+     * `<!-->` and `<!--->` as an empty comment and libxml as opening one that
+     * runs to a later `-->`, so they are written `<!---->`.
      *
      * @param string $html
      * @return string
      */
-    private static function closeEmptyComments($html)
+    private static function forLibxml($html)
     {
-        if (strpos($html, '<!-->') === false && strpos($html, '<!--->') === false) {
+        if (strpos($html, '<') === false) {
             return $html;
         }
 
-        $empty = [];
-        self::scan($html, $empty);
-        foreach (array_reverse($empty) as $comment) {
-            $html = substr_replace($html, '<!---->', $comment[0], $comment[1]);
+        $edits = [];
+        self::scan($html, $edits);
+
+        $out = '';
+        $at = 0;
+        foreach ($edits as $edit) {
+            $out .= substr($html, $at, $edit[0] - $at) . $edit[2];
+            $at = $edit[0] + $edit[1];
         }
 
-        return $html;
+        return $out . substr($html, $at);
+    }
+
+    /** Text bodies libxml parses as markup: a browser decodes these. */
+    const DECODED_BODIES = ['textarea', 'title'];
+
+    /** Text bodies libxml parses as markup: a browser reads these as written. */
+    const RAW_BODIES = ['iframe', 'noembed', 'noframes', 'xmp'];
+
+    /**
+     * $node as HTML, as DOMDocument::saveHTML() writes it, but with each xmp,
+     * iframe, noembed and noframes body as the text it holds: libxml writes
+     * that text escaped, which a browser, reading those bodies as written,
+     * would show. A body holding its own end tag stays escaped.
+     *
+     * @param \DOMNode $node
+     * @return string
+     */
+    public static function html(\DOMNode $node)
+    {
+        $html = (string) ($node instanceof DOMDocument ? $node->saveHTML() : $node->ownerDocument->saveHTML($node));
+        if (!preg_match('/<(?:iframe|noembed|noframes|xmp)[\s>\/]/i', $html)) {
+            return $html;
+        }
+
+        $out = '';
+        $at = 0;
+        foreach (self::startTagsAt($html) as $tag) {
+            if (!in_array($tag[0], self::RAW_BODIES, true) || $tag[1] < $at) {
+                continue;
+            }
+            $body = $tag[1] + $tag[2];
+            $end = stripos($html, '</' . $tag[0], $body);
+            if ($end === false) {
+                break;
+            }
+            // Raw only when nothing in it can end the element: the page's own
+            // body never holds its end tag, so one there came with a
+            // translation, and stays escaped.
+            $text = html_entity_decode(substr($html, $body, $end - $body), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $out .= substr($html, $at, $body - $at) . (stripos($text, '</' . $tag[0]) === false ? $text : substr($html, $body, $end - $body));
+            $at = $end;
+        }
+
+        return $out . substr($html, $at);
     }
 
     /** The element a fragment is read inside, one no fragment's end tag can close. */
@@ -130,9 +183,9 @@ final class Document
      */
     public static function startTags($html)
     {
-        $empty = [];
+        $edits = [];
 
-        return array_column(self::scan((string) $html, $empty), 0);
+        return array_column(self::scan((string) $html, $edits), 0);
     }
 
     /**
@@ -147,9 +200,9 @@ final class Document
      */
     public static function startTagsAt($html)
     {
-        $empty = [];
+        $edits = [];
 
-        return self::scan((string) $html, $empty);
+        return self::scan((string) $html, $edits);
     }
 
     /** Elements that hold no content, so their start tag opens nothing. */
@@ -167,14 +220,13 @@ final class Document
 
     /**
      * The scan startTags() reads: each start tag as startTagsAt() gives it,
-     * and, into $empty, the offset and length of each comment that is empty
-     * as `<!-->` or `<!--->`.
+     * and, into $edits, each [offset, length, replacement] forLibxml() makes.
      *
      * @param string $html
-     * @param array $empty
+     * @param array $edits
      * @return array[]
      */
-    private static function scan($html, array &$empty)
+    private static function scan($html, array &$edits)
     {
         $tags = [];
         $open = [];
@@ -191,7 +243,7 @@ final class Document
                     break;
                 }
                 if ($at - $lt <= 6) {
-                    $empty[] = [$lt, $at - $lt];
+                    $edits[] = [$lt, $at - $lt, '<!---->'];
                 }
                 continue;
             }
@@ -216,6 +268,8 @@ final class Document
             // A quote opens a value only after `=`; anywhere else in a tag it
             // is a character, as in a browser's tokenizer.
             if (!preg_match('/\G<([a-zA-Z][^\s\/>]*+)(?:[^>=]++|=[\t\n\f\r ]*+(?:"[^"]*+"?|\'[^\']*+\'?|[^\t\n\f\r >]*+))*+>?/', $html, $m, 0, $lt)) {
+                // A `<` that opens nothing is text.
+                $edits[] = [$lt, 1, '&lt;'];
                 $at = $lt + 1;
                 continue;
             }
@@ -232,10 +286,10 @@ final class Document
                     } elseif (!$inPoint && !$closed && self::integrationPoint($foreign, $name, $m[0])) {
                         $points[] = $name;
                     } elseif ($inPoint && in_array($name, self::TEXT_BODIES, true)) {
-                        if (!preg_match('/<\/' . $name . '[\s\/>]/i', $html, $end, PREG_OFFSET_CAPTURE, $at)) {
+                        $at = self::textBody($html, $name, $at, $edits);
+                        if ($at === null) {
                             break;
                         }
-                        $at = $end[0][1];
                     }
                     continue;
                 }
@@ -261,14 +315,38 @@ final class Document
                 self::push($open, $counts, $name);
             }
             if (in_array($name, self::TEXT_BODIES, true)) {
-                if (!preg_match('/<\/' . $name . '[\s\/>]/i', $html, $end, PREG_OFFSET_CAPTURE, $at)) {
+                $at = self::textBody($html, $name, $at, $edits);
+                if ($at === null) {
                     break;
                 }
-                $at = $end[0][1];
             }
         }
 
         return $tags;
+    }
+
+    /**
+     * Where the text body of $name, opening at $at, ends: at its own end tag,
+     * or null when the input ends first. The edits forLibxml() makes inside
+     * it are added to $edits.
+     *
+     * @param string $html
+     * @param string $name
+     * @param int $at
+     * @param array $edits
+     * @return int|null
+     */
+    private static function textBody($html, $name, $at, array &$edits)
+    {
+        $end = preg_match('/<\/' . $name . '[\s\/>]/i', $html, $found, PREG_OFFSET_CAPTURE, $at) ? $found[0][1] : null;
+        $escape = in_array($name, self::DECODED_BODIES, true) ? '<' : (in_array($name, self::RAW_BODIES, true) ? '<&' : '');
+        $stop = $end === null ? strlen($html) : $end;
+
+        for ($i = $at + strcspn($html, $escape, $at); $escape !== '' && $i < $stop; $i += 1 + strcspn($html, $escape, $i + 1)) {
+            $edits[] = [$i, 1, $html[$i] === '<' ? '&lt;' : '&amp;'];
+        }
+
+        return $end;
     }
 
     /**

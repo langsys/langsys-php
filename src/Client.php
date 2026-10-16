@@ -1223,7 +1223,7 @@ class Client
 
         $html = '';
         foreach ($wrapper->childNodes as $child) {
-            $html .= $doc->saveHTML($child);
+            $html .= \Langsys\SDK\Html\Document::html($child);
         }
 
         return $html;
@@ -3174,7 +3174,7 @@ class Client
 
         $result = '';
         foreach ($wrapper->childNodes as $child) {
-            $result .= $doc->saveHTML($child);
+            $result .= \Langsys\SDK\Html\Document::html($child);
         }
 
         return $result;
@@ -3204,7 +3204,7 @@ class Client
 
             $inner = '';
             foreach ($host->childNodes as $child) {
-                $inner .= $host->ownerDocument->saveHTML($child);
+                $inner .= \Langsys\SDK\Html\Document::html($child);
             }
 
             $marker = HtmlParser::contentBlockMarker($host);
@@ -3487,7 +3487,7 @@ class Client
 
         $result = '';
         foreach ($wrapper->childNodes as $child) {
-            $result .= $doc->saveHTML($child);
+            $result .= \Langsys\SDK\Html\Document::html($child);
         }
 
         return $result;
@@ -3527,7 +3527,7 @@ class Client
 
         $result = '';
         foreach ($wrapper->childNodes as $child) {
-            $result .= $doc->saveHTML($child);
+            $result .= \Langsys\SDK\Html\Document::html($child);
         }
 
         return $result;

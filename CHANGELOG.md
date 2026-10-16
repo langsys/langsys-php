@@ -281,6 +281,14 @@ its id or re-registers it.
 
 ### Fixed
 
+- **Text after a `<` that starts no tag is kept.** libxml read a `<` a browser
+  shows as text as opening a tag, and lost what followed it to the next `>`:
+  "Price < 10 and > 5" was translated to "Price  5", "if a < b then" lost
+  "b then", and a textarea holding "a < b" swallowed the rest of the page. Each
+  such `<` is now read as text on every path, and a textarea's or title's body
+  is the text a browser reads, so a content block holding one with markup in it
+  takes the JS SDKs' id, re-keying once. The bodies of xmp, iframe, noembed and
+  noframes, which a browser reads without decoding, come back as written.
 - **`<!-->` no longer swallows the rest of a page.** A browser reads it, and
   `<!--->`, as an empty comment; libxml read either as opening one that ran to
   a later `-->` or to the end, so `translatePage()` returned an empty page, or

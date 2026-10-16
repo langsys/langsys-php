@@ -105,7 +105,7 @@ final class ValueMarkers
 
         $out = '';
         foreach ($wrapper->childNodes as $child) {
-            $out .= $doc->saveHTML($child);
+            $out .= Document::html($child);
         }
 
         return $out;

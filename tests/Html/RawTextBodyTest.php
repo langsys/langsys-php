@@ -116,9 +116,16 @@ class RawTextBodyTest extends TestCase
             return $b['phrases'];
         }, $client->getPendingContentBlocks())));
 
-        foreach (['<div><style-guide><p>Hello</p></style-guide><p>World</p><style>p{color:red}</style></div>', '<div><script-loader>Hello</script-loader><p>World</p><script>go("</b>")</script></div>', '<div><textarea>Type <script> here</script></textarea><p>World</p><script>go("</b>")</script></div>'] as $html) {
+        foreach (['<div><style-guide><p>Hello</p></style-guide><p>World</p><style>p{color:red}</style></div>', '<div><script-loader>Hello</script-loader><p>World</p><script>go("</b>")</script></div>'] as $html) {
             $this->assertSame($html, preg_replace('/ data-ls-contentblock="[0-9a-f]+"/', '', $this->client()->translateContentBlock($html, 'UI')), $html);
         }
+
+        // A textarea's body is text: what it mentions is written as the
+        // characters a browser shows.
+        $this->assertSame(
+            '<div><textarea>Type &lt;script&gt; here&lt;/script&gt;</textarea><p>World</p><script>go("</b>")</script></div>',
+            preg_replace('/ data-ls-contentblock="[0-9a-f]+"/', '', $this->client()->translateContentBlock('<div><textarea>Type <script> here</script></textarea><p>World</p><script>go("</b>")</script></div>', 'UI'))
+        );
     }
 
     /**
@@ -263,6 +270,51 @@ class RawTextBodyTest extends TestCase
     }
 
     /**
+     * A `<` that starts no tag, comment or doctype is text, as a browser
+     * reads it, on every path: "Price < 10" keeps all of its words. In a
+     * textarea or a title every `<` is text; the bodies of xmp, iframe,
+     * noembed and noframes, which a browser reads without decoding, come back
+     * exactly as written.
+     */
+    public function testALessThanABrowserReadsAsTextKeepsWhatFollowsIt(): void
+    {
+        foreach ([
+            '<p>Price < 10 and > 5</p>' => '<p>Price &lt; 10 and &gt; 5</p>',
+            '<p>if a < b then</p><p>next</p>' => '<p>if a &lt; b then</p><p>next</p>',
+            '<p>1 <2 is true, <3</p>' => '<p>1 &lt;2 is true, &lt;3</p>',
+            '<p>a <</p>' => '<p>a &lt;</p>',
+            '<textarea>a < b <!--> <p>c</p></textarea><p>After</p>' => '<textarea>a &lt; b &lt;!--&gt; &lt;p&gt;c&lt;/p&gt;</textarea><p>After</p>',
+            '<xmp>a < b & <!--> <p>c</p> &amp;</xmp><p>After</p>' => '<xmp>a < b & <!--> <p>c</p> &amp;</xmp><p>After</p>',
+            '<iframe>a < b & é</iframe><noembed><b>x</b> &lt;</noembed><noframes>1 <2</noframes><p>After</p>' => '<iframe>a < b & é</iframe><noembed><b>x</b> &lt;</noembed><noframes>1 <2</noframes><p>After</p>',
+        ] as $html => $expected) {
+            $page = $this->client()->translatePage('<html><head></head><body>' . $html . '</body></html>', 'UI');
+            $this->assertStringContainsString('<body>' . $expected . '</body>', $page, 'page: ' . $html);
+            $block = $this->client()->translateContentBlock($html, 'UI');
+            $this->assertSame($expected, preg_replace('/ data-ls-[a-z]+="[^"]*"/', '', $block), 'block: ' . $html);
+        }
+
+        $this->assertSame('<p data-ls-resolved="es-es">x</p><xmp data-ls-resolved="es-es">a < b & c</xmp>' . "\n", $this->client()->translatePage('<p>x</p><xmp>a < b & c', 'UI'), 'a fragment whose raw body the input ends inside');
+
+        $page = $this->client()->translatePage('<html><head><title>Q < A</title></head><body><p>x</p></body></html>', 'UI');
+        $this->assertStringContainsString('<title>Q &lt; A</title>', $page, 'a title');
+    }
+
+    /**
+     * A body written back as raw text can never be closed by what a
+     * translation put in it: one that would end the element stays escaped.
+     */
+    public function testATranslationCannotCloseARawTextBody(): void
+    {
+        $catalog = ['Your browser cannot show frames' => '</iframe><script>alert(1)</script>', 'Old text' => '</XMP><img src=x onerror=alert(1)>'];
+        $html = '<html><head></head><body><iframe>Your browser cannot show frames</iframe><xmp>Old text</xmp><p>After</p></body></html>';
+        $page = $this->client($catalog)->translatePage($html, 'UI');
+
+        $this->assertStringNotContainsString('<script>alert(1)', $page);
+        $this->assertStringNotContainsString('<img src=x', $page);
+        $this->assertStringContainsString('<p>After</p>', $page);
+    }
+
+    /**
      * `<!-->` is a whole comment, as a browser reads it, on every path: what
      * follows it is the page's, not more of the comment.
      */
@@ -335,9 +387,9 @@ class RawTextBodyTest extends TestCase
             $page = $this->client()->translatePage($html, 'UI');
 
             $this->assertStringContainsString('<p>Café</p>', \Langsys\SDK\Html\Charset::toUtf8($page), $html);
-            $this->assertSame(1, substr_count($page, '<head><meta charset="utf-8">'), $html);
+            $this->assertSame(1, preg_match('/<head><meta charset="utf-8">|<meta charset="utf-8"><\/head>/', $page), $html);
         }
-        $this->assertStringContainsString($title, $this->client()->translatePage('<html><head>' . $title . '</head><body></body></html>', 'UI'), 'the title is left as written');
+        $this->assertStringContainsString('<title>Never write &lt;meta charset="windows-1252"&gt; again</title>', $this->client()->translatePage('<html><head>' . $title . '</head><body></body></html>', 'UI'), 'the title is its text');
     }
 
     /**

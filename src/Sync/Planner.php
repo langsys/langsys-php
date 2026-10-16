@@ -435,7 +435,7 @@ final class Planner
 
             $content = '';
             foreach ($slot->childNodes as $child) {
-                $content .= $slot->ownerDocument->saveHTML($child);
+                $content .= \Langsys\SDK\Html\Document::html($child);
             }
 
             return json_encode([$attributes, $canonical ? Canonical::phrase($content) : $content]);

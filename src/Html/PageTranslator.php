@@ -776,7 +776,7 @@ class PageTranslator
         // unit whose own attributes carry tokens registers with its tag.
         $html = $this->htmlParser->ownTokens($element) === []
             ? $this->getInnerHtml($element)
-            : $element->ownerDocument->saveHTML($element);
+            : Document::html($element);
 
         $contentBlocks[] = [
             'customId' => $this->htmlParser->generateCustomId($itemCategory, $unit['tokens']),
@@ -996,7 +996,7 @@ class PageTranslator
     {
         $innerHTML = '';
         foreach ($element->childNodes as $child) {
-            $innerHTML .= $element->ownerDocument->saveHTML($child);
+            $innerHTML .= Document::html($child);
         }
         return $innerHTML;
     }
@@ -1499,12 +1499,12 @@ class PageTranslator
             // Nor is the <html> it read a fragment inside.
             if ($this->fragmentRoot && $child instanceof DOMElement && $child->nodeName === 'html') {
                 foreach ($child->childNodes as $node) {
-                    $html .= $doc->saveHTML($node);
+                    $html .= Document::html($node);
                 }
                 continue;
             }
 
-            $html .= $doc->saveHTML($child);
+            $html .= Document::html($child);
         }
 
         return $html === '' ? '' : $html . "\n";

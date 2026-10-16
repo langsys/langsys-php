@@ -5,6 +5,7 @@
   "measured_at": "2026-09-12",
   "measured_by": "langsys-php-sdk on PHP 8.3.19 with libxml2 2.9.13 (LIBXML_DOTTED_VERSION), via DOMDocument::loadHTML with LIBXML_HTML_NOIMPLIED|LIBXML_HTML_NODEFDTD. The test wraps each fragment in a <div> to give the tokenizer a root; the real translatePage route (PageTranslator::parseDocument) reproduces every value identically, verified both ways. Every libxml2 column in this file is scoped to that version.",
   "agreement": "3 of 7 ON LIBXML2 2.9.13 - implied close agrees 3/3; raw text 0/2 and foster parenting 0/2 diverge. VERSION-BOUND, not a property of libxml2: the Reviewer measured lxml on libxml2 2.14.6 giving the JS-family tokens on all seven inputs, and Nokogiri on libxml2 2.13.9 behaving like 2.9.13. The boundary lies between 2.13.9 and 2.14.6; no cause is stated because none was measured. PHP takes libxml2 from the PHP build, which composer cannot pin, so these ids move when a host's libxml2 crosses that line.",
+  "sdk_agreement": "5 of 7 through Html\\Document::load(), which every SDK path parses with: it writes each `<` in a textarea or title body as `&lt;` before libxml2 parses, so the SDK reads those bodies as the text a browser reads and agrees with the JS family on both raw-text rows. Foster parenting still diverges. The libxml2 columns record libxml2 itself, parsed directly.",
   "cases": [
     {
       "id": "raw-text-textarea",
@@ -30,7 +31,8 @@
         "splits_block_id": true,
         "note": "ARITY split: 3 tokens against 2. Per CID-1 an arity change re-keys EVERY block containing one.",
         "js_family_block_id_uncategorized": "3c769823488c284be1acbe2c6ff13425"
-      }
+      },
+      "sdk": "js_family"
     },
     {
       "id": "raw-text-title",
@@ -56,7 +58,8 @@
         "splits_block_id": true,
         "note": "Same arity split, 3 tokens against 2. The libxml2 side is measured here; the JS-family side is the TS lane's derivation. An earlier revision said 'measured on both sides here', which was false - only one side was ever measured in this repo.",
         "js_family_block_id_uncategorized": "e14ee6dea1269d7531691a6b8bbf94c0"
-      }
+      },
+      "sdk": "js_family"
     },
     {
       "id": "foster-stray-element",
@@ -81,7 +84,8 @@
         "splits_block_id": false,
         "note": "IDENTICAL. Hoisting the stray element out of the table does not change document ORDER, and the token array encodes order without nesting - so the content-block id survives what splits the phrase key.",
         "js_family_block_id_uncategorized": "b67f0bc9259c1341bcca9555db386076"
-      }
+      },
+      "sdk": "libxml2"
     },
     {
       "id": "foster-loose-text",
@@ -106,7 +110,8 @@
         "splits_block_id": false,
         "note": "Identical, same reason.",
         "js_family_block_id_uncategorized": "33abefba9fb4b8e1a71d3a32504fc0b9"
-      }
+      },
+      "sdk": "libxml2"
     },
     {
       "id": "implied-close-p",
@@ -131,7 +136,8 @@
         "splits_block_id": false,
         "note": "The trees agree, so both identity paths agree.",
         "js_family_block_id_uncategorized": "1deb8726d4be44aa71943d7546a457a0"
-      }
+      },
+      "sdk": "js_family"
     },
     {
       "id": "implied-close-li",
@@ -156,7 +162,8 @@
         "splits_block_id": false,
         "note": "The trees agree, so both identity paths agree.",
         "js_family_block_id_uncategorized": "1deb8726d4be44aa71943d7546a457a0"
-      }
+      },
+      "sdk": "js_family"
     },
     {
       "id": "implied-close-option",
@@ -181,7 +188,8 @@
         "splits_block_id": false,
         "note": "The trees agree, so both identity paths agree.",
         "js_family_block_id_uncategorized": "1deb8726d4be44aa71943d7546a457a0"
-      }
+      },
+      "sdk": "js_family"
     }
   ],
   "two_identity_paths": "A tokenized <Phrase> key is a MARKER STRING, so it encodes nesting and is sensitive to any tree difference. A content block's custom_id is a flat ORDERED TOKEN ARRAY, so it survives a tree difference that preserves document order. Measured consequence: foster parenting splits the phrase key ONLY, while a raw-text body carrying markup splits BOTH - and the block half is an ARITY change, which per CID-1 re-keys every block containing one. The raw-text family is therefore the more damaging of the two, which is the opposite of this file's first reading.",

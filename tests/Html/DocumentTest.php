@@ -116,6 +116,56 @@ class DocumentTest extends TestCase
         }
     }
 
+    /**
+     * A body a browser reads without decoding is written back as the text it
+     * holds, unless that text would end it.
+     */
+    public function testHtmlWritesARawBodyAsItsText(): void
+    {
+        $doc = new \DOMDocument();
+        $errors = libxml_use_internal_errors(true);
+        Document::loadFragment($doc, '<xmp>a < b & &amp; <!--></xmp><iframe>1 <2</iframe><p>x</p>');
+        libxml_clear_errors();
+        libxml_use_internal_errors($errors);
+        $root = Document::fragmentRoot($doc);
+
+        $html = '';
+        foreach ($root->childNodes as $child) {
+            $html .= Document::html($child);
+        }
+        $this->assertSame('<xmp>a < b & &amp; <!--></xmp><iframe>1 <2</iframe><p>x</p>', $html);
+
+        $root->firstChild->firstChild->nodeValue = 'x </XMP><b>y</b>';
+        $this->assertSame('<xmp>x &lt;/XMP&gt;&lt;b&gt;y&lt;/b&gt;</xmp>', Document::html($root->firstChild));
+        $this->assertSame('<p>x</p>', Document::html($root->lastChild), 'other elements as saveHTML() writes them');
+    }
+
+    /**
+     * Every path writes HTML through Document::html(), so none writes a raw
+     * body escaped.
+     */
+    public function testNothingWritesHtmlButDocument(): void
+    {
+        $src = dirname(__DIR__, 2) . '/src';
+        $direct = [];
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($src, \FilesystemIterator::SKIP_DOTS)) as $file) {
+            if ($file->getExtension() !== 'php' || $file->getFilename() === 'Document.php') {
+                continue;
+            }
+            $tokens = array_values(array_filter(token_get_all(file_get_contents($file->getPathname())), function ($token) {
+                return !is_array($token) || $token[0] !== T_WHITESPACE;
+            }));
+            foreach ($tokens as $i => $token) {
+                $onThis = $i > 0 && is_array($tokens[$i - 1]) && $tokens[$i - 1][1] === '$this';
+                if (!$onThis && is_array($token) && $token[0] === T_OBJECT_OPERATOR && isset($tokens[$i + 1]) && is_array($tokens[$i + 1]) && strtolower($tokens[$i + 1][1]) === 'savehtml') {
+                    $direct[] = substr($file->getPathname(), strlen($src) + 1) . ':' . $token[2];
+                }
+            }
+        }
+
+        $this->assertSame([], $direct);
+    }
+
     public function testAStartTagIsFoundWhereItIsWritten(): void
     {
         $html = '<!-- x --><p class="a">One</p><br/>';

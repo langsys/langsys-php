@@ -457,6 +457,25 @@ class MarkupTokenizerTest extends TestCase
         }
     }
 
+    /**
+     * What the SDK itself reads, through the loader every path parses with:
+     * libxml2's tree, or the JS family's where Document::load() reads the
+     * page as a browser does - a textarea's or a title's body as text.
+     *
+     * @dataProvider parseModelProvider
+     */
+    public function testTheSdkReadsEachRowAsItsRecordSays($case): void
+    {
+        $doc = new \DOMDocument();
+        libxml_use_internal_errors(true);
+        \Langsys\SDK\Html\Document::loadFragment($doc, $case['html']);
+        libxml_clear_errors();
+
+        $encoded = (new \Langsys\SDK\Html\MarkupTokenizer())->encode(\Langsys\SDK\Html\Document::fragmentRoot($doc));
+
+        $this->assertSame($case[$case['sdk']], $encoded['text'], $case['id'] . ' through the SDK\'s loader');
+    }
+
     public function parseModelProvider(): array
     {
         $fixture = json_decode(
@@ -531,16 +550,19 @@ class MarkupTokenizerTest extends TestCase
         $tokens = array_values($parser->extractPhrases($case['html']));
         $block = $case['content_block'];
 
-        if (isset($block['libxml2_tokens'])) {
-            $this->assertSame($block['libxml2_tokens'], $tokens, $case['id'] . ' token array');
+        // The SDK reads a row as the fixture says: as libxml2 builds it, or,
+        // where Document::load() reads it as a browser does, as the JS family.
+        $side = $case['sdk'] === 'js_family' && isset($block['js_family_tokens']) ? 'js_family' : 'libxml2';
+        if (isset($block[$side . '_tokens'])) {
+            $this->assertSame($block[$side . '_tokens'], $tokens, $case['id'] . ' token array');
             $this->assertSame(
-                $block['libxml2_block_id'],
+                $block[$side . '_block_id'],
                 $parser->generateCustomId($category, $tokens),
                 $case['id'] . ' block id'
             );
         }
 
-        if (!isset($block['js_family_tokens'])) {
+        if (!isset($block['js_family_tokens']) || $side === 'js_family') {
             return;
         }
 
