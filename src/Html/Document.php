@@ -210,7 +210,7 @@ final class Document
 
             $name = strtolower($m[1]);
             $at = $lt + strlen($m[0]);
-            $closed = substr($m[0], -2) === '/>';
+            $closed = self::selfClosing($m[0]);
 
             if ($foreign !== null) {
                 if (!in_array($name, self::BREAKOUT, true)) {
@@ -280,6 +280,20 @@ final class Document
         } elseif ($name === 'tbody' || $name === 'thead' || $name === 'tfoot') {
             self::closeNearest($open, $counts, ['tbody', 'thead', 'tfoot'], ['table', 'template']);
         }
+    }
+
+    /**
+     * Whether a start tag is written self-closed, as a browser's tokenizer
+     * reads it: it ends in `/>` and the slash is not the end of an unquoted
+     * value - `<br/>` and `<svg a/>` are, `<a href=/docs/>` is not.
+     *
+     * @param string $startTag
+     * @return bool
+     */
+    public static function selfClosing($startTag)
+    {
+        return substr($startTag, -2) === '/>'
+            && !preg_match('/=[\t\n\f\r ]*+[^\t\n\f\r "\'>][^\t\n\f\r >]*+>$/', $startTag);
     }
 
     /**

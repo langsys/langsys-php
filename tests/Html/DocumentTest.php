@@ -28,6 +28,8 @@ class DocumentTest extends TestCase
             'a textarea body' => ['<textarea><head></textarea><p>Hi</p>', ['textarea', 'p']],
             'an svg and its own title' => ['<svg><svg><title>Inner</title></svg><title>Drawing</title></svg><title>Page</title>', ['svg', 'title']],
             'a self-closed svg' => ['<svg/><title>Page</title>', ['svg', 'title']],
+            'an svg whose last value ends in a slash is open' => ['<svg width=10/><title>Drawing</title></svg><title>Page</title>', ['svg', 'title']],
+            'an svg closed after a bare attribute' => ['<svg focusable/><title>Page</title>', ['svg', 'title']],
             'math' => ['<math><mi>x</mi></math><head>', ['math', 'head']],
             'a tag that ends svg content' => ['<svg><title>Drawing</title><p>Hi</p><title>Page</title>', ['svg', 'p', 'title']],
             'plaintext' => ['<plaintext><html><body>', ['plaintext']],

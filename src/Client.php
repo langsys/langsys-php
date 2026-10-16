@@ -1283,7 +1283,7 @@ class Client
                 continue;
             }
 
-            $close = substr($startTag, -2) === '/>' ? $length - 2 : $length - 1;
+            $close = \Langsys\SDK\Html\Document::selfClosing($startTag) ? $length - 2 : $length - 1;
             $html = substr($html, 0, $offset) . substr($startTag, 0, $close) . $marker . substr($startTag, $close) . substr($html, $offset + $length);
         }
 
