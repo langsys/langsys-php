@@ -168,11 +168,12 @@ class HeadHandler
     }
 
     /**
-     * Elements a meta inside declares nothing in: text (textarea, xmp), inert
-     * content (template, noscript, as this parser reads it), or another
-     * vocabulary (svg, math).
+     * Elements a meta inside declares nothing in: text a browser reads up to
+     * the element's end (textarea, title, xmp, iframe, noembed, noframes) or
+     * the page's (plaintext), inert content (template, noscript, as this
+     * parser reads it), or another vocabulary (svg, math).
      */
-    const NOT_DECLARING = ['textarea', 'xmp', 'template', 'noscript', 'svg', 'math'];
+    const NOT_DECLARING = ['textarea', 'title', 'xmp', 'iframe', 'noembed', 'noframes', 'plaintext', 'template', 'noscript', 'svg', 'math'];
 
     /**
      * Make every charset the document declares UTF-8.

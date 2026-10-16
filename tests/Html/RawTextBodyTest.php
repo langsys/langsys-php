@@ -286,12 +286,15 @@ class RawTextBodyTest extends TestCase
     }
 
     /**
-     * A meta written where it declares nothing - the text of a textarea, an
-     * inert template, an SVG - is left as written.
+     * A meta written where it declares nothing - the text of a textarea or a
+     * title, an inert template, an SVG - is left as written.
      */
     public function testAMetaThatDeclaresNothingIsLeftAsWritten(): void
     {
-        foreach (['<textarea><meta charset="windows-1252"></textarea>', '<xmp><meta charset="windows-1252"></xmp>', '<template><meta charset="windows-1252"></template>', '<noscript><meta charset="windows-1252"></noscript>', '<svg><meta charset="windows-1252"></meta></svg>', '<math><meta charset="windows-1252"></meta></math>'] as $body) {
+        $page = $this->client()->translatePage('<html><head><title>Never write <meta charset="windows-1252"> again</title></head><body></body></html>', 'UI');
+        $this->assertStringContainsString('windows-1252', $page, 'a title');
+
+        foreach (['<plaintext><meta charset="windows-1252">', '<iframe><meta charset="windows-1252"></iframe>', '<noembed><meta charset="windows-1252"></noembed>', '<noframes><meta charset="windows-1252"></noframes>', '<textarea><meta charset="windows-1252"></textarea>', '<xmp><meta charset="windows-1252"></xmp>', '<template><meta charset="windows-1252"></template>', '<noscript><meta charset="windows-1252"></noscript>', '<svg><meta charset="windows-1252"></meta></svg>', '<math><meta charset="windows-1252"></meta></math>'] as $body) {
             $page = $this->client()->translatePage('<html><head><meta charset="utf-8"></head><body>' . $body . '</body></html>', 'UI');
 
             $this->assertStringContainsString('windows-1252', $page, $body);
