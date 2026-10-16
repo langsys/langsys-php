@@ -46,10 +46,11 @@ class Utilities
      * @param string $displayLocale Locale to display country names in (e.g., 'en-us', 'es-es')
      * @param array $options Optional parameters: page, records_per_page, order_by, filter_by
      * @return array Paginated list of countries with 'label' and 'code'
+     * @throws \InvalidArgumentException When $displayLocale names no path segment
      */
     public function getCountries($displayLocale, array $options = [])
     {
-        return $this->http->get('countries/' . rawurlencode((string) $displayLocale), $options);
+        return $this->http->get('countries/' . self::segment($displayLocale), $options);
     }
 
     /**
@@ -70,10 +71,30 @@ class Utilities
      * @param string $displayLocale Locale to display country names in
      * @param array $options Optional parameters: page, records_per_page, order_by, filter_by
      * @return array Paginated list with 'country_code', 'dial_code', 'name'
+     * @throws \InvalidArgumentException When $displayLocale names no path segment
      */
     public function getDialCodes($displayLocale, array $options = [])
     {
-        return $this->http->get('countries/dial-codes/' . rawurlencode((string) $displayLocale), $options);
+        return $this->http->get('countries/dial-codes/' . self::segment($displayLocale), $options);
+    }
+
+    /**
+     * $displayLocale as one path segment, however it is written. One that is
+     * empty, `.` or `..` names no segment, or one an HTTP client resolves
+     * away, so the request would reach another route: it is refused.
+     *
+     * @param string $displayLocale
+     * @return string
+     * @throws \InvalidArgumentException
+     */
+    private static function segment($displayLocale)
+    {
+        $segment = rawurlencode((string) $displayLocale);
+        if (in_array($segment, ['', '.', '..'], true)) {
+            throw new \InvalidArgumentException('Not a display locale: "' . $displayLocale . '"');
+        }
+
+        return $segment;
     }
 
     /**

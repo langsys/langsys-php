@@ -281,6 +281,12 @@ its id or re-registers it.
 
 ### Fixed
 
+- **A display locale cannot steer a reference-list request.** The client's
+  `getCountries()` and the other lists refuse a locale that is not shaped as
+  one, logged, and send nothing. On the raw `utilities()` resource the locale is
+  encoded as one path segment, and one that names none - empty, `.` or `..`,
+  which an HTTP client resolves away - throws `InvalidArgumentException`, where
+  `getDialCodes('..')` asked for the countries list.
 - **A worker that builds a `Client` per request no longer keeps every one of
   them.** The end-of-process flush held each `Client` that had queued anything
   until the process ended, and a `Client` that had translated a page or a content

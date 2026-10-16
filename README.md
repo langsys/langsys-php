@@ -1740,7 +1740,9 @@ read once per locale for the client's life. If the API cannot answer, or the cli
 credentials, you get an empty list and the cause is logged; nothing throws, unless
 `require_credentials` is on and the client has none.
 
-The `utilities()` resource below gives the raw, paginated endpoints.
+The `utilities()` resource below gives the raw, paginated endpoints. A display locale is
+written into the request path as one segment; an empty one, `.` or `..` would reach another
+route, so it throws an `InvalidArgumentException` and nothing is sent.
 
 ### Countries
 
