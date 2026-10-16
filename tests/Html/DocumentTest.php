@@ -74,6 +74,38 @@ class DocumentTest extends TestCase
         }, Document::startTagsAt($html)));
     }
 
+    /**
+     * A page's elements are read in time linear in its size, however many it
+     * leaves open: a listing whose row template misses its </div>, end tags
+     * that close nothing.
+     */
+    public function testUnclosedElementsAreReadInLinearTime(): void
+    {
+        foreach ([
+            'rows left open' => function ($n) {
+                return '<p>Intro</p><div id="list">' . str_repeat('<div class="row"><span>Item</span>', $n) . '</div><p>after</p>';
+            },
+            'list items left open' => function ($n) {
+                return '<ul>' . str_repeat('<li><div>Item', $n) . '</ul><p>after</p>';
+            },
+            'end tags that close nothing' => function ($n) {
+                return str_repeat('<span>', $n) . str_repeat('</i>', $n) . '<p>after</p>';
+            },
+        ] as $shape => $page) {
+            $small = $page(4000);
+            $large = $page(32000);
+            $started = microtime(true);
+            Document::startTagsAt($small);
+            $smallTime = microtime(true) - $started;
+            $started = microtime(true);
+            $tags = Document::startTagsAt($large);
+            $largeTime = microtime(true) - $started;
+
+            $this->assertSame('p', end($tags)[0], $shape);
+            $this->assertLessThan(max(0.25, 30 * $smallTime), $largeTime, $shape . ': eight times the page, not sixty-four times the time');
+        }
+    }
+
     public function testAStartTagIsFoundWhereItIsWritten(): void
     {
         $html = '<!-- x --><p class="a">One</p><br/>';

@@ -170,6 +170,7 @@ final class Document
     {
         $tags = [];
         $open = [];
+        $counts = [];
         $foreign = null;
         $depth = 0;
         $at = 0;
@@ -192,9 +193,9 @@ final class Document
             if (preg_match('/\G<\/([a-zA-Z][^\s\/>]*)[^>]*>?/', $html, $m, 0, $lt)) {
                 $name = strtolower($m[1]);
                 if ($foreign === null) {
-                    self::closeNearest($open, [$name], []);
+                    self::closeNearest($open, $counts, [$name], []);
                 } elseif ($name === $foreign && --$depth === 0) {
-                    self::closeNearest($open, [$foreign], []);
+                    self::closeNearest($open, $counts, [$foreign], []);
                     $foreign = null;
                 }
                 $at = $lt + strlen($m[0]);
@@ -218,18 +219,18 @@ final class Document
                     }
                     continue;
                 }
-                self::closeNearest($open, [$foreign], []);
+                self::closeNearest($open, $counts, [$foreign], []);
                 $foreign = null;
             }
 
-            self::closeImplied($open, $name);
+            self::closeImplied($open, $counts, $name);
             $tags[] = [$name, $lt, strlen($m[0]), count($open)];
 
             if (in_array($name, self::FOREIGN, true)) {
                 if (!$closed) {
                     $foreign = $name;
                     $depth = 1;
-                    $open[] = $name;
+                    self::push($open, $counts, $name);
                 }
                 continue;
             }
@@ -237,7 +238,7 @@ final class Document
                 break;
             }
             if (!in_array($name, self::VOID, true)) {
-                $open[] = $name;
+                self::push($open, $counts, $name);
             }
             if (in_array($name, self::TEXT_BODIES, true)) {
                 if (!preg_match('/<\/' . $name . '[\s\/>]/i', $html, $end, PREG_OFFSET_CAPTURE, $at)) {
@@ -257,43 +258,80 @@ final class Document
      * or a group, and a cell, row or row group before the next.
      *
      * @param string[] $open
+     * @param int[] $counts
      * @param string $name
      * @return void
      */
-    private static function closeImplied(array &$open, $name)
+    private static function closeImplied(array &$open, array &$counts, $name)
     {
         if (in_array($name, self::CLOSES_P, true)) {
-            self::closeNearest($open, ['p'], ['button', 'table', 'td', 'th', 'caption', 'object', 'template', 'applet', 'marquee']);
+            self::closeNearest($open, $counts, ['p'], ['button', 'table', 'td', 'th', 'caption', 'object', 'template', 'applet', 'marquee']);
         }
         if ($name === 'li') {
-            self::closeNearest($open, ['li'], ['ul', 'ol', 'menu', 'table', 'td', 'th', 'template']);
+            self::closeNearest($open, $counts, ['li'], ['ul', 'ol', 'menu', 'table', 'td', 'th', 'template']);
         } elseif ($name === 'dd' || $name === 'dt') {
-            self::closeNearest($open, ['dd', 'dt'], ['dl', 'table', 'td', 'th', 'template']);
+            self::closeNearest($open, $counts, ['dd', 'dt'], ['dl', 'table', 'td', 'th', 'template']);
         } elseif (($name === 'option' || $name === 'optgroup') && end($open) === 'option') {
-            array_pop($open);
+            self::pop($open, $counts);
         } elseif ($name === 'td' || $name === 'th') {
-            self::closeNearest($open, ['td', 'th'], ['tr', 'table', 'template']);
+            self::closeNearest($open, $counts, ['td', 'th'], ['tr', 'table', 'template']);
         } elseif ($name === 'tr') {
-            self::closeNearest($open, ['tr'], ['table', 'template']);
+            self::closeNearest($open, $counts, ['tr'], ['table', 'template']);
         } elseif ($name === 'tbody' || $name === 'thead' || $name === 'tfoot') {
-            self::closeNearest($open, ['tbody', 'thead', 'tfoot'], ['table', 'template']);
+            self::closeNearest($open, $counts, ['tbody', 'thead', 'tfoot'], ['table', 'template']);
         }
     }
 
     /**
+     * @param string[] $open
+     * @param int[] $counts How many of each name are open
+     * @param string $name
+     * @return void
+     */
+    private static function push(array &$open, array &$counts, $name)
+    {
+        $open[] = $name;
+        $counts[$name] = isset($counts[$name]) ? $counts[$name] + 1 : 1;
+    }
+
+    /**
+     * @param string[] $open
+     * @param int[] $counts
+     * @return void
+     */
+    private static function pop(array &$open, array &$counts)
+    {
+        $counts[array_pop($open)]--;
+    }
+
+    /**
      * Close the innermost open element named one of $names, and all inside
-     * it, unless one named in $bounds is open inside that one first.
+     * it, unless one named in $bounds is open inside that one first. With
+     * none of $names open there is nothing to look for, so a page leaving
+     * thousands of elements open is still read in linear time.
      *
      * @param string[] $open
+     * @param int[] $counts
      * @param string[] $names
      * @param string[] $bounds
      * @return void
      */
-    private static function closeNearest(array &$open, array $names, array $bounds)
+    private static function closeNearest(array &$open, array &$counts, array $names, array $bounds)
     {
+        $any = false;
+        foreach ($names as $name) {
+            $any = $any || !empty($counts[$name]);
+        }
+        if (!$any) {
+            return;
+        }
+
         for ($at = count($open) - 1; $at >= 0; $at--) {
             if (in_array($open[$at], $names, true)) {
-                array_splice($open, $at);
+                // Popped from the end: array_splice() would copy the stack.
+                while (count($open) > $at) {
+                    self::pop($open, $counts);
+                }
 
                 return;
             }
