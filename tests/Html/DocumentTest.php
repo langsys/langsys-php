@@ -161,6 +161,110 @@ class DocumentTest extends TestCase
     }
 
     /**
+     * A raw body is written as its text where a browser reads it without
+     * decoding: outside svg and math, inside one of their integration
+     * points, or in an element that ends them. Inside svg or math otherwise
+     * it is the drawing's element, and inside a <select> a browser reads no
+     * xmp, iframe, noembed or noframes element at all and its text as
+     * markup: there it stays escaped.
+     */
+    public function testARawBodyIsWrittenAsItsTextOnlyWhereABrowserReadsItSo(): void
+    {
+        $cases = [
+            '<svg><foreignObject><xmp>a <b>x</b> & y</xmp></foreignObject></svg>' => '<svg><foreignobject><xmp>a <b>x</b> & y</xmp></foreignobject></svg>',
+            '<svg><desc><iframe>a <b>x</b></iframe></desc></svg>' => '<svg><desc><iframe>a <b>x</b></iframe></desc></svg>',
+            '<svg><title><noembed>a <b>x</b></noembed></title></svg>' => '<svg><title><noembed>a <b>x</b></noembed></title></svg>',
+            '<math><mi><xmp>a <b>x</b> & y</xmp></mi></math>' => '<math><mi><xmp>a <b>x</b> & y</xmp></mi></math>',
+            '<math><mtext><noframes>a <b>x</b></noframes></mtext></math>' => '<math><mtext><noframes>a <b>x</b></noframes></mtext></math>',
+            '<math><annotation-xml encoding="TEXT/HTML"><xmp>a <b>x</b></xmp></annotation-xml></math>' => '<math><annotation-xml encoding="TEXT/HTML"><xmp>a <b>x</b></xmp></annotation-xml></math>',
+            '<math><annotation-xml encoding="application/xhtml+xml"><xmp>a <b>x</b></xmp></annotation-xml></math>' => '<math><annotation-xml encoding="application/xhtml+xml"><xmp>a <b>x</b></xmp></annotation-xml></math>',
+            '<svg><foreignObject><math><mi><xmp>a <b>x</b></xmp></mi></math></foreignObject></svg>' => '<svg><foreignobject><math><mi><xmp>a <b>x</b></xmp></mi></math></foreignobject></svg>',
+            '<svg><p><xmp>a <b>x</b> & y</xmp></p></svg>' => '<svg><p></p><xmp>a <b>x</b> & y</xmp></svg>',
+            '<svg><g><p>x</p></g><iframe>a <b>x</b></iframe></svg>' => '<svg><g><p>x</p></g><iframe>a <b>x</b></iframe></svg>',
+            '<svg><foreignObject><p>x</p></foreignObject><xmp>a &amp; y</xmp></svg>' => '<svg><foreignobject><p>x</p></foreignobject><xmp>a &amp; y</xmp></svg>',
+            '<select><xmp>a <b>x</b></xmp></select>' => '<select><xmp>a &lt;b&gt;x&lt;/b&gt;</xmp></select>',
+            '<select><option>A</option><noembed>a <b>x</b></noembed></select>' => '<select><option>A</option><noembed>a &lt;b&gt;x&lt;/b&gt;</noembed></select>',
+            '<svg><foreignObject><select><iframe>a <b>x</b></iframe></select></foreignObject></svg>' => '<svg><foreignobject><select><iframe>a &lt;b&gt;x&lt;/b&gt;</iframe></select></foreignobject></svg>',
+        ];
+
+        foreach ($cases as $fragment => $expected) {
+            $doc = new \DOMDocument();
+            $errors = libxml_use_internal_errors(true);
+            Document::loadFragment($doc, '<div>' . $fragment . '</div>');
+            libxml_clear_errors();
+            libxml_use_internal_errors($errors);
+            $div = Document::fragmentRoot($doc)->firstChild;
+
+            $this->assertSame('<div>' . $expected . '</div>', Document::html($div), $fragment);
+            $this->assertSame($expected, Document::html($div->firstChild), $fragment . ', written on its own');
+        }
+    }
+
+    /**
+     * A raw-body element holding an element, which only a tree built in code
+     * can, is written as saveHTML() writes it.
+     */
+    public function testARawBodyHoldingAnElementIsWrittenAsSaveHtmlWritesIt(): void
+    {
+        $doc = new \DOMDocument();
+        $errors = libxml_use_internal_errors(true);
+        Document::loadFragment($doc, '<div><iframe>a < b</iframe></div>');
+        libxml_clear_errors();
+        libxml_use_internal_errors($errors);
+        $div = Document::fragmentRoot($doc)->firstChild;
+        $div->firstChild->appendChild($doc->createElement('b', 'x'));
+
+        $this->assertSame('<div><iframe>a &lt; b<b>x</b></iframe></div>', Document::html($div));
+    }
+
+    /**
+     * A raw body written on its own is read in the content its ancestors put
+     * it in.
+     */
+    public function testARawBodyWrittenOnItsOwnIsReadWhereItSits(): void
+    {
+        $cases = [
+            [['svg', 'g'], 'a &lt;b&gt;x&lt;/b&gt;'],
+            [['svg', 'p'], 'a <b>x</b>'],
+            [['math', 'mi'], 'a <b>x</b>'],
+            [['div', 'select'], 'a &lt;b&gt;x&lt;/b&gt;'],
+            [['svg', 'foreignobject', 'select'], 'a &lt;b&gt;x&lt;/b&gt;'],
+        ];
+
+        foreach ($cases as list($path, $body)) {
+            $doc = new \DOMDocument();
+            $at = $doc->appendChild($doc->createElement('body'));
+            foreach ($path as $name) {
+                $at = $at->appendChild($doc->createElement($name));
+            }
+            $xmp = $at->appendChild($doc->createElement('xmp'));
+            $xmp->appendChild($doc->createTextNode('a <b>x</b>'));
+
+            $this->assertSame('<xmp>' . $body . '</xmp>', Document::html($xmp), implode(' > ', $path));
+        }
+    }
+
+    /**
+     * Inside svg or math, an xmp that is the drawing's element is written as
+     * saveHTML() writes it.
+     */
+    public function testARawBodyNamedInsideSvgOrMathIsTheDrawingsElement(): void
+    {
+        foreach (['svg', 'math'] as $foreign) {
+            $doc = new \DOMDocument();
+            $errors = libxml_use_internal_errors(true);
+            Document::loadFragment($doc, "<div><$foreign><g></g></$foreign></div>");
+            libxml_clear_errors();
+            libxml_use_internal_errors($errors);
+            $g = Document::fragmentRoot($doc)->firstChild->firstChild->firstChild;
+            $xmp = $g->appendChild($doc->createElement('xmp'));
+            $xmp->appendChild($doc->createTextNode('a <b>x</b> & y'));
+
+            $this->assertSame("<$foreign><g><xmp>a &lt;b&gt;x&lt;/b&gt; &amp; y</xmp></g></$foreign>", Document::html($g->parentNode), $foreign);
+        }
+    }
+
+    /**
      * Every path writes HTML through Document::html(), so none writes a raw
      * body escaped.
      */

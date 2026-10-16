@@ -86,43 +86,170 @@ final class Document
 
     /**
      * $node as HTML, as DOMDocument::saveHTML() writes it, but with each xmp,
-     * iframe, noembed and noframes body as the text it holds: libxml writes
-     * that text escaped, which a browser, reading those bodies as written,
-     * would show. A body holding its own end tag, or a noscript's, stays
-     * escaped.
+     * iframe, noembed and noframes body a browser reads as written - see
+     * rawBodies() - as the text it holds: libxml writes that text escaped,
+     * which a browser would show. A body holding its own end tag, or a
+     * noscript's, stays escaped.
      *
      * @param \DOMNode $node
      * @return string
      */
     public static function html(\DOMNode $node)
     {
-        $html = (string) ($node instanceof DOMDocument ? $node->saveHTML() : $node->ownerDocument->saveHTML($node));
-        if (!preg_match('/<(?:iframe|noembed|noframes|xmp)[\s>\/]/i', $html)) {
+        $doc = $node instanceof DOMDocument ? $node : $node->ownerDocument;
+        $html = (string) ($node instanceof DOMDocument ? $node->saveHTML() : $doc->saveHTML($node));
+        if (stripos($html, '<xmp') === false && stripos($html, '<iframe') === false && stripos($html, '<noembed') === false && stripos($html, '<noframes') === false) {
             return $html;
         }
 
-        $out = '';
-        $at = 0;
-        foreach (self::startTagsAt($html) as $tag) {
-            if (!in_array($tag[0], self::RAW_BODIES, true) || $tag[1] < $at) {
-                continue;
-            }
-            $body = $tag[1] + $tag[2];
-            $end = stripos($html, '</' . $tag[0], $body);
-            if ($end === false) {
-                break;
-            }
+        $nonce = bin2hex(random_bytes(8));
+        $texts = [];
+        $swapped = [];
+
+        foreach (self::rawBodies($node) as $element) {
             // Raw only when nothing in it can end the element, or a
             // <noscript> around it, which a browser reads as raw text too: the
             // page's own body never holds either end tag, so one there came
             // with a translation, and stays escaped.
-            $text = html_entity_decode(substr($html, $body, $end - $body), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-            $raw = stripos($text, '</' . $tag[0]) === false && stripos($text, '</noscript') === false;
-            $out .= substr($html, $at, $body - $at) . ($raw ? $text : substr($html, $body, $end - $body));
-            $at = $end;
+            $text = $element->textContent;
+            if (stripos($text, '</' . strtolower($element->nodeName)) !== false || stripos($text, '</noscript') !== false) {
+                continue;
+            }
+
+            $placeholder = 'ls' . $nonce . 'r' . count($texts) . 'r';
+            $texts[$placeholder] = $text;
+            $children = iterator_to_array($element->childNodes);
+            foreach ($children as $child) {
+                $element->removeChild($child);
+            }
+            $swapped[] = [$element, $element->appendChild($doc->createTextNode($placeholder)), $children];
+        }
+        if ($swapped === []) {
+            return $html;
         }
 
-        return $out . substr($html, $at);
+        try {
+            $html = (string) ($node instanceof DOMDocument ? $node->saveHTML() : $doc->saveHTML($node));
+        } finally {
+            foreach ($swapped as list($element, $placeholder, $children)) {
+                $element->removeChild($placeholder);
+                foreach ($children as $child) {
+                    $element->appendChild($child);
+                }
+            }
+        }
+
+        return strtr($html, $texts);
+    }
+
+    /**
+     * The xmp, iframe, noembed and noframes elements at or below $node whose
+     * body a browser reads as written: an HTML element holding only text,
+     * outside svg and math or inside one of their integration points, or
+     * after an element that ends svg or math content. Inside svg or math
+     * otherwise it is the drawing's element, and inside a <select> a browser
+     * reads no such element at all, and its text as markup.
+     *
+     * $node is read in the content its ancestors put it in.
+     *
+     * @param \DOMNode $node
+     * @return \DOMElement[]
+     */
+    private static function rawBodies(\DOMNode $node)
+    {
+        if (!$node instanceof DOMDocument && !$node instanceof \DOMElement) {
+            return [];
+        }
+
+        $ancestors = [];
+        for ($at = $node->parentNode; $at instanceof \DOMElement; $at = $at->parentNode) {
+            $ancestors[] = $at;
+        }
+        $content = null;
+        foreach (array_reverse($ancestors) as $ancestor) {
+            $content = self::contentIn($ancestor, $content);
+            if ($content === false) {
+                return [];
+            }
+        }
+
+        $found = [];
+        self::walk($node instanceof DOMDocument ? $node->childNodes : [$node], $content, $found);
+
+        return $found;
+    }
+
+    /**
+     * Add the raw bodies among $nodes and below them to $found, reading them
+     * in order in $content, as a browser does: an element that ends svg or
+     * math content ends it for everything after it, which libxml leaves
+     * inside the svg or math element.
+     *
+     * @param iterable $nodes
+     * @param string|null $content
+     * @param \DOMElement[] $found
+     * @return bool Whether the svg or math content $nodes are in ends among them
+     */
+    private static function walk($nodes, $content, array &$found)
+    {
+        $ended = false;
+        foreach ($nodes as $node) {
+            if (!$node instanceof \DOMElement) {
+                continue;
+            }
+
+            $name = strtolower($node->nodeName);
+            if ($content !== null && in_array($name, self::BREAKOUT, true)) {
+                $content = null;
+                $ended = true;
+            }
+
+            if ($content === null && in_array($name, self::RAW_BODIES, true)) {
+                foreach ($node->childNodes as $child) {
+                    if (!$child instanceof \DOMText) {
+                        continue 2;
+                    }
+                }
+                $found[] = $node;
+                continue;
+            }
+
+            $inner = self::contentIn($node, $content);
+            if ($inner !== false && self::walk($node->childNodes, $inner, $found) && $content !== null) {
+                $content = null;
+                $ended = true;
+            }
+        }
+
+        return $ended;
+    }
+
+    /**
+     * The content a browser reads $element's children in, given the content
+     * $element is in: null for HTML, svg or math for theirs, and false inside
+     * a <select>.
+     *
+     * @param \DOMElement $element
+     * @param string|null $content
+     * @return string|null|false
+     */
+    private static function contentIn(\DOMElement $element, $content)
+    {
+        $name = strtolower($element->nodeName);
+        if ($content === null) {
+            if ($name === 'select') {
+                return false;
+            }
+
+            return in_array($name, self::FOREIGN, true) ? $name : null;
+        }
+
+        if (in_array($name, self::INTEGRATION_POINTS[$content], true) || in_array($name, self::BREAKOUT, true)
+            || ($content === 'math' && $name === 'annotation-xml' && in_array(strtolower($element->getAttribute('encoding')), ['text/html', 'application/xhtml+xml'], true))) {
+            return null;
+        }
+
+        return $content;
     }
 
     /** The element a fragment is read inside, one no fragment's end tag can close. */

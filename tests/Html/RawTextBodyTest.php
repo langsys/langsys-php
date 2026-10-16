@@ -315,6 +315,55 @@ class RawTextBodyTest extends TestCase
     }
 
     /**
+     * Inside a <select> a browser reads no xmp, iframe, noembed or noframes
+     * element, and their text as markup: a translation there stays escaped.
+     */
+    public function testATranslationInARawBodyInsideASelectStaysEscaped(): void
+    {
+        $catalog = ['Hello' => '<script>alert(1)</script>'];
+
+        foreach (['<div><select><xmp>Hello</xmp></select></div>', '<div><select><noembed>Hello</noembed></select></div>'] as $html) {
+            $page = $this->client($catalog)->translatePage('<html><head></head><body>' . $html . '</body></html>', 'UI');
+            $block = $this->client($catalog)->translateContentBlock($html, 'UI');
+
+            foreach (['page' => $page, 'block' => $block] as $path => $out) {
+                $this->assertStringNotContainsString('<script>alert(1)', $out, $html . ', ' . $path);
+                $this->assertStringContainsString('&lt;script&gt;alert(1)&lt;/script&gt;', $out, $html . ', ' . $path);
+            }
+        }
+    }
+
+    /**
+     * A raw body inside an svg's foreignObject or a MathML text element is
+     * HTML: it comes back as written, the same on every pass, and the svg's
+     * registers as written (MathML registers nothing).
+     */
+    public function testARawBodyInsideAnIntegrationPointComesBackAsWritten(): void
+    {
+        $cases = [
+            '<svg><foreignObject><xmp>a <b>x</b> & y</xmp></foreignObject></svg>' => ['<svg><foreignobject><xmp>a <b>x</b> & y</xmp></foreignobject></svg>', ['a <b>x</b> & y', 'Next']],
+            '<math><mi><iframe>a <b>x</b> & y</iframe></mi></math>' => ['<math><mi><iframe>a <b>x</b> & y</iframe></mi></math>', ['Next']],
+        ];
+
+        foreach ($cases as $drawing => list($written, $tokens)) {
+            $block = $drawing . '<p>Next</p>';
+            $this->assertSame($tokens, (new HtmlParser())->fragmentUnit($block)['tokens'], $drawing);
+
+            $client = $this->client();
+            $once = $client->translateContentBlock($block, 'UI');
+            $this->assertSame($written . '<p>Next</p>', $once, $drawing . ', once');
+            $this->assertSame($once, $client->translateContentBlock($once, 'UI'), $drawing . ', twice');
+
+            $page = $this->client();
+            $out = $page->translatePage('<html><head></head><body><div data-langsys-contentblock>' . $block . '</div></body></html>', 'UI');
+            $this->assertStringContainsString($written, $out, $drawing . ', page');
+            $this->assertSame([$tokens], array_values(array_map(function ($b) {
+                return $b['phrases'];
+            }, $page->getPendingContentBlocks())), $drawing . ', page registers the text');
+        }
+    }
+
+    /**
      * `<!-->` is a whole comment, as a browser reads it, on every path: what
      * follows it is the page's, not more of the comment.
      */
