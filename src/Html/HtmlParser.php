@@ -443,12 +443,10 @@ class HtmlParser
      * presence alone is intent, so the bare attribute works like any boolean
      * HTML attribute, and only an explicit off value opts out.
      *
-     * This previously tested the raw attribute string for PHP truthiness, which
-     * got both ends backwards: bare `data-notrans` is '' and therefore FALSY, so
-     * the natural form silently did nothing, while `data-notrans="false"` is a
-     * non-empty string and therefore TRUTHY, so the off value excluded. The
-     * failure direction was the dangerous one - content an author had marked to
-     * protect went into the shared catalog.
+     * The value is read as a word, never for PHP truthiness: bare
+     * `data-notrans`, whose value is '', excludes, and `data-notrans="false"`
+     * or `"0"`, non-empty strings, do not. An exclusion that silently failed
+     * would send content an author marked to protect into the shared catalog.
      *
      * @param DOMElement $element
      * @return bool
@@ -492,11 +490,9 @@ class HtmlParser
      * alone is intent, only an explicit off value opts out, values trimmed and
      * lowercased.
      *
-     * A bare attribute previously did NOTHING here, because the documented
-     * contract required a non-empty value - so `data-langsys-contentblock` on
-     * its own silently had no effect. That is the same failure shape as the
-     * data-notrans bug: a marker that looks applied and isn't. All three markers
-     * now behave identically, so there is one rule to learn rather than three.
+     * A bare `data-langsys-contentblock` marks a block, as a bare
+     * `data-notrans` excludes and a bare `data-langsys-phrase` marks a phrase:
+     * all three markers follow one rule, so none looks applied without being.
      *
      * @param DOMElement $element
      * @return bool

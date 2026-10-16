@@ -281,6 +281,11 @@ its id or re-registers it.
 
 ### Fixed
 
+- **A content block's script, style and noscript keep their text.** Applying a
+  block's translations wrote into every text node matching one of its phrases,
+  including a `<script>`, `<style>`, `<noscript>`, `<template>` or MathML body
+  that registration never reads, so a script whose text read like a phrase was
+  rewritten with the translation. Those elements are left as written.
 - **Text after a `<` that starts no tag is kept.** libxml read a `<` a browser
   shows as text as opening a tag, and lost what followed it to the next `>`:
   "Price < 10 and > 5" was translated to "Price  5", "if a < b then" lost

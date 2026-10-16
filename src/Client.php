@@ -3577,8 +3577,10 @@ class Client
 
         // Handle element nodes
         if ($node instanceof \DOMElement) {
-            // Skip elements excluded from translation entirely.
-            if (HtmlParser::isTranslationExcluded($node)) {
+            // Skip elements excluded from translation entirely, and those
+            // registration reads no prose in: script, style, noscript,
+            // template and math.
+            if (HtmlParser::isTranslationExcluded($node) || in_array(strtolower($node->nodeName), HtmlParser::NON_PROSE_ELEMENTS, true)) {
                 return;
             }
 

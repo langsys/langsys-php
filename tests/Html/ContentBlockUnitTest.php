@@ -186,4 +186,25 @@ class ContentBlockUnitTest extends TestCase
         $this->assertSame((new HtmlParser())->generateCustomId('UI', ['One', 'Two']), $items[1]['custom_id']);
         $this->assertSame('named-block', $items[2]['custom_id']);
     }
+
+    /**
+     * A block's script, style, noscript, template and math text is not
+     * prose: registration reads none of it, and applying the block's
+     * translations writes none of it, even where it reads like a phrase.
+     */
+    public function testABlockWritesNoTranslationIntoTextItDoesNotRegister(): void
+    {
+        $body = '<div><p>Hello</p><p>Friend</p><script>Hello</script><style>Hello</style><noscript>Hello</noscript><template>Hello</template><math><mi>Hello</mi></math></div>';
+        $parser = new HtmlParser();
+        $unit = $parser->fragmentUnit($body);
+        $this->assertSame(['Hello', 'Friend'], $unit['tokens']);
+        $catalog = ['UI' => [$parser->generateCustomId('UI', $unit['tokens']) => ['Hello' => 'Hola', 'Friend' => 'Amigo']]];
+        $kept = '<script>Hello</script><style>Hello</style><noscript>Hello</noscript><template>Hello</template><math><mi>Hello</mi></math>';
+
+        $block = $this->client($catalog)->translateContentBlock($body, 'UI');
+        $this->assertStringContainsString('<p>Hola</p><p>Amigo</p>' . $kept, $block, 'the block path');
+
+        $page = $this->client($catalog)->translatePage('<html><head></head><body>' . str_replace('<div>', '<div data-langsys-contentblock>', $body) . '</body></html>', 'UI');
+        $this->assertStringContainsString('<p>Hola</p><p>Amigo</p>' . $kept, $page, 'the page path');
+    }
 }
