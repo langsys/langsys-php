@@ -38,6 +38,18 @@ class CharsetTest extends TestCase
             'windows-1252 keeps an undefined byte as its control' => ['windows-1252', "\x80\x81", "€\u{81}"],
             'x-user-defined reads as windows-1252' => ['x-user-defined', "\x93hi\x94", '“hi”'],
             'a label in any case, padded' => [' Shift_JIS ', "\x93\xFA\x96\x7B", '日本'],
+            'big5, an HKSCS character' => ['big5', "\x87\xA4\x88\x40", "\u{9F97}\u{31C0}"],
+            'big5, a pointer that is two characters' => ['big5', "\x88\x62", "\u{00CA}\u{0304}"],
+            'big5, a bad lead before ASCII' => ['big5', "\x81Hi", "\u{FFFD}Hi"],
+            'windows-1255, a vowel point' => ['windows-1255', "\xE5\xCA", "\u{05D5}\u{05BA}"],
+            'ibm866 keeps its ASCII controls' => ['ibm866', "\x7F\x1A", "\u{7F}\u{1A}"],
+            'shift_jis, 0x7F and 0x80' => ['shift_jis', "\x7F\x80", "\u{7F}\u{80}"],
+            'shift_jis, a bad pair before ASCII' => ['shift_jis', "\x82Contact us", "\u{FFFD}Contact us"],
+            'euc-kr, a bad pair before ASCII' => ['euc-kr', "\xC9Home", "\u{FFFD}Home"],
+            'euc-kr, a byte that leads nothing' => ['euc-kr', "\x80\xFF", "\u{FFFD}\u{FFFD}"],
+            'euc-jp, a C1 byte' => ['euc-jp', "\x80\x90", "\u{FFFD}\u{FFFD}"],
+            'windows-874, an unassigned byte' => ['windows-874', "\xDB\xFC", "\u{FFFD}\u{FFFD}"],
+            'windows-1253, an unassigned byte' => ['windows-1253', "\xAA", "\u{FFFD}"],
         ];
     }
 

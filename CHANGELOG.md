@@ -337,8 +337,10 @@ its id or re-registers it.
   a Latin-1 page now survive, a byte-order mark wins over a conflicting meta, a
   us-ascii page is no longer cut off at its first non-ASCII byte, and an
   invalid byte becomes U+FFFD instead of turning the rest of the page into
-  mojibake. UTF-8, UTF-16, windows-1252 and ISO-8859-16 are decoded without
-  intl; without it, a page in another encoding is read as windows-1252.
+  mojibake, with the letter after a bad byte kept. Every encoding is decoded by
+  the standard's own decoders over its own indexes, generated from Firefox's
+  decoder (`src/Html/Encoding/`), so a page decodes alike on every host, Big5's
+  HKSCS characters and Hebrew vowel points included, and none needs intl.
 - **A page is written out in the UTF-8 it declares.** `translatePage()` wrote
   every character outside ASCII as an entity unless the page carried an
   http-equiv charset meta, so a `<meta charset>` page's JSON-LD read

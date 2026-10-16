@@ -16,9 +16,9 @@ namespace Langsys\SDK\Html;
  * superset and all, a byte invalid in it as U+FFFD, and the rest of the page
  * is still read in it.
  *
- * UTF-8, UTF-16, windows-1252 and ISO-8859-16 are decoded here; the other
- * encodings by ICU's converter for the browser's decoder. Without the intl
- * extension, a page in one of those is read as windows-1252.
+ * UTF-8 and UTF-16 are decoded here, every other encoding by Decoder, which
+ * runs the standard's decoders over its own indexes, so no encoding needs the
+ * intl extension and every host decodes alike.
  */
 final class Charset
 {
@@ -65,67 +65,6 @@ final class Charset
         'UTF-16LE' => ['csunicode', 'iso-10646-ucs-2', 'ucs-2', 'unicode', 'unicodefeff', 'utf-16', 'utf-16le'],
         'x-user-defined' => ['x-user-defined'],
     ];
-
-    /**
-     * The ICU converter that decodes each encoding as a browser does: GBK by
-     * the gb18030 decoder, Big5 with HKSCS, Shift_JIS as windows-31j, EUC-KR
-     * as windows-949. Named exactly, since ICU warns on a label it resolves
-     * to one of several converters, which a framework's error handler raises.
-     */
-    const CONVERTERS = [
-        'IBM866' => 'ibm-866_P100-1995',
-        'ISO-8859-2' => 'ISO-8859-2',
-        'ISO-8859-3' => 'ISO-8859-3',
-        'ISO-8859-4' => 'ISO-8859-4',
-        'ISO-8859-5' => 'ISO-8859-5',
-        'ISO-8859-6' => 'ISO-8859-6',
-        'ISO-8859-7' => 'ISO-8859-7',
-        'ISO-8859-8' => 'ISO-8859-8',
-        'ISO-8859-8-I' => 'ISO-8859-8',
-        'ISO-8859-10' => 'ISO-8859-10',
-        'ISO-8859-13' => 'ISO-8859-13',
-        'ISO-8859-14' => 'ISO-8859-14',
-        'ISO-8859-15' => 'ISO-8859-15',
-        'KOI8-R' => 'KOI8-R',
-        'KOI8-U' => 'KOI8-U',
-        'macintosh' => 'macintosh',
-        'windows-874' => 'windows-874-2000',
-        'windows-1250' => 'ibm-5346_P100-1998',
-        'windows-1251' => 'ibm-5347_P100-1998',
-        'windows-1253' => 'ibm-5349_P100-1998',
-        'windows-1254' => 'ibm-5350_P100-1998',
-        'windows-1255' => 'ibm-9447_P100-2002',
-        'windows-1256' => 'ibm-9448_X100-2005',
-        'windows-1257' => 'ibm-9449_P100-2002',
-        'windows-1258' => 'ibm-5354_P100-1998',
-        'x-mac-cyrillic' => 'x-mac-cyrillic',
-        'GBK' => 'gb18030',
-        'gb18030' => 'gb18030',
-        'Big5' => 'ibm-1375_P100-2008',
-        'EUC-JP' => 'EUC-JP',
-        'ISO-2022-JP' => 'ISO_2022,locale=ja,version=0',
-        'Shift_JIS' => 'windows-31j',
-        'EUC-KR' => 'windows-949-2000',
-    ];
-
-    /** windows-1252's bytes 0x80 to 0x9F; the rest are Latin-1's code points. */
-    const WINDOWS_1252_C1 = [
-        0x20AC, 0x81, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021, 0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x8D, 0x017D, 0x8F,
-        0x90, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014, 0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x9D, 0x017E, 0x0178,
-    ];
-
-    /** ISO-8859-16's bytes 0xA0 to 0xFF, which ICU does not carry. */
-    const ISO_8859_16_HIGH = [
-        0x00A0, 0x0104, 0x0105, 0x0141, 0x20AC, 0x201E, 0x0160, 0x00A7, 0x0161, 0x00A9, 0x0218, 0x00AB, 0x0179, 0x00AD, 0x017A, 0x017B,
-        0x00B0, 0x00B1, 0x010C, 0x0142, 0x017D, 0x201D, 0x00B6, 0x00B7, 0x017E, 0x010D, 0x0219, 0x00BB, 0x0152, 0x0153, 0x0178, 0x017C,
-        0x00C0, 0x00C1, 0x00C2, 0x0102, 0x00C4, 0x0106, 0x00C6, 0x00C7, 0x00C8, 0x00C9, 0x00CA, 0x00CB, 0x00CC, 0x00CD, 0x00CE, 0x00CF,
-        0x0110, 0x0143, 0x00D2, 0x00D3, 0x00D4, 0x0150, 0x00D6, 0x015A, 0x0170, 0x00D9, 0x00DA, 0x00DB, 0x00DC, 0x0118, 0x021A, 0x00DF,
-        0x00E0, 0x00E1, 0x00E2, 0x0103, 0x00E4, 0x0107, 0x00E6, 0x00E7, 0x00E8, 0x00E9, 0x00EA, 0x00EB, 0x00EC, 0x00ED, 0x00EE, 0x00EF,
-        0x0111, 0x0144, 0x00F2, 0x00F3, 0x00F4, 0x0151, 0x00F6, 0x015B, 0x0171, 0x00F9, 0x00FA, 0x00FB, 0x00FC, 0x0119, 0x021B, 0x00FF,
-    ];
-
-    /** Each byte's UTF-8, by encoding, built on first use. */
-    private static $byteMaps = [];
 
     /**
      * @param string $html
@@ -481,68 +420,7 @@ final class Charset
      */
     private static function decode($bytes, $encoding)
     {
-        if ($encoding === 'UTF-8') {
-            return self::scrub($bytes);
-        }
-        if ($encoding === 'replacement') {
-            return $bytes === '' ? '' : "\u{FFFD}";
-        }
-        if ($encoding === 'windows-1252' || $encoding === 'ISO-8859-16') {
-            return strtr($bytes, self::byteMap($encoding));
-        }
-
-        $decoded = class_exists('UConverter') ? self::icu($bytes, self::CONVERTERS[$encoding]) : null;
-        if ($decoded === null) {
-            return strtr($bytes, self::byteMap('windows-1252'));
-        }
-
-        // ICU's KOI8-U is the 1993 table; a browser's adds the Belarusian
-        // letters at 0xAE and 0xBE, where ICU has two box-drawing characters
-        // no other byte decodes to.
-        return $encoding === 'KOI8-U' ? strtr($decoded, ["\u{255D}" => "\u{045E}", "\u{256C}" => "\u{040E}"]) : $decoded;
-    }
-
-    /**
-     * $bytes decoded by an ICU converter, or null when ICU has no such
-     * converter.
-     *
-     * @param string $bytes
-     * @param string $converter
-     * @return string|null
-     */
-    private static function icu($bytes, $converter)
-    {
-        try {
-            $decoded = @(new IcuDecoder('UTF-8', $converter))->convert($bytes);
-        } catch (\Throwable $e) {
-            return null;
-        }
-
-        return is_string($decoded) ? $decoded : null;
-    }
-
-    /**
-     * The UTF-8 for each byte above 0x7F of a single-byte encoding.
-     *
-     * @param string $encoding windows-1252 or ISO-8859-16
-     * @return string[]
-     */
-    private static function byteMap($encoding)
-    {
-        if (!isset(self::$byteMaps[$encoding])) {
-            $map = [];
-            for ($byte = 0x80; $byte <= 0xFF; $byte++) {
-                if ($encoding === 'windows-1252') {
-                    $code = $byte < 0xA0 ? self::WINDOWS_1252_C1[$byte - 0x80] : $byte;
-                } else {
-                    $code = $byte < 0xA0 ? $byte : self::ISO_8859_16_HIGH[$byte - 0xA0];
-                }
-                $map[chr($byte)] = self::utf8($code);
-            }
-            self::$byteMaps[$encoding] = $map;
-        }
-
-        return self::$byteMaps[$encoding];
+        return $encoding === 'UTF-8' ? self::scrub($bytes) : Decoder::decode($bytes, $encoding);
     }
 
     /**
@@ -565,7 +443,7 @@ final class Charset
 
             if ($lead !== null) {
                 if ($unit >= 0xDC00 && $unit <= 0xDFFF) {
-                    $out .= self::utf8(0x10000 + (($lead - 0xD800) << 10) + ($unit - 0xDC00));
+                    $out .= Decoder::utf8(0x10000 + (($lead - 0xD800) << 10) + ($unit - 0xDC00));
                     $lead = null;
                     continue;
                 }
@@ -578,29 +456,10 @@ final class Charset
             } elseif ($unit >= 0xDC00 && $unit <= 0xDFFF) {
                 $out .= "\u{FFFD}";
             } else {
-                $out .= self::utf8($unit);
+                $out .= Decoder::utf8($unit);
             }
         }
 
         return $lead !== null || $length % 2 === 1 ? $out . "\u{FFFD}" : $out;
-    }
-
-    /**
-     * @param int $code A code point
-     * @return string Its UTF-8
-     */
-    private static function utf8($code)
-    {
-        if ($code < 0x80) {
-            return chr($code);
-        }
-        if ($code < 0x800) {
-            return chr(0xC0 | $code >> 6) . chr(0x80 | $code & 0x3F);
-        }
-        if ($code < 0x10000) {
-            return chr(0xE0 | $code >> 12) . chr(0x80 | $code >> 6 & 0x3F) . chr(0x80 | $code & 0x3F);
-        }
-
-        return chr(0xF0 | $code >> 18) . chr(0x80 | $code >> 12 & 0x3F) . chr(0x80 | $code >> 6 & 0x3F) . chr(0x80 | $code & 0x3F);
     }
 }
