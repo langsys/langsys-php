@@ -91,7 +91,7 @@ final class Document
      * a browser reads its tags: one written in a comment, a doctype, an
      * attribute value or a text body - a script's, a title's - is text, one
      * inside svg or math is not the page's, and nothing after <plaintext> is
-     * a tag. A comment ends at the first `-->`, or at once as `<!-->`.
+     * a tag.
      *
      * @param string $html
      * @return string[]
@@ -106,10 +106,10 @@ final class Document
 
         while (($lt = strpos($html, '<', $at)) !== false) {
             if (substr_compare($html, '<!--', $lt, 4) === 0) {
-                if (!preg_match('/\G<!--(?:-?>|.*?-->)/s', $html, $m, 0, $lt)) {
+                $at = self::commentEnd($html, $lt);
+                if ($at === null) {
                     break;
                 }
-                $at = $lt + strlen($m[0]);
                 continue;
             }
             if (preg_match('/\G<[!?\/][^>]*>?/', $html, $m, 0, $lt) && !preg_match('/\G<\/[a-zA-Z]/', $html, $unused, 0, $lt)) {
@@ -123,7 +123,7 @@ final class Document
                 $at = $lt + strlen($m[0]);
                 continue;
             }
-            if (!preg_match('/\G<([a-zA-Z][^\s\/>]*)(?:[^>"\']|"[^"]*"|\'[^\']*\')*>?/', $html, $m, 0, $lt)) {
+            if (!preg_match('/\G<([a-zA-Z][^\s\/>]*+)(?:[^>"\']++|"[^"]*+"|\'[^\']*+\')*+>?/', $html, $m, 0, $lt)) {
                 $at = $lt + 1;
                 continue;
             }
@@ -163,6 +163,62 @@ final class Document
         }
 
         return $names;
+    }
+
+    /**
+     * How long the prolog $html opens with is: the whitespace, comments and
+     * doctype before its first tag or text.
+     *
+     * @param string $html
+     * @return int
+     */
+    public static function prologLength($html)
+    {
+        $html = (string) $html;
+        $at = 0;
+        while (true) {
+            $at += strspn($html, " \t\n\f\r", $at);
+            if (substr($html, $at, 4) === '<!--') {
+                $end = self::commentEnd($html, $at);
+                if ($end === null) {
+                    return strlen($html);
+                }
+                $at = $end;
+                continue;
+            }
+            if (strncasecmp(substr($html, $at, 9), '<!doctype', 9) === 0) {
+                $end = strpos($html, '>', $at);
+                if ($end === false) {
+                    return strlen($html);
+                }
+                $at = $end + 1;
+                continue;
+            }
+
+            return $at;
+        }
+    }
+
+    /**
+     * Where the comment opening at $lt ends, as a browser's tokenizer reads
+     * it: after its first `-->`, which `<!-->` and `<!--->` already are, or
+     * its first `--!>`; null when nothing ends it.
+     *
+     * @param string $html
+     * @param int $lt
+     * @return int|null
+     */
+    private static function commentEnd($html, $lt)
+    {
+        $ends = [];
+        if (($dash = strpos($html, '-->', $lt + 2)) !== false) {
+            $ends[] = $dash + 3;
+        }
+        if (($bang = strpos($html, '--!>', $lt + 4)) !== false) {
+            $ends[] = $bang + 4;
+        }
+
+        return $ends === [] ? null : min($ends);
     }
 
     /**

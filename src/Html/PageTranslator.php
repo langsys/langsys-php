@@ -503,9 +503,9 @@ class PageTranslator
         $this->fragmentRoot = false;
         $tags = Document::startTags($html);
         if ($tags !== [] && !in_array('html', $tags, true)) {
-            preg_match('/^(?:\s|<!--.*?-->|<!doctype[^>]*>)*/is', $html, $prolog);
-            $this->fragmentRoot = stripos($prolog[0], '<!doctype') === false && array_intersect(['head', 'body', 'title'], $tags) === [];
-            $html = $prolog[0] . '<html>' . substr($html, strlen($prolog[0]));
+            $prolog = substr($html, 0, Document::prologLength($html));
+            $this->fragmentRoot = stripos($prolog, '<!doctype') === false && array_intersect(['head', 'body', 'title'], $tags) === [];
+            $html = $prolog . '<html>' . substr($html, strlen($prolog));
         }
 
         $loaded = Document::load($doc, '<?xml encoding="UTF-8">' . $html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);

@@ -233,6 +233,7 @@ class RawTextBodyTest extends TestCase
         foreach ([
             '<html><body><p>Hello world</p></body></html>' => '<html lang="es-es" data-ls-resolved="es-es"><head><meta charset="utf-8"></head><body><p>Hola mundo</p></body></html>' . "\n",
             '<!DOCTYPE html><body><p>Hello world</p></body>' => '<!DOCTYPE html>' . "\n" . '<html lang="es-es" data-ls-resolved="es-es"><head><meta charset="utf-8"></head><body><p>Hola mundo</p></body></html>' . "\n",
+            "\n<!DOCTYPE html><p>Hello world</p>" => '<!DOCTYPE html>' . "\n" . '<html lang="es-es" data-ls-resolved="es-es"><head><meta charset="utf-8"></head><p>Hola mundo</p></html>' . "\n",
             '<!DOCTYPE html><p>Él está aquí</p>' => '<!DOCTYPE html>' . "\n" . '<html lang="es-es" data-ls-resolved="es-es"><head><meta charset="utf-8"></head><p>Él está aquí</p></html>' . "\n",
             '<html><!-- built 2026 --><body><p>Hello world</p></body></html>' => '<html lang="es-es" data-ls-resolved="es-es"><!-- built 2026 --><head><meta charset="utf-8"></head><body><p>Hola mundo</p></body></html>' . "\n",
             '<p>Hello world</p>' => '<p data-ls-resolved="es-es">Hola mundo</p>' . "\n",
@@ -258,6 +259,18 @@ class RawTextBodyTest extends TestCase
         ] as $html => $expected) {
             $this->assertSame($expected, $this->client($catalog)->translatePage($html, 'UI'), $html);
         }
+    }
+
+    /**
+     * A page led by a long comment, a build banner or an inlined licence, is
+     * read past it, whole.
+     */
+    public function testAPageLedByALongCommentIsTranslatedWhole(): void
+    {
+        $comment = '<!--' . str_repeat(' licence text', 100000) . ' -->';
+        $page = $this->client(['Hello world' => 'Hola mundo'])->translatePage($comment . '<p>Hello world</p><p>Hello world</p>', 'UI');
+
+        $this->assertSame($comment . '<p data-ls-resolved="es-es">Hola mundo</p><p data-ls-resolved="es-es">Hola mundo</p>' . "\n", $page);
     }
 
     /**
