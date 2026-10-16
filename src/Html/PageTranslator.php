@@ -402,8 +402,9 @@ class PageTranslator
      * hydrating it, a middleware translating the response again - registers
      * none of it. A base-locale render is source and is left unmarked so it stays
      * discoverable, and when the base locale is unknown nothing is marked, since
-     * the render cannot be shown to be anything but source. A marker already on
-     * the root, in either spelling, is the page author's and is kept.
+     * the render cannot be shown to be anything but source. A fragment has no
+     * root of its own, so each of its top-level elements is marked. A marker
+     * already on one, in either spelling, is the page author's and is kept.
      *
      * @param DOMDocument $doc
      * @param string $locale
@@ -414,27 +415,23 @@ class PageTranslator
         $htmls = $doc->getElementsByTagName('html');
         $root = $htmls->length > 0 ? $htmls->item(0) : $doc->documentElement;
 
-        // A fragment's marker goes on its first element, the <html> it was
-        // read in being the SDK's.
-        if ($this->fragmentRoot && $root instanceof DOMElement) {
-            $first = null;
-            foreach ($root->childNodes as $child) {
-                if ($child instanceof DOMElement) {
-                    $first = $child;
-                    break;
+        // A fragment's markers go on its top-level elements, the <html> it
+        // was read in being the SDK's.
+        $roots = [];
+        foreach ($this->fragmentRoot && $root instanceof DOMElement ? $root->childNodes : [$root] as $node) {
+            if (!$node instanceof DOMElement) {
+                continue;
+            }
+            foreach (HtmlParser::RESOLVED_MARKERS as $attribute) {
+                if ($node->hasAttribute($attribute)) {
+                    continue 2;
                 }
             }
-            $root = $first;
+            $roots[] = $node;
         }
 
-        if (!$root instanceof DOMElement) {
+        if ($roots === []) {
             return;
-        }
-
-        foreach (HtmlParser::RESOLVED_MARKERS as $attribute) {
-            if ($root->hasAttribute($attribute)) {
-                return;
-            }
         }
 
         try {
@@ -451,7 +448,9 @@ class PageTranslator
             return;
         }
 
-        $root->setAttribute(HtmlParser::RESOLVED_MARKERS[0], $locale);
+        foreach ($roots as $element) {
+            $element->setAttribute(HtmlParser::RESOLVED_MARKERS[0], $locale);
+        }
     }
 
     /**

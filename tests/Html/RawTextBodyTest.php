@@ -213,7 +213,7 @@ class RawTextBodyTest extends TestCase
             '<meta charset="utf-8"><title>Title</title><p>Hello world</p>' => '<html lang="es-es" data-ls-resolved="es-es"><head><meta charset="utf-8"><title>Título</title></head><p>Hola mundo</p></html>' . "\n",
             '<head><meta charset="utf-8"><title>Title</title></head><body><p>Hello world</p></body>' => '<html lang="es-es" data-ls-resolved="es-es"><head><meta charset="utf-8"><title>Título</title></head><body><p>Hola mundo</p></body></html>' . "\n",
             '<!DOCTYPE html><meta charset="utf-8"><title>Title</title><p>Hello world</p>' => '<!DOCTYPE html>' . "\n" . '<html lang="es-es" data-ls-resolved="es-es"><head><meta charset="utf-8"><title>Título</title></head><p>Hola mundo</p></html>' . "\n",
-            '<div><p>Hello world</p></div><footer><p>Hello world</p></footer>' => '<div data-ls-resolved="es-es"><p>Hola mundo</p></div><footer><p>Hola mundo</p></footer>' . "\n",
+            '<div><p>Hello world</p></div><footer><p>Hello world</p></footer>' => '<div data-ls-resolved="es-es"><p>Hola mundo</p></div><footer data-ls-resolved="es-es"><p>Hola mundo</p></footer>' . "\n",
             '<p>Hello world</p>' => '<p data-ls-resolved="es-es">Hola mundo</p>' . "\n",
             '<!DOCTYPE html><html lang="de"><meta charset="windows-1252"><title>Title</title><p>Hello world</p></html>' => '<!DOCTYPE html>' . "\n" . '<html lang="es-es" data-ls-resolved="es-es"><head><meta charset="utf-8"><title>Título</title></head><p>Hola mundo</p></html>' . "\n",
             '<html><head><title>Title</title></head><p>Hello world</p></html>' => '<html lang="es-es" data-ls-resolved="es-es"><head><meta charset="utf-8"><title>Título</title></head><p>Hola mundo</p></html>' . "\n",

@@ -66,6 +66,33 @@ class ResolvedMarkerTest extends TestCase
         $this->assertSame([], $this->registered(), 'the translated output is not source');
     }
 
+    /**
+     * A fragment has no root of its own, so each of its top-level elements
+     * carries the marker: the walk of what it renders registers none of it,
+     * whichever element the text is in.
+     */
+    public function testEveryTopLevelElementOfAFragmentIsMarked(): void
+    {
+        $catalog = ['__uncategorized__' => ['Hello' => 'Hola', 'World' => 'Mundo']];
+        foreach ([
+            '<p>Hello</p><p>World</p>' => '<p data-ls-resolved="es-es">Hola</p><p data-ls-resolved="es-es">Mundo</p>',
+            '<link rel="stylesheet" href="/w.css"><div class="w"><p>Hello</p></div>' => '<link rel="stylesheet" href="/w.css" data-ls-resolved="es-es"><div class="w" data-ls-resolved="es-es"><p>Hola</p></div>',
+        ] as $fragment => $expected) {
+            $page = $this->render($fragment, $catalog);
+            $this->assertSame($expected, trim($page), $fragment);
+
+            $this->render($page, ['__uncategorized__' => []]);
+            $this->assertSame([], $this->registered(), $fragment . ': the translated output is not source');
+        }
+    }
+
+    public function testAMarkerAlreadyOnATopLevelElementOfAFragmentIsKept(): void
+    {
+        $page = $this->render('<p data-ls-resolved="false">Hello</p><p>World</p>', ['__uncategorized__' => ['Hello' => 'Hola', 'World' => 'Mundo']]);
+
+        $this->assertSame('<p data-ls-resolved="false">Hola</p><p data-ls-resolved="es-es">Mundo</p>', trim($page));
+    }
+
     public function testABaseRenderWalkedAgainStillRegisters(): void
     {
         $page = $this->render('<html><body><p>Save</p></body></html>', ['__uncategorized__' => []], 'en-us');
