@@ -230,9 +230,11 @@ for (let byte = 0x80; byte <= 0xff; byte++) {
   add("Big5", [byte, 0x41]);
 }
 
+// Written in ASCII, every other character as a \uXXXX escape, so no
+// invisible character sits in the file as a literal.
 Deno.writeTextFileSync(vectorsPath, JSON.stringify({
   "": "Byte strings and what a browser decodes them to: TextDecoder in Deno " + Deno.version.deno + " (encoding_rs, Firefox's decoder). Written by src/Html/Encoding/generate.mjs.",
   vectors,
-}, null, 1) + "\n");
+}, null, 1).replace(/[\u007f-\uffff]/g, (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0")) + "\n");
 
 console.log(`single-byte ${SINGLE_BYTE.length}, big5 ${big5.length}, euc-kr ${eucKr.length}, gb18030 ${gb18030.length}, ranges ${ranges.length}, jis0208 ${jis0208.length}, jis0212 ${jis0212.length}, vectors ${vectors.length}`);
