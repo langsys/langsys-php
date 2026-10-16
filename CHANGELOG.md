@@ -296,8 +296,8 @@ its id or re-registers it.
   whole.** Such a page is read inside an `<html>` as a browser reads it, so
   every top-level element is translated, where only the first was, and a
   page that is a document - a doctype, a head, a body or a title - is written
-  back with the `<html>` and the head a browser implies, so its title and
-  `lang` are set; one that is a fragment comes back as the fragment it was,
+  back with the `<html>` and the head a browser implies, declaring UTF-8, so
+  its title and `lang` are set; one that is a fragment comes back as the fragment it was,
   each of its top-level elements marked as translated output. Both are read
   from the page's tags as a browser reads them, so `<html>` written in a
   script, a comment or an attribute, or an inline svg's `<title>`, changes

@@ -223,6 +223,25 @@ class RawTextBodyTest extends TestCase
     }
 
     /**
+     * A document is written out in UTF-8 and says so, in the head a browser
+     * implies when it has none of its own, ahead of its body. A fragment is
+     * given no head.
+     */
+    public function testADocumentWithoutAHeadIsGivenOneDeclaringUtf8(): void
+    {
+        $catalog = ['Hello world' => 'Hola mundo', 'Él está aquí' => 'Él está aquí'];
+        foreach ([
+            '<html><body><p>Hello world</p></body></html>' => '<html lang="es-es" data-ls-resolved="es-es"><head><meta charset="utf-8"></head><body><p>Hola mundo</p></body></html>' . "\n",
+            '<!DOCTYPE html><body><p>Hello world</p></body>' => '<!DOCTYPE html>' . "\n" . '<html lang="es-es" data-ls-resolved="es-es"><head><meta charset="utf-8"></head><body><p>Hola mundo</p></body></html>' . "\n",
+            '<!DOCTYPE html><p>Él está aquí</p>' => '<!DOCTYPE html>' . "\n" . '<html lang="es-es" data-ls-resolved="es-es"><head><meta charset="utf-8"></head><p>Él está aquí</p></html>' . "\n",
+            '<html><!-- built 2026 --><body><p>Hello world</p></body></html>' => '<html lang="es-es" data-ls-resolved="es-es"><!-- built 2026 --><head><meta charset="utf-8"></head><body><p>Hola mundo</p></body></html>' . "\n",
+            '<p>Hello world</p>' => '<p data-ls-resolved="es-es">Hola mundo</p>' . "\n",
+        ] as $html => $expected) {
+            $this->assertSame($expected, $this->client($catalog)->translatePage($html, 'UI'), $html);
+        }
+    }
+
+    /**
      * Whether a page has an <html>, and whether it is a document, is read
      * from its tags as a browser reads them: a tag written in a script, a
      * comment or an attribute is text, and an svg's <title> is the drawing's,

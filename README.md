@@ -149,7 +149,8 @@ echo $client->getKeyType(); // "read" or "write"
 
 The `translatePage()` method translates an entire HTML document in one pass. It automatically:
 - Sets the `lang` attribute on `<html>`
-- Ensures `<meta charset="utf-8">` exists
+- Ensures `<meta charset="utf-8">` exists, in the `<head>` a browser implies when the
+  document has none (a fragment is given no head)
 - Translates `<title>`, meta description, OpenGraph tags, Twitter cards
 - Extracts and translates body content (phrases and content blocks)
 - Registers new phrases automatically (if write key)

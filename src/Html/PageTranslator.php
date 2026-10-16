@@ -527,7 +527,8 @@ class PageTranslator
     /**
      * Give a page whose <html> has no <head> the one a browser implies: the
      * head elements the page leads with - its title, metas, links, styles,
-     * scripts - so its title translates and its charset is declared there.
+     * scripts - or none, ahead of its body, so its title translates and its
+     * charset is declared there.
      *
      * @param DOMDocument $doc
      * @return void
@@ -541,6 +542,7 @@ class PageTranslator
 
         $leading = [];
         $elements = 0;
+        $body = null;
         foreach ($html->childNodes as $child) {
             if ($child instanceof DOMElement && in_array(strtolower($child->nodeName), self::HEAD_CONTENT, true)) {
                 $leading[] = $child;
@@ -551,14 +553,18 @@ class PageTranslator
                 $leading[] = $child;
                 continue;
             }
+            $body = $child;
             break;
         }
 
+        $head = $doc->createElement('head');
+
+        // Nothing to move: the comments it leads with stay in the <html>.
         if ($elements === 0) {
+            $html->insertBefore($head, $body);
             return;
         }
 
-        $head = $doc->createElement('head');
         $html->insertBefore($head, $html->firstChild);
         foreach ($leading as $node) {
             $head->appendChild($node);
