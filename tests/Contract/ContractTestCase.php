@@ -612,8 +612,14 @@ abstract class ContractTestCase extends TestCase
                 $gaps[] = "block {$block['custom_id']} is not served at $locale";
                 continue;
             }
-            foreach (isset($block['phrases']) ? $block['phrases'] : [] as $phrase) {
-                $check($served, $phrase, "in block {$block['custom_id']}");
+            // A block is served whole: outside the base locale, unless every
+            // translatable phrase in it is translated there, each reads null.
+            $phrases = isset($block['phrases']) ? $block['phrases'] : [];
+            $whole = $locale === $base || array_filter($phrases, function ($phrase) use ($locale) {
+                return !(isset($phrase['translatable']) && $phrase['translatable'] === false) && self::seededAt($phrase, $locale) === null;
+            }) === [];
+            foreach ($phrases as $phrase) {
+                $check($served, $whole ? $phrase : ['phrase' => $phrase['phrase'], 'translatable' => false], "in block {$block['custom_id']}");
             }
         }
 

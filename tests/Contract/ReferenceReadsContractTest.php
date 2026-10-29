@@ -3,6 +3,7 @@
 namespace Langsys\SDK\Tests\Contract;
 
 use Langsys\SDK\Cache\FileCache;
+use Langsys\SDK\Cache\NullCache;
 use Langsys\SDK\Client;
 use Langsys\SDK\Tests\Support\SpyLogger;
 
@@ -79,6 +80,25 @@ class ReferenceReadsContractTest extends ContractTestCase
                 return $client->getDialCodes($locale);
             }, 'countries/dial-codes'],
         ];
+    }
+
+    /**
+     * A client on key k1 whose clock the test moves, so a failure window opens
+     * and ends where the test says, whatever the calls around it take.
+     */
+    private function clocked(World $world, SpyLogger $logger)
+    {
+        $client = new class ($world->key('k1'), $world->project(), ['api_url' => self::$baseUrl, 'cache' => new NullCache(), 'logger' => $logger, 'error_log' => false]) extends Client {
+            public $now = 1000.0;
+
+            protected function currentTime()
+            {
+                return $this->now;
+            }
+        };
+        $client->setLocale('es-es');
+
+        return $client;
     }
 
     private function configured(World $world, $key = 'k1', $cache = null, $logger = null)
@@ -235,19 +255,26 @@ class ReferenceReadsContractTest extends ContractTestCase
         }
         $world = $this->world('lists', ['reference' => self::REFERENCE, 'faults' => $faults]);
         $logger = new SpyLogger();
-        $client = $this->configured($world, 'k1', null, $logger);
+        $client = $this->clocked($world, $logger);
 
         foreach (self::lists() as $name => list($call)) {
             $this->assertSame([], $call($client), "$name: a failed read answers empty");
         }
-        $this->assertCount(6, $logger->messagesAt('error'), 'each failure logs its cause');
+        // The transport logs the failed request too; the list's own error names its route and cause.
+        $failed = array_filter($logger->entries, function ($entry) {
+            return $entry['level'] === 'error' && isset($entry['context']['route']) && !empty($entry['context']['error']);
+        });
+        $this->assertCount(6, array_unique(array_map(function ($entry) {
+            return $entry['context']['route'];
+        }, $failed)), 'each failure logs its cause');
+        $this->assertCount(6, $failed, 'once per list');
 
         foreach (self::lists() as $name => list($call, $route)) {
             $this->assertSame([], $call($client), "$name: inside the window the call sends nothing");
             $this->assertSame($this->fixtureList($world, $route, 'es-es', 'k2'), $call($this->configured($world, 'k2')), "$name: under other credentials the call sends and answers");
         }
 
-        sleep(3);
+        $client->now += 3;
         foreach (self::lists() as $name => list($call, $route)) {
             $this->assertSame($this->fixtureList($world, $route, 'es-es'), $call($client), "$name: after the window the call answers the list");
         }

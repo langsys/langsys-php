@@ -154,6 +154,7 @@ class CatalogAndWireContractTest extends ContractTestCase
      * WIRE-3: no category travels as absent, never as the sentinel. The API
      * skips a phrase sent with `__uncategorized__` and would store a block under
      * it as a category of that name, so either mistake shows in what it holds.
+     * It stores a block sent with no category under the empty category.
      */
     public function testNoCategoryTravelsAsAbsentOnEveryRegistrationPath(): void
     {
@@ -168,7 +169,7 @@ class CatalogAndWireContractTest extends ContractTestCase
 
         $held = $this->held($world->key('write'), $world->project(), 'en-us');
         $this->assertSame(['__uncategorized__' => ['Loose', 'Page']], $held['phrases']);
-        $this->assertSame([null], array_column($this->storedBlocks($world, $world->key('write'), 'en-us'), 'category'), 'the block is stored with no category');
+        $this->assertSame([''], array_column($this->storedBlocks($world, $world->key('write'), 'en-us'), 'category'), 'the block is stored with no category');
         $this->assertSame([['One', 'Two']], array_values($held['blocks']['__uncategorized__']));
     }
 

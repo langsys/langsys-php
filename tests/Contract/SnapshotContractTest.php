@@ -21,6 +21,19 @@ class SnapshotContractTest extends ContractTestCase
         return $answer['body']['data'];
     }
 
+    /** A slice by key, at every depth: the API promises no order. */
+    private static function sorted(array $slice)
+    {
+        ksort($slice, SORT_STRING);
+        foreach ($slice as $key => $value) {
+            if (is_array($value)) {
+                $slice[$key] = self::sorted($value);
+            }
+        }
+
+        return $slice;
+    }
+
     public function testTheSnapshotCarriesExactlyWhatTheApiReturnsForTheChosenCategories(): void
     {
         $world = $this->world('catalog');
@@ -33,7 +46,9 @@ class SnapshotContractTest extends ContractTestCase
         }
         $this->assertSame('en-us', $snapshot->baseLocale(), 'the project\'s base locale travels with the snapshot');
         $this->assertSame(['Errors', 'UI'], $snapshot->categories(), 'sorted');
-        $this->assertSame(['Save' => 'Guardar', 'abc123' => ['One' => 'Uno', 'Two' => null]], $snapshot->catalog('es-es')['UI'], 'blocks and untranslated entries as served');
+        $this->assertSame(['Save' => 'Guardar', 'abc123' => ['One' => 'Uno', 'Two' => 'Dos']], self::sorted($snapshot->catalog('es-es')['UI']), 'a translated block as served');
+        $this->assertSame(['Save' => 'Enregistrer', 'abc123' => ['One' => null, 'Two' => null]], self::sorted($snapshot->catalog('fr-fr')['UI']), 'an untranslated block as served');
+        $this->assertSame(['Oops' => null], $snapshot->catalog('fr-fr')['Errors'], 'an untranslated phrase as served');
         $this->assertArrayNotHasKey('Billing', $snapshot->catalog('es-es'));
     }
 

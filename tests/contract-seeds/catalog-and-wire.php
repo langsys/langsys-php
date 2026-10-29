@@ -14,7 +14,7 @@ $hello = $project + ['phrases' => [['phrase' => 'Hello', 'translations' => ['es-
 
 return [
     'index' => 3,
-    'runs' => 10,
+    'runs' => 14,
     'worlds' => [
         'writer' => ['count' => 4, 'projects' => ['p1' => $project], 'keys' => ['write' => ['project' => 'p1', 'type' => 'write']]],
         'on-list' => ['projects' => ['p1' => $project], 'keys' => ['ip' => ['project' => 'p1', 'type' => 'ip_write', 'ip_allowlist' => ['@self']]]],

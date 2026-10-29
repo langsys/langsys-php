@@ -48,7 +48,10 @@
                             }
                         },
                         {
-                            "phrase": "Two"
+                            "phrase": "Two",
+                            "translations": {
+                                "es-es": "Dos"
+                            }
                         }
                     ]
                 }
@@ -106,7 +109,10 @@
                             }
                         },
                         {
-                            "phrase": "Two"
+                            "phrase": "Two",
+                            "translations": {
+                                "es-es": "Dos"
+                            }
                         }
                     ]
                 }
@@ -164,7 +170,10 @@
                             }
                         },
                         {
-                            "phrase": "Two"
+                            "phrase": "Two",
+                            "translations": {
+                                "es-es": "Dos"
+                            }
                         }
                     ]
                 }
@@ -222,7 +231,10 @@
                             }
                         },
                         {
-                            "phrase": "Two"
+                            "phrase": "Two",
+                            "translations": {
+                                "es-es": "Dos"
+                            }
                         }
                     ]
                 }
@@ -280,7 +292,10 @@
                             }
                         },
                         {
-                            "phrase": "Two"
+                            "phrase": "Two",
+                            "translations": {
+                                "es-es": "Dos"
+                            }
                         }
                     ]
                 }
@@ -338,7 +353,10 @@
                             }
                         },
                         {
-                            "phrase": "Two"
+                            "phrase": "Two",
+                            "translations": {
+                                "es-es": "Dos"
+                            }
                         }
                     ]
                 }
@@ -396,7 +414,10 @@
                             }
                         },
                         {
-                            "phrase": "Two"
+                            "phrase": "Two",
+                            "translations": {
+                                "es-es": "Dos"
+                            }
                         }
                     ]
                 }
@@ -454,7 +475,10 @@
                             }
                         },
                         {
-                            "phrase": "Two"
+                            "phrase": "Two",
+                            "translations": {
+                                "es-es": "Dos"
+                            }
                         }
                     ]
                 }
@@ -512,7 +536,10 @@
                             }
                         },
                         {
-                            "phrase": "Two"
+                            "phrase": "Two",
+                            "translations": {
+                                "es-es": "Dos"
+                            }
                         }
                     ]
                 }
@@ -570,7 +597,10 @@
                             }
                         },
                         {
-                            "phrase": "Two"
+                            "phrase": "Two",
+                            "translations": {
+                                "es-es": "Dos"
+                            }
                         }
                     ]
                 }
@@ -628,7 +658,10 @@
                             }
                         },
                         {
-                            "phrase": "Two"
+                            "phrase": "Two",
+                            "translations": {
+                                "es-es": "Dos"
+                            }
                         }
                     ]
                 }
@@ -686,7 +719,10 @@
                             }
                         },
                         {
-                            "phrase": "Two"
+                            "phrase": "Two",
+                            "translations": {
+                                "es-es": "Dos"
+                            }
                         }
                     ]
                 }
@@ -694,6 +730,372 @@
             "user": {
                 "token": "124512|b2749a575ac3946997ab764f177555a368b6e101",
                 "device_id": "php-snapshot-12"
+            }
+        },
+        {
+            "id": "77000a00-000d-4000-8000-000000000000",
+            "title": "php snapshot catalog#13 p1",
+            "target_locales": [
+                "es-es",
+                "fr-fr"
+            ],
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Save",
+                    "translations": {
+                        "es-es": "Guardar",
+                        "fr-fr": "Enregistrer"
+                    }
+                },
+                {
+                    "category": "Errors",
+                    "phrase": "Oops",
+                    "translations": {
+                        "es-es": "Uy"
+                    }
+                },
+                {
+                    "category": "Billing",
+                    "phrase": "Pay",
+                    "translations": {
+                        "es-es": "Pagar"
+                    }
+                },
+                {
+                    "category": null,
+                    "phrase": "Loose"
+                }
+            ],
+            "blocks": [
+                {
+                    "category": "UI",
+                    "custom_id": "abc123",
+                    "content": "<div><p>One</p><p>Two</p></div>",
+                    "phrases": [
+                        {
+                            "phrase": "One",
+                            "translations": {
+                                "es-es": "Uno"
+                            }
+                        },
+                        {
+                            "phrase": "Two",
+                            "translations": {
+                                "es-es": "Dos"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "user": {
+                "token": "124513|5d8d43e3c37d533a7b9c13cb4e45cfb990b60c8e",
+                "device_id": "php-snapshot-13"
+            }
+        },
+        {
+            "id": "77000a00-000e-4000-8000-000000000000",
+            "title": "php snapshot catalog#14 p1",
+            "target_locales": [
+                "es-es",
+                "fr-fr"
+            ],
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Save",
+                    "translations": {
+                        "es-es": "Guardar",
+                        "fr-fr": "Enregistrer"
+                    }
+                },
+                {
+                    "category": "Errors",
+                    "phrase": "Oops",
+                    "translations": {
+                        "es-es": "Uy"
+                    }
+                },
+                {
+                    "category": "Billing",
+                    "phrase": "Pay",
+                    "translations": {
+                        "es-es": "Pagar"
+                    }
+                },
+                {
+                    "category": null,
+                    "phrase": "Loose"
+                }
+            ],
+            "blocks": [
+                {
+                    "category": "UI",
+                    "custom_id": "abc123",
+                    "content": "<div><p>One</p><p>Two</p></div>",
+                    "phrases": [
+                        {
+                            "phrase": "One",
+                            "translations": {
+                                "es-es": "Uno"
+                            }
+                        },
+                        {
+                            "phrase": "Two",
+                            "translations": {
+                                "es-es": "Dos"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "user": {
+                "token": "124514|ad168034cc08dcb93d596eca12948a211b5df611",
+                "device_id": "php-snapshot-14"
+            }
+        },
+        {
+            "id": "77000a00-000f-4000-8000-000000000000",
+            "title": "php snapshot catalog#15 p1",
+            "target_locales": [
+                "es-es",
+                "fr-fr"
+            ],
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Save",
+                    "translations": {
+                        "es-es": "Guardar",
+                        "fr-fr": "Enregistrer"
+                    }
+                },
+                {
+                    "category": "Errors",
+                    "phrase": "Oops",
+                    "translations": {
+                        "es-es": "Uy"
+                    }
+                },
+                {
+                    "category": "Billing",
+                    "phrase": "Pay",
+                    "translations": {
+                        "es-es": "Pagar"
+                    }
+                },
+                {
+                    "category": null,
+                    "phrase": "Loose"
+                }
+            ],
+            "blocks": [
+                {
+                    "category": "UI",
+                    "custom_id": "abc123",
+                    "content": "<div><p>One</p><p>Two</p></div>",
+                    "phrases": [
+                        {
+                            "phrase": "One",
+                            "translations": {
+                                "es-es": "Uno"
+                            }
+                        },
+                        {
+                            "phrase": "Two",
+                            "translations": {
+                                "es-es": "Dos"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "user": {
+                "token": "124515|ffb764f77babc437e0b3fbb8d2fc11c552a40ea7",
+                "device_id": "php-snapshot-15"
+            }
+        },
+        {
+            "id": "77000a00-0010-4000-8000-000000000000",
+            "title": "php snapshot catalog#16 p1",
+            "target_locales": [
+                "es-es",
+                "fr-fr"
+            ],
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Save",
+                    "translations": {
+                        "es-es": "Guardar",
+                        "fr-fr": "Enregistrer"
+                    }
+                },
+                {
+                    "category": "Errors",
+                    "phrase": "Oops",
+                    "translations": {
+                        "es-es": "Uy"
+                    }
+                },
+                {
+                    "category": "Billing",
+                    "phrase": "Pay",
+                    "translations": {
+                        "es-es": "Pagar"
+                    }
+                },
+                {
+                    "category": null,
+                    "phrase": "Loose"
+                }
+            ],
+            "blocks": [
+                {
+                    "category": "UI",
+                    "custom_id": "abc123",
+                    "content": "<div><p>One</p><p>Two</p></div>",
+                    "phrases": [
+                        {
+                            "phrase": "One",
+                            "translations": {
+                                "es-es": "Uno"
+                            }
+                        },
+                        {
+                            "phrase": "Two",
+                            "translations": {
+                                "es-es": "Dos"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "user": {
+                "token": "124516|26ac317f1cd1f1db44bf0aee8c0eb788f7e9df0f",
+                "device_id": "php-snapshot-16"
+            }
+        },
+        {
+            "id": "77000a00-0011-4000-8000-000000000000",
+            "title": "php snapshot catalog#17 p1",
+            "target_locales": [
+                "es-es",
+                "fr-fr"
+            ],
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Save",
+                    "translations": {
+                        "es-es": "Guardar",
+                        "fr-fr": "Enregistrer"
+                    }
+                },
+                {
+                    "category": "Errors",
+                    "phrase": "Oops",
+                    "translations": {
+                        "es-es": "Uy"
+                    }
+                },
+                {
+                    "category": "Billing",
+                    "phrase": "Pay",
+                    "translations": {
+                        "es-es": "Pagar"
+                    }
+                },
+                {
+                    "category": null,
+                    "phrase": "Loose"
+                }
+            ],
+            "blocks": [
+                {
+                    "category": "UI",
+                    "custom_id": "abc123",
+                    "content": "<div><p>One</p><p>Two</p></div>",
+                    "phrases": [
+                        {
+                            "phrase": "One",
+                            "translations": {
+                                "es-es": "Uno"
+                            }
+                        },
+                        {
+                            "phrase": "Two",
+                            "translations": {
+                                "es-es": "Dos"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "user": {
+                "token": "124517|f1b9baa684524a2fef5d37270c3f5a8e897fc9f3",
+                "device_id": "php-snapshot-17"
+            }
+        },
+        {
+            "id": "77000a00-0012-4000-8000-000000000000",
+            "title": "php snapshot catalog#18 p1",
+            "target_locales": [
+                "es-es",
+                "fr-fr"
+            ],
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Save",
+                    "translations": {
+                        "es-es": "Guardar",
+                        "fr-fr": "Enregistrer"
+                    }
+                },
+                {
+                    "category": "Errors",
+                    "phrase": "Oops",
+                    "translations": {
+                        "es-es": "Uy"
+                    }
+                },
+                {
+                    "category": "Billing",
+                    "phrase": "Pay",
+                    "translations": {
+                        "es-es": "Pagar"
+                    }
+                },
+                {
+                    "category": null,
+                    "phrase": "Loose"
+                }
+            ],
+            "blocks": [
+                {
+                    "category": "UI",
+                    "custom_id": "abc123",
+                    "content": "<div><p>One</p><p>Two</p></div>",
+                    "phrases": [
+                        {
+                            "phrase": "One",
+                            "translations": {
+                                "es-es": "Uno"
+                            }
+                        },
+                        {
+                            "phrase": "Two",
+                            "translations": {
+                                "es-es": "Dos"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "user": {
+                "token": "124518|c78066646cb625e86dc0f391c936e82d74a26c0d",
+                "device_id": "php-snapshot-18"
             }
         }
     ],
@@ -769,6 +1171,42 @@
             "key": "php-snapshot-12-read",
             "type": "read",
             "project": "77000a00-000c-4000-8000-000000000000"
+        },
+        {
+            "id": "77000a01-000d-4000-8000-000000000000",
+            "key": "php-snapshot-13-read",
+            "type": "read",
+            "project": "77000a00-000d-4000-8000-000000000000"
+        },
+        {
+            "id": "77000a01-000e-4000-8000-000000000000",
+            "key": "php-snapshot-14-read",
+            "type": "read",
+            "project": "77000a00-000e-4000-8000-000000000000"
+        },
+        {
+            "id": "77000a01-000f-4000-8000-000000000000",
+            "key": "php-snapshot-15-read",
+            "type": "read",
+            "project": "77000a00-000f-4000-8000-000000000000"
+        },
+        {
+            "id": "77000a01-0010-4000-8000-000000000000",
+            "key": "php-snapshot-16-read",
+            "type": "read",
+            "project": "77000a00-0010-4000-8000-000000000000"
+        },
+        {
+            "id": "77000a01-0011-4000-8000-000000000000",
+            "key": "php-snapshot-17-read",
+            "type": "read",
+            "project": "77000a00-0011-4000-8000-000000000000"
+        },
+        {
+            "id": "77000a01-0012-4000-8000-000000000000",
+            "key": "php-snapshot-18-read",
+            "type": "read",
+            "project": "77000a00-0012-4000-8000-000000000000"
         }
     ]
 }

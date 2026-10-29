@@ -35,6 +35,8 @@ class DegradationContractTest extends ContractTestCase
         $this->assertStringContainsString('<p>Page text</p>', $client->translatePage('<html><body><p>Page text</p></body></html>'));
         $client->flushPendingRegistrations();
 
+        // The outage ends, so the faults the client left unspent don't answer the read back.
+        $this->update($world, ['faults' => []]);
         $held = $this->held($world->key('write'), $world->project(), 'en-us');
         $this->assertSame(['__uncategorized__' => ['Hello']], $held['phrases'], 'only the seeded phrase; the outage registered nothing');
         $this->assertSame([], $held['blocks']);

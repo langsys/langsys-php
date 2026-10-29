@@ -62,7 +62,8 @@ class RegistrationContractTest extends ContractTestCase
 
     private function postHint(World $world, $role)
     {
-        $answer = $this->api('/discovery/hint', ['key' => $world->key($role), 'body' => ['project_id' => $world->project(), 'page_url' => 'https://site.local/pricing']]);
+        // The key names the project: the API refuses a project_id here.
+        $answer = $this->api('/discovery/hint', ['key' => $world->key($role), 'body' => ['page_url' => 'https://site.local/pricing']]);
         $this->assertSame(204, $answer['status'], 'every hint path answers 204');
     }
 
@@ -207,8 +208,10 @@ class RegistrationContractTest extends ContractTestCase
         }
         $client->flushPendingRegistrations();
 
-        $this->assertCount(7, $this->phrases($world, 'write')['__uncategorized__']);
-        $this->assertCount(7, $this->blocks($world, 'write')['UI']);
+        $phrases = $this->phrases($world, 'write');
+        $blocks = $this->blocks($world, 'write');
+        $this->assertCount(7, isset($phrases['__uncategorized__']) ? $phrases['__uncategorized__'] : [], 'every phrase is accepted, three at a time');
+        $this->assertCount(7, isset($blocks['UI']) ? $blocks['UI'] : [], 'every block is accepted, three at a time');
     }
 
     /**
@@ -267,6 +270,8 @@ class RegistrationContractTest extends ContractTestCase
 
         $this->assertFalse($result['success']);
         $this->assertSame('catalog_unavailable', $result['reason']);
+        // The outage ends, so the faults the client left unspent don't answer the read back.
+        $this->update($world, ['faults' => []]);
         $this->assertSame([], $this->phrases($world, 'write'));
     }
 

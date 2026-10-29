@@ -46,7 +46,7 @@
         },
         {
             "id": "77000100-0005-4000-8000-000000000000",
-            "title": "php write-decision reader#1 p1",
+            "title": "php write-decision writer#5 p1",
             "target_locales": [
                 "es-es"
             ],
@@ -57,7 +57,7 @@
         },
         {
             "id": "77000100-0006-4000-8000-000000000000",
-            "title": "php write-decision reader#2 p1",
+            "title": "php write-decision writer#6 p1",
             "target_locales": [
                 "es-es"
             ],
@@ -68,7 +68,7 @@
         },
         {
             "id": "77000100-0007-4000-8000-000000000000",
-            "title": "php write-decision reader#3 p1",
+            "title": "php write-decision writer#7 p1",
             "target_locales": [
                 "es-es"
             ],
@@ -79,7 +79,7 @@
         },
         {
             "id": "77000100-0008-4000-8000-000000000000",
-            "title": "php write-decision reader#4 p1",
+            "title": "php write-decision writer#8 p1",
             "target_locales": [
                 "es-es"
             ],
@@ -90,7 +90,7 @@
         },
         {
             "id": "77000100-0009-4000-8000-000000000000",
-            "title": "php write-decision listed-exact#1 p1",
+            "title": "php write-decision reader#1 p1",
             "target_locales": [
                 "es-es"
             ],
@@ -101,7 +101,7 @@
         },
         {
             "id": "77000100-000a-4000-8000-000000000000",
-            "title": "php write-decision listed-exact#2 p1",
+            "title": "php write-decision reader#2 p1",
             "target_locales": [
                 "es-es"
             ],
@@ -112,7 +112,7 @@
         },
         {
             "id": "77000100-000b-4000-8000-000000000000",
-            "title": "php write-decision listed-exact#3 p1",
+            "title": "php write-decision reader#3 p1",
             "target_locales": [
                 "es-es"
             ],
@@ -123,7 +123,7 @@
         },
         {
             "id": "77000100-000c-4000-8000-000000000000",
-            "title": "php write-decision listed-exact#4 p1",
+            "title": "php write-decision reader#4 p1",
             "target_locales": [
                 "es-es"
             ],
@@ -134,7 +134,7 @@
         },
         {
             "id": "77000100-000d-4000-8000-000000000000",
-            "title": "php write-decision listed-range#1 p1",
+            "title": "php write-decision reader#5 p1",
             "target_locales": [
                 "es-es"
             ],
@@ -145,7 +145,7 @@
         },
         {
             "id": "77000100-000e-4000-8000-000000000000",
-            "title": "php write-decision listed-range#2 p1",
+            "title": "php write-decision reader#6 p1",
             "target_locales": [
                 "es-es"
             ],
@@ -156,7 +156,7 @@
         },
         {
             "id": "77000100-000f-4000-8000-000000000000",
-            "title": "php write-decision listed-range#3 p1",
+            "title": "php write-decision reader#7 p1",
             "target_locales": [
                 "es-es"
             ],
@@ -167,7 +167,7 @@
         },
         {
             "id": "77000100-0010-4000-8000-000000000000",
-            "title": "php write-decision listed-range#4 p1",
+            "title": "php write-decision reader#8 p1",
             "target_locales": [
                 "es-es"
             ],
@@ -178,7 +178,7 @@
         },
         {
             "id": "77000100-0011-4000-8000-000000000000",
-            "title": "php write-decision off-list#1 p1",
+            "title": "php write-decision listed-exact#1 p1",
             "target_locales": [
                 "es-es"
             ],
@@ -189,7 +189,7 @@
         },
         {
             "id": "77000100-0012-4000-8000-000000000000",
-            "title": "php write-decision off-list#2 p1",
+            "title": "php write-decision listed-exact#2 p1",
             "target_locales": [
                 "es-es"
             ],
@@ -200,7 +200,7 @@
         },
         {
             "id": "77000100-0013-4000-8000-000000000000",
-            "title": "php write-decision off-list#3 p1",
+            "title": "php write-decision listed-exact#3 p1",
             "target_locales": [
                 "es-es"
             ],
@@ -211,13 +211,233 @@
         },
         {
             "id": "77000100-0014-4000-8000-000000000000",
-            "title": "php write-decision off-list#4 p1",
+            "title": "php write-decision listed-exact#4 p1",
             "target_locales": [
                 "es-es"
             ],
             "user": {
                 "token": "120020|0f43b8d578d878c17fc1cb59fe7a8b991a6c3d06",
                 "device_id": "php-write-decision-20"
+            }
+        },
+        {
+            "id": "77000100-0015-4000-8000-000000000000",
+            "title": "php write-decision listed-exact#5 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120021|450fb9f67f5d4286275a6db0bca56a236768e394",
+                "device_id": "php-write-decision-21"
+            }
+        },
+        {
+            "id": "77000100-0016-4000-8000-000000000000",
+            "title": "php write-decision listed-exact#6 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120022|742fd087468c5b0c55782eb50a1206f60f46ea57",
+                "device_id": "php-write-decision-22"
+            }
+        },
+        {
+            "id": "77000100-0017-4000-8000-000000000000",
+            "title": "php write-decision listed-exact#7 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120023|1a6183626f672e206bfd095b4385f61790f3651b",
+                "device_id": "php-write-decision-23"
+            }
+        },
+        {
+            "id": "77000100-0018-4000-8000-000000000000",
+            "title": "php write-decision listed-exact#8 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120024|b1a72aa388dbc5c30ee67d16c7108d9e8f3c0989",
+                "device_id": "php-write-decision-24"
+            }
+        },
+        {
+            "id": "77000100-0019-4000-8000-000000000000",
+            "title": "php write-decision listed-range#1 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120025|09ca1cf1679861b922d4a3fea97604b917b5fcb2",
+                "device_id": "php-write-decision-25"
+            }
+        },
+        {
+            "id": "77000100-001a-4000-8000-000000000000",
+            "title": "php write-decision listed-range#2 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120026|40f26eba43766bfd4e1740df64810fed983f3070",
+                "device_id": "php-write-decision-26"
+            }
+        },
+        {
+            "id": "77000100-001b-4000-8000-000000000000",
+            "title": "php write-decision listed-range#3 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120027|53c565ba1c4a0d9d901350e4eef63c27dcc86532",
+                "device_id": "php-write-decision-27"
+            }
+        },
+        {
+            "id": "77000100-001c-4000-8000-000000000000",
+            "title": "php write-decision listed-range#4 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120028|377cf30ef6304654a9db4d9493105ced8f12d2b0",
+                "device_id": "php-write-decision-28"
+            }
+        },
+        {
+            "id": "77000100-001d-4000-8000-000000000000",
+            "title": "php write-decision listed-range#5 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120029|8174f1ebdc21c57607888fedc57f817a873bdb80",
+                "device_id": "php-write-decision-29"
+            }
+        },
+        {
+            "id": "77000100-001e-4000-8000-000000000000",
+            "title": "php write-decision listed-range#6 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120030|2f2bec2c33c10e0fb614d245271ca03d1745551b",
+                "device_id": "php-write-decision-30"
+            }
+        },
+        {
+            "id": "77000100-001f-4000-8000-000000000000",
+            "title": "php write-decision listed-range#7 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120031|ad373e80f5e6e61c63384ff6d6c08a141d518bc7",
+                "device_id": "php-write-decision-31"
+            }
+        },
+        {
+            "id": "77000100-0020-4000-8000-000000000000",
+            "title": "php write-decision listed-range#8 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120032|52dbb2a1d4422e5b4a40e4d4501607f7ddf37d57",
+                "device_id": "php-write-decision-32"
+            }
+        },
+        {
+            "id": "77000100-0021-4000-8000-000000000000",
+            "title": "php write-decision off-list#1 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120033|4e534ea4b98e19850d8c131b630d038fc11afaf4",
+                "device_id": "php-write-decision-33"
+            }
+        },
+        {
+            "id": "77000100-0022-4000-8000-000000000000",
+            "title": "php write-decision off-list#2 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120034|8cf2bc4d2cb55bda27106ee32276768b70ddb918",
+                "device_id": "php-write-decision-34"
+            }
+        },
+        {
+            "id": "77000100-0023-4000-8000-000000000000",
+            "title": "php write-decision off-list#3 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120035|d2bae892e6fb71886666745b686b6d3c3dd9a913",
+                "device_id": "php-write-decision-35"
+            }
+        },
+        {
+            "id": "77000100-0024-4000-8000-000000000000",
+            "title": "php write-decision off-list#4 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120036|a9b711e032d976699bbd328b9108ddd0e97f2e84",
+                "device_id": "php-write-decision-36"
+            }
+        },
+        {
+            "id": "77000100-0025-4000-8000-000000000000",
+            "title": "php write-decision off-list#5 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120037|b68aa6ef9feeb9d884812a3ba9e5a5eedadb5853",
+                "device_id": "php-write-decision-37"
+            }
+        },
+        {
+            "id": "77000100-0026-4000-8000-000000000000",
+            "title": "php write-decision off-list#6 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120038|278ffc9cbf82bc17a71aa88bfe37aaddfc702cb5",
+                "device_id": "php-write-decision-38"
+            }
+        },
+        {
+            "id": "77000100-0027-4000-8000-000000000000",
+            "title": "php write-decision off-list#7 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120039|7e727a6162fc83e1c35869b089fd0321637ee5b5",
+                "device_id": "php-write-decision-39"
+            }
+        },
+        {
+            "id": "77000100-0028-4000-8000-000000000000",
+            "title": "php write-decision off-list#8 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120040|69bfa2dc454c840c95ac07b89f98c7f8295a99e2",
+                "device_id": "php-write-decision-40"
             }
         }
     ],
@@ -248,99 +468,75 @@
         },
         {
             "id": "77000101-0005-4000-8000-000000000000",
-            "key": "php-write-decision-5-read",
-            "type": "read",
+            "key": "php-write-decision-5-write",
+            "type": "write",
             "project": "77000100-0005-4000-8000-000000000000"
         },
         {
             "id": "77000101-0006-4000-8000-000000000000",
-            "key": "php-write-decision-6-read",
-            "type": "read",
+            "key": "php-write-decision-6-write",
+            "type": "write",
             "project": "77000100-0006-4000-8000-000000000000"
         },
         {
             "id": "77000101-0007-4000-8000-000000000000",
-            "key": "php-write-decision-7-read",
-            "type": "read",
+            "key": "php-write-decision-7-write",
+            "type": "write",
             "project": "77000100-0007-4000-8000-000000000000"
         },
         {
             "id": "77000101-0008-4000-8000-000000000000",
-            "key": "php-write-decision-8-read",
-            "type": "read",
+            "key": "php-write-decision-8-write",
+            "type": "write",
             "project": "77000100-0008-4000-8000-000000000000"
         },
         {
             "id": "77000101-0009-4000-8000-000000000000",
-            "key": "php-write-decision-9-ip",
-            "type": "ip_write",
-            "project": "77000100-0009-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.2.9"
-            ]
+            "key": "php-write-decision-9-read",
+            "type": "read",
+            "project": "77000100-0009-4000-8000-000000000000"
         },
         {
             "id": "77000101-000a-4000-8000-000000000000",
-            "key": "php-write-decision-10-ip",
-            "type": "ip_write",
-            "project": "77000100-000a-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.2.10"
-            ]
+            "key": "php-write-decision-10-read",
+            "type": "read",
+            "project": "77000100-000a-4000-8000-000000000000"
         },
         {
             "id": "77000101-000b-4000-8000-000000000000",
-            "key": "php-write-decision-11-ip",
-            "type": "ip_write",
-            "project": "77000100-000b-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.2.11"
-            ]
+            "key": "php-write-decision-11-read",
+            "type": "read",
+            "project": "77000100-000b-4000-8000-000000000000"
         },
         {
             "id": "77000101-000c-4000-8000-000000000000",
-            "key": "php-write-decision-12-ip",
-            "type": "ip_write",
-            "project": "77000100-000c-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.2.12"
-            ]
+            "key": "php-write-decision-12-read",
+            "type": "read",
+            "project": "77000100-000c-4000-8000-000000000000"
         },
         {
             "id": "77000101-000d-4000-8000-000000000000",
-            "key": "php-write-decision-13-ip",
-            "type": "ip_write",
-            "project": "77000100-000d-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.2.0/24"
-            ]
+            "key": "php-write-decision-13-read",
+            "type": "read",
+            "project": "77000100-000d-4000-8000-000000000000"
         },
         {
             "id": "77000101-000e-4000-8000-000000000000",
-            "key": "php-write-decision-14-ip",
-            "type": "ip_write",
-            "project": "77000100-000e-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.2.0/24"
-            ]
+            "key": "php-write-decision-14-read",
+            "type": "read",
+            "project": "77000100-000e-4000-8000-000000000000"
         },
         {
             "id": "77000101-000f-4000-8000-000000000000",
-            "key": "php-write-decision-15-ip",
-            "type": "ip_write",
-            "project": "77000100-000f-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.2.0/24"
-            ]
+            "key": "php-write-decision-15-read",
+            "type": "read",
+            "project": "77000100-000f-4000-8000-000000000000"
         },
         {
             "id": "77000101-0010-4000-8000-000000000000",
-            "key": "php-write-decision-16-ip",
-            "type": "ip_write",
-            "project": "77000100-0010-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.2.0/24"
-            ]
+            "key": "php-write-decision-16-read",
+            "type": "read",
+            "project": "77000100-0010-4000-8000-000000000000"
         },
         {
             "id": "77000101-0011-4000-8000-000000000000",
@@ -348,7 +544,7 @@
             "type": "ip_write",
             "project": "77000100-0011-4000-8000-000000000000",
             "ip_allowlist": [
-                "10.77.102.17"
+                "10.77.2.17"
             ]
         },
         {
@@ -357,7 +553,7 @@
             "type": "ip_write",
             "project": "77000100-0012-4000-8000-000000000000",
             "ip_allowlist": [
-                "10.77.102.18"
+                "10.77.2.18"
             ]
         },
         {
@@ -366,7 +562,7 @@
             "type": "ip_write",
             "project": "77000100-0013-4000-8000-000000000000",
             "ip_allowlist": [
-                "10.77.102.19"
+                "10.77.2.19"
             ]
         },
         {
@@ -375,7 +571,187 @@
             "type": "ip_write",
             "project": "77000100-0014-4000-8000-000000000000",
             "ip_allowlist": [
-                "10.77.102.20"
+                "10.77.2.20"
+            ]
+        },
+        {
+            "id": "77000101-0015-4000-8000-000000000000",
+            "key": "php-write-decision-21-ip",
+            "type": "ip_write",
+            "project": "77000100-0015-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.2.21"
+            ]
+        },
+        {
+            "id": "77000101-0016-4000-8000-000000000000",
+            "key": "php-write-decision-22-ip",
+            "type": "ip_write",
+            "project": "77000100-0016-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.2.22"
+            ]
+        },
+        {
+            "id": "77000101-0017-4000-8000-000000000000",
+            "key": "php-write-decision-23-ip",
+            "type": "ip_write",
+            "project": "77000100-0017-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.2.23"
+            ]
+        },
+        {
+            "id": "77000101-0018-4000-8000-000000000000",
+            "key": "php-write-decision-24-ip",
+            "type": "ip_write",
+            "project": "77000100-0018-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.2.24"
+            ]
+        },
+        {
+            "id": "77000101-0019-4000-8000-000000000000",
+            "key": "php-write-decision-25-ip",
+            "type": "ip_write",
+            "project": "77000100-0019-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.2.0/24"
+            ]
+        },
+        {
+            "id": "77000101-001a-4000-8000-000000000000",
+            "key": "php-write-decision-26-ip",
+            "type": "ip_write",
+            "project": "77000100-001a-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.2.0/24"
+            ]
+        },
+        {
+            "id": "77000101-001b-4000-8000-000000000000",
+            "key": "php-write-decision-27-ip",
+            "type": "ip_write",
+            "project": "77000100-001b-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.2.0/24"
+            ]
+        },
+        {
+            "id": "77000101-001c-4000-8000-000000000000",
+            "key": "php-write-decision-28-ip",
+            "type": "ip_write",
+            "project": "77000100-001c-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.2.0/24"
+            ]
+        },
+        {
+            "id": "77000101-001d-4000-8000-000000000000",
+            "key": "php-write-decision-29-ip",
+            "type": "ip_write",
+            "project": "77000100-001d-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.2.0/24"
+            ]
+        },
+        {
+            "id": "77000101-001e-4000-8000-000000000000",
+            "key": "php-write-decision-30-ip",
+            "type": "ip_write",
+            "project": "77000100-001e-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.2.0/24"
+            ]
+        },
+        {
+            "id": "77000101-001f-4000-8000-000000000000",
+            "key": "php-write-decision-31-ip",
+            "type": "ip_write",
+            "project": "77000100-001f-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.2.0/24"
+            ]
+        },
+        {
+            "id": "77000101-0020-4000-8000-000000000000",
+            "key": "php-write-decision-32-ip",
+            "type": "ip_write",
+            "project": "77000100-0020-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.2.0/24"
+            ]
+        },
+        {
+            "id": "77000101-0021-4000-8000-000000000000",
+            "key": "php-write-decision-33-ip",
+            "type": "ip_write",
+            "project": "77000100-0021-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.102.33"
+            ]
+        },
+        {
+            "id": "77000101-0022-4000-8000-000000000000",
+            "key": "php-write-decision-34-ip",
+            "type": "ip_write",
+            "project": "77000100-0022-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.102.34"
+            ]
+        },
+        {
+            "id": "77000101-0023-4000-8000-000000000000",
+            "key": "php-write-decision-35-ip",
+            "type": "ip_write",
+            "project": "77000100-0023-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.102.35"
+            ]
+        },
+        {
+            "id": "77000101-0024-4000-8000-000000000000",
+            "key": "php-write-decision-36-ip",
+            "type": "ip_write",
+            "project": "77000100-0024-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.102.36"
+            ]
+        },
+        {
+            "id": "77000101-0025-4000-8000-000000000000",
+            "key": "php-write-decision-37-ip",
+            "type": "ip_write",
+            "project": "77000100-0025-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.102.37"
+            ]
+        },
+        {
+            "id": "77000101-0026-4000-8000-000000000000",
+            "key": "php-write-decision-38-ip",
+            "type": "ip_write",
+            "project": "77000100-0026-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.102.38"
+            ]
+        },
+        {
+            "id": "77000101-0027-4000-8000-000000000000",
+            "key": "php-write-decision-39-ip",
+            "type": "ip_write",
+            "project": "77000100-0027-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.102.39"
+            ]
+        },
+        {
+            "id": "77000101-0028-4000-8000-000000000000",
+            "key": "php-write-decision-40-ip",
+            "type": "ip_write",
+            "project": "77000100-0028-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.102.40"
             ]
         }
     ]

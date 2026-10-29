@@ -882,6 +882,226 @@
         },
         {
             "id": "77000200-0051-4000-8000-000000000000",
+            "title": "php registration writer#81 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120581|89185dd9d6abf32f700d1df0303d6dcaaca689d2",
+                "device_id": "php-registration-81"
+            }
+        },
+        {
+            "id": "77000200-0052-4000-8000-000000000000",
+            "title": "php registration writer#82 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120582|dcf1f01d2f4e125b8063d76e6723a48e38b3bdde",
+                "device_id": "php-registration-82"
+            }
+        },
+        {
+            "id": "77000200-0053-4000-8000-000000000000",
+            "title": "php registration writer#83 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120583|c46f53e204166ff3b7b059d8f2301b2348254a2d",
+                "device_id": "php-registration-83"
+            }
+        },
+        {
+            "id": "77000200-0054-4000-8000-000000000000",
+            "title": "php registration writer#84 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120584|ecf2df57e6a8d766b758fca5e141e6d481dbf4d5",
+                "device_id": "php-registration-84"
+            }
+        },
+        {
+            "id": "77000200-0055-4000-8000-000000000000",
+            "title": "php registration writer#85 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120585|5e15cda63e8df2221a03cba81a146643e9f23fd9",
+                "device_id": "php-registration-85"
+            }
+        },
+        {
+            "id": "77000200-0056-4000-8000-000000000000",
+            "title": "php registration writer#86 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120586|277040ca8426befdd9dd4fa72affee76b3c4acd7",
+                "device_id": "php-registration-86"
+            }
+        },
+        {
+            "id": "77000200-0057-4000-8000-000000000000",
+            "title": "php registration writer#87 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120587|aa6e018f4c2aed07341f88aad3d007e6ec8d061a",
+                "device_id": "php-registration-87"
+            }
+        },
+        {
+            "id": "77000200-0058-4000-8000-000000000000",
+            "title": "php registration writer#88 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120588|4f36ad5f3a2d2cd45775132425d72929247d7fc1",
+                "device_id": "php-registration-88"
+            }
+        },
+        {
+            "id": "77000200-0059-4000-8000-000000000000",
+            "title": "php registration writer#89 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120589|bf7dbc76ab4dc076a23939196aed311c41b61cd0",
+                "device_id": "php-registration-89"
+            }
+        },
+        {
+            "id": "77000200-005a-4000-8000-000000000000",
+            "title": "php registration writer#90 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120590|210e42aa915470da8c76340ab39ee1095bcc9e4e",
+                "device_id": "php-registration-90"
+            }
+        },
+        {
+            "id": "77000200-005b-4000-8000-000000000000",
+            "title": "php registration writer#91 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120591|1701fd6e18fb76a25ea2c13cc387fd130b82b114",
+                "device_id": "php-registration-91"
+            }
+        },
+        {
+            "id": "77000200-005c-4000-8000-000000000000",
+            "title": "php registration writer#92 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120592|b3ad7d4814968a5b0dfc2b8f90bf85ffee2e4776",
+                "device_id": "php-registration-92"
+            }
+        },
+        {
+            "id": "77000200-005d-4000-8000-000000000000",
+            "title": "php registration writer#93 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120593|5887b19dca987b42a5c48b7d32d3461d4eb5d913",
+                "device_id": "php-registration-93"
+            }
+        },
+        {
+            "id": "77000200-005e-4000-8000-000000000000",
+            "title": "php registration writer#94 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120594|0d10b45d5ab673a6e57b3881c57f3942a8f06aed",
+                "device_id": "php-registration-94"
+            }
+        },
+        {
+            "id": "77000200-005f-4000-8000-000000000000",
+            "title": "php registration writer#95 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120595|04c416ea728654867355aa6185030eeafda8bd0c",
+                "device_id": "php-registration-95"
+            }
+        },
+        {
+            "id": "77000200-0060-4000-8000-000000000000",
+            "title": "php registration writer#96 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120596|bbba452b684586156f9ada8ae9e4d158d6cdc085",
+                "device_id": "php-registration-96"
+            }
+        },
+        {
+            "id": "77000200-0061-4000-8000-000000000000",
+            "title": "php registration writer#97 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120597|c2a7f722ec3a4395cd6ba5de71413476482ef9ed",
+                "device_id": "php-registration-97"
+            }
+        },
+        {
+            "id": "77000200-0062-4000-8000-000000000000",
+            "title": "php registration writer#98 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120598|5fc9e3bb038cde88368bef6a980e5eb1ae6c0793",
+                "device_id": "php-registration-98"
+            }
+        },
+        {
+            "id": "77000200-0063-4000-8000-000000000000",
+            "title": "php registration writer#99 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120599|4d1ab5ecb8dfebbe19ce1fa5a64eca634ddc6d4b",
+                "device_id": "php-registration-99"
+            }
+        },
+        {
+            "id": "77000200-0064-4000-8000-000000000000",
+            "title": "php registration writer#100 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120600|86b42059832165f35338a4edd32bc04709a0bbc1",
+                "device_id": "php-registration-100"
+            }
+        },
+        {
+            "id": "77000200-0065-4000-8000-000000000000",
             "title": "php registration known#1 p1",
             "target_locales": [
                 "es-es"
@@ -895,12 +1115,12 @@
                 }
             ],
             "user": {
-                "token": "120581|89185dd9d6abf32f700d1df0303d6dcaaca689d2",
-                "device_id": "php-registration-81"
+                "token": "120601|bbc434139532fc3f6089499473ef7184a7d54f71",
+                "device_id": "php-registration-101"
             }
         },
         {
-            "id": "77000200-0052-4000-8000-000000000000",
+            "id": "77000200-0066-4000-8000-000000000000",
             "title": "php registration known#2 p1",
             "target_locales": [
                 "es-es"
@@ -914,12 +1134,12 @@
                 }
             ],
             "user": {
-                "token": "120582|dcf1f01d2f4e125b8063d76e6723a48e38b3bdde",
-                "device_id": "php-registration-82"
+                "token": "120602|450c1ad6cd2154f3fba9a6907e8b932d24f5c60e",
+                "device_id": "php-registration-102"
             }
         },
         {
-            "id": "77000200-0053-4000-8000-000000000000",
+            "id": "77000200-0067-4000-8000-000000000000",
             "title": "php registration known#3 p1",
             "target_locales": [
                 "es-es"
@@ -933,12 +1153,12 @@
                 }
             ],
             "user": {
-                "token": "120583|c46f53e204166ff3b7b059d8f2301b2348254a2d",
-                "device_id": "php-registration-83"
+                "token": "120603|680bb6a822f05a374d8539a952adaa6ffafec4d8",
+                "device_id": "php-registration-103"
             }
         },
         {
-            "id": "77000200-0054-4000-8000-000000000000",
+            "id": "77000200-0068-4000-8000-000000000000",
             "title": "php registration known#4 p1",
             "target_locales": [
                 "es-es"
@@ -952,12 +1172,12 @@
                 }
             ],
             "user": {
-                "token": "120584|ecf2df57e6a8d766b758fca5e141e6d481dbf4d5",
-                "device_id": "php-registration-84"
+                "token": "120604|d618900e86da276d314043386e0eeb0496b1cb70",
+                "device_id": "php-registration-104"
             }
         },
         {
-            "id": "77000200-0055-4000-8000-000000000000",
+            "id": "77000200-0069-4000-8000-000000000000",
             "title": "php registration known#5 p1",
             "target_locales": [
                 "es-es"
@@ -971,12 +1191,12 @@
                 }
             ],
             "user": {
-                "token": "120585|5e15cda63e8df2221a03cba81a146643e9f23fd9",
-                "device_id": "php-registration-85"
+                "token": "120605|571507c2e1109249e093f2fe4e74e9d097ca7b39",
+                "device_id": "php-registration-105"
             }
         },
         {
-            "id": "77000200-0056-4000-8000-000000000000",
+            "id": "77000200-006a-4000-8000-000000000000",
             "title": "php registration known#6 p1",
             "target_locales": [
                 "es-es"
@@ -990,12 +1210,12 @@
                 }
             ],
             "user": {
-                "token": "120586|277040ca8426befdd9dd4fa72affee76b3c4acd7",
-                "device_id": "php-registration-86"
+                "token": "120606|6fa9ebca39589ca3c1e9215407a7f9297d42d53c",
+                "device_id": "php-registration-106"
             }
         },
         {
-            "id": "77000200-0057-4000-8000-000000000000",
+            "id": "77000200-006b-4000-8000-000000000000",
             "title": "php registration known#7 p1",
             "target_locales": [
                 "es-es"
@@ -1009,12 +1229,12 @@
                 }
             ],
             "user": {
-                "token": "120587|aa6e018f4c2aed07341f88aad3d007e6ec8d061a",
-                "device_id": "php-registration-87"
+                "token": "120607|2971730dc0e55320fb320482069f7a4459dd7567",
+                "device_id": "php-registration-107"
             }
         },
         {
-            "id": "77000200-0058-4000-8000-000000000000",
+            "id": "77000200-006c-4000-8000-000000000000",
             "title": "php registration known#8 p1",
             "target_locales": [
                 "es-es"
@@ -1028,12 +1248,12 @@
                 }
             ],
             "user": {
-                "token": "120588|4f36ad5f3a2d2cd45775132425d72929247d7fc1",
-                "device_id": "php-registration-88"
+                "token": "120608|258433b824f3435a640a9674e9ee5174258b0630",
+                "device_id": "php-registration-108"
             }
         },
         {
-            "id": "77000200-0059-4000-8000-000000000000",
+            "id": "77000200-006d-4000-8000-000000000000",
             "title": "php registration known#9 p1",
             "target_locales": [
                 "es-es"
@@ -1047,12 +1267,12 @@
                 }
             ],
             "user": {
-                "token": "120589|bf7dbc76ab4dc076a23939196aed311c41b61cd0",
-                "device_id": "php-registration-89"
+                "token": "120609|ef3c941ce504bb4bf463ac1d970cc187175c3b94",
+                "device_id": "php-registration-109"
             }
         },
         {
-            "id": "77000200-005a-4000-8000-000000000000",
+            "id": "77000200-006e-4000-8000-000000000000",
             "title": "php registration known#10 p1",
             "target_locales": [
                 "es-es"
@@ -1066,12 +1286,12 @@
                 }
             ],
             "user": {
-                "token": "120590|210e42aa915470da8c76340ab39ee1095bcc9e4e",
-                "device_id": "php-registration-90"
+                "token": "120610|97f871d361bb9d0916a3c8c56207fd554f642d3b",
+                "device_id": "php-registration-110"
             }
         },
         {
-            "id": "77000200-005b-4000-8000-000000000000",
+            "id": "77000200-006f-4000-8000-000000000000",
             "title": "php registration known#11 p1",
             "target_locales": [
                 "es-es"
@@ -1085,12 +1305,12 @@
                 }
             ],
             "user": {
-                "token": "120591|1701fd6e18fb76a25ea2c13cc387fd130b82b114",
-                "device_id": "php-registration-91"
+                "token": "120611|a6b904fd9941dfc80e265cea69ed5679e3ae531a",
+                "device_id": "php-registration-111"
             }
         },
         {
-            "id": "77000200-005c-4000-8000-000000000000",
+            "id": "77000200-0070-4000-8000-000000000000",
             "title": "php registration known#12 p1",
             "target_locales": [
                 "es-es"
@@ -1104,12 +1324,12 @@
                 }
             ],
             "user": {
-                "token": "120592|b3ad7d4814968a5b0dfc2b8f90bf85ffee2e4776",
-                "device_id": "php-registration-92"
+                "token": "120612|313c5ec5f5b05333e1bae71cc3d4c6ca441e3ba5",
+                "device_id": "php-registration-112"
             }
         },
         {
-            "id": "77000200-005d-4000-8000-000000000000",
+            "id": "77000200-0071-4000-8000-000000000000",
             "title": "php registration known#13 p1",
             "target_locales": [
                 "es-es"
@@ -1123,12 +1343,12 @@
                 }
             ],
             "user": {
-                "token": "120593|5887b19dca987b42a5c48b7d32d3461d4eb5d913",
-                "device_id": "php-registration-93"
+                "token": "120613|d974e835d73302ae66aad45d82ea81adb45fdc6b",
+                "device_id": "php-registration-113"
             }
         },
         {
-            "id": "77000200-005e-4000-8000-000000000000",
+            "id": "77000200-0072-4000-8000-000000000000",
             "title": "php registration known#14 p1",
             "target_locales": [
                 "es-es"
@@ -1142,12 +1362,12 @@
                 }
             ],
             "user": {
-                "token": "120594|0d10b45d5ab673a6e57b3881c57f3942a8f06aed",
-                "device_id": "php-registration-94"
+                "token": "120614|92a9dbb37330f7758e3fc8886eb138228a8811d3",
+                "device_id": "php-registration-114"
             }
         },
         {
-            "id": "77000200-005f-4000-8000-000000000000",
+            "id": "77000200-0073-4000-8000-000000000000",
             "title": "php registration known#15 p1",
             "target_locales": [
                 "es-es"
@@ -1161,12 +1381,12 @@
                 }
             ],
             "user": {
-                "token": "120595|04c416ea728654867355aa6185030eeafda8bd0c",
-                "device_id": "php-registration-95"
+                "token": "120615|8aff688bbd7d85d9a7dc35e95949ea06b356b8fa",
+                "device_id": "php-registration-115"
             }
         },
         {
-            "id": "77000200-0060-4000-8000-000000000000",
+            "id": "77000200-0074-4000-8000-000000000000",
             "title": "php registration known#16 p1",
             "target_locales": [
                 "es-es"
@@ -1180,262 +1400,24 @@
                 }
             ],
             "user": {
-                "token": "120596|bbba452b684586156f9ada8ae9e4d158d6cdc085",
-                "device_id": "php-registration-96"
-            }
-        },
-        {
-            "id": "77000200-0061-4000-8000-000000000000",
-            "title": "php registration reader#1 p1",
-            "target_locales": [
-                "es-es"
-            ],
-            "user": {
-                "token": "120597|c2a7f722ec3a4395cd6ba5de71413476482ef9ed",
-                "device_id": "php-registration-97"
-            }
-        },
-        {
-            "id": "77000200-0062-4000-8000-000000000000",
-            "title": "php registration reader#2 p1",
-            "target_locales": [
-                "es-es"
-            ],
-            "user": {
-                "token": "120598|5fc9e3bb038cde88368bef6a980e5eb1ae6c0793",
-                "device_id": "php-registration-98"
-            }
-        },
-        {
-            "id": "77000200-0063-4000-8000-000000000000",
-            "title": "php registration reader#3 p1",
-            "target_locales": [
-                "es-es"
-            ],
-            "user": {
-                "token": "120599|4d1ab5ecb8dfebbe19ce1fa5a64eca634ddc6d4b",
-                "device_id": "php-registration-99"
-            }
-        },
-        {
-            "id": "77000200-0064-4000-8000-000000000000",
-            "title": "php registration reader#4 p1",
-            "target_locales": [
-                "es-es"
-            ],
-            "user": {
-                "token": "120600|86b42059832165f35338a4edd32bc04709a0bbc1",
-                "device_id": "php-registration-100"
-            }
-        },
-        {
-            "id": "77000200-0065-4000-8000-000000000000",
-            "title": "php registration reader#5 p1",
-            "target_locales": [
-                "es-es"
-            ],
-            "user": {
-                "token": "120601|bbc434139532fc3f6089499473ef7184a7d54f71",
-                "device_id": "php-registration-101"
-            }
-        },
-        {
-            "id": "77000200-0066-4000-8000-000000000000",
-            "title": "php registration reader#6 p1",
-            "target_locales": [
-                "es-es"
-            ],
-            "user": {
-                "token": "120602|450c1ad6cd2154f3fba9a6907e8b932d24f5c60e",
-                "device_id": "php-registration-102"
-            }
-        },
-        {
-            "id": "77000200-0067-4000-8000-000000000000",
-            "title": "php registration reader#7 p1",
-            "target_locales": [
-                "es-es"
-            ],
-            "user": {
-                "token": "120603|680bb6a822f05a374d8539a952adaa6ffafec4d8",
-                "device_id": "php-registration-103"
-            }
-        },
-        {
-            "id": "77000200-0068-4000-8000-000000000000",
-            "title": "php registration reader#8 p1",
-            "target_locales": [
-                "es-es"
-            ],
-            "user": {
-                "token": "120604|d618900e86da276d314043386e0eeb0496b1cb70",
-                "device_id": "php-registration-104"
-            }
-        },
-        {
-            "id": "77000200-0069-4000-8000-000000000000",
-            "title": "php registration reporting-writer#1 p1",
-            "target_locales": [
-                "es-es"
-            ],
-            "website_url": "https://site.local",
-            "machine_translate_new_phrases": true,
-            "user": {
-                "token": "120605|571507c2e1109249e093f2fe4e74e9d097ca7b39",
-                "device_id": "php-registration-105"
-            }
-        },
-        {
-            "id": "77000200-006a-4000-8000-000000000000",
-            "title": "php registration reporting-writer#2 p1",
-            "target_locales": [
-                "es-es"
-            ],
-            "website_url": "https://site.local",
-            "machine_translate_new_phrases": true,
-            "user": {
-                "token": "120606|6fa9ebca39589ca3c1e9215407a7f9297d42d53c",
-                "device_id": "php-registration-106"
-            }
-        },
-        {
-            "id": "77000200-006b-4000-8000-000000000000",
-            "title": "php registration reporting-writer#3 p1",
-            "target_locales": [
-                "es-es"
-            ],
-            "website_url": "https://site.local",
-            "machine_translate_new_phrases": true,
-            "user": {
-                "token": "120607|2971730dc0e55320fb320482069f7a4459dd7567",
-                "device_id": "php-registration-107"
-            }
-        },
-        {
-            "id": "77000200-006c-4000-8000-000000000000",
-            "title": "php registration reporting-writer#4 p1",
-            "target_locales": [
-                "es-es"
-            ],
-            "website_url": "https://site.local",
-            "machine_translate_new_phrases": true,
-            "user": {
-                "token": "120608|258433b824f3435a640a9674e9ee5174258b0630",
-                "device_id": "php-registration-108"
-            }
-        },
-        {
-            "id": "77000200-006d-4000-8000-000000000000",
-            "title": "php registration reporting-writer#5 p1",
-            "target_locales": [
-                "es-es"
-            ],
-            "website_url": "https://site.local",
-            "machine_translate_new_phrases": true,
-            "user": {
-                "token": "120609|ef3c941ce504bb4bf463ac1d970cc187175c3b94",
-                "device_id": "php-registration-109"
-            }
-        },
-        {
-            "id": "77000200-006e-4000-8000-000000000000",
-            "title": "php registration reporting-writer#6 p1",
-            "target_locales": [
-                "es-es"
-            ],
-            "website_url": "https://site.local",
-            "machine_translate_new_phrases": true,
-            "user": {
-                "token": "120610|97f871d361bb9d0916a3c8c56207fd554f642d3b",
-                "device_id": "php-registration-110"
-            }
-        },
-        {
-            "id": "77000200-006f-4000-8000-000000000000",
-            "title": "php registration reporting-writer#7 p1",
-            "target_locales": [
-                "es-es"
-            ],
-            "website_url": "https://site.local",
-            "machine_translate_new_phrases": true,
-            "user": {
-                "token": "120611|a6b904fd9941dfc80e265cea69ed5679e3ae531a",
-                "device_id": "php-registration-111"
-            }
-        },
-        {
-            "id": "77000200-0070-4000-8000-000000000000",
-            "title": "php registration reporting-writer#8 p1",
-            "target_locales": [
-                "es-es"
-            ],
-            "website_url": "https://site.local",
-            "machine_translate_new_phrases": true,
-            "user": {
-                "token": "120612|313c5ec5f5b05333e1bae71cc3d4c6ca441e3ba5",
-                "device_id": "php-registration-112"
-            }
-        },
-        {
-            "id": "77000200-0071-4000-8000-000000000000",
-            "title": "php registration reporting-reader#1 p1",
-            "target_locales": [
-                "es-es"
-            ],
-            "website_url": "https://site.local",
-            "machine_translate_new_phrases": true,
-            "user": {
-                "token": "120613|d974e835d73302ae66aad45d82ea81adb45fdc6b",
-                "device_id": "php-registration-113"
-            }
-        },
-        {
-            "id": "77000200-0072-4000-8000-000000000000",
-            "title": "php registration reporting-reader#2 p1",
-            "target_locales": [
-                "es-es"
-            ],
-            "website_url": "https://site.local",
-            "machine_translate_new_phrases": true,
-            "user": {
-                "token": "120614|92a9dbb37330f7758e3fc8886eb138228a8811d3",
-                "device_id": "php-registration-114"
-            }
-        },
-        {
-            "id": "77000200-0073-4000-8000-000000000000",
-            "title": "php registration reporting-reader#3 p1",
-            "target_locales": [
-                "es-es"
-            ],
-            "website_url": "https://site.local",
-            "machine_translate_new_phrases": true,
-            "user": {
-                "token": "120615|8aff688bbd7d85d9a7dc35e95949ea06b356b8fa",
-                "device_id": "php-registration-115"
-            }
-        },
-        {
-            "id": "77000200-0074-4000-8000-000000000000",
-            "title": "php registration reporting-reader#4 p1",
-            "target_locales": [
-                "es-es"
-            ],
-            "website_url": "https://site.local",
-            "machine_translate_new_phrases": true,
-            "user": {
                 "token": "120616|72db6b492df32c36014709ee78bb99a0ea444ff7",
                 "device_id": "php-registration-116"
             }
         },
         {
             "id": "77000200-0075-4000-8000-000000000000",
-            "title": "php registration reporting-reader#5 p1",
+            "title": "php registration known#17 p1",
             "target_locales": [
                 "es-es"
             ],
-            "website_url": "https://site.local",
-            "machine_translate_new_phrases": true,
+            "phrases": [
+                {
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
             "user": {
                 "token": "120617|92e7e05bbe2f5e191cd723e50579c7312c2215fc",
                 "device_id": "php-registration-117"
@@ -1443,12 +1425,18 @@
         },
         {
             "id": "77000200-0076-4000-8000-000000000000",
-            "title": "php registration reporting-reader#6 p1",
+            "title": "php registration known#18 p1",
             "target_locales": [
                 "es-es"
             ],
-            "website_url": "https://site.local",
-            "machine_translate_new_phrases": true,
+            "phrases": [
+                {
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
             "user": {
                 "token": "120618|6a1c29a4cdc0b6a2873c2042eba53b1efdd5def8",
                 "device_id": "php-registration-118"
@@ -1456,12 +1444,18 @@
         },
         {
             "id": "77000200-0077-4000-8000-000000000000",
-            "title": "php registration reporting-reader#7 p1",
+            "title": "php registration known#19 p1",
             "target_locales": [
                 "es-es"
             ],
-            "website_url": "https://site.local",
-            "machine_translate_new_phrases": true,
+            "phrases": [
+                {
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
             "user": {
                 "token": "120619|6a5a2b8e2392e1d50ee0625b8977879a3829348b",
                 "device_id": "php-registration-119"
@@ -1469,12 +1463,18 @@
         },
         {
             "id": "77000200-0078-4000-8000-000000000000",
-            "title": "php registration reporting-reader#8 p1",
+            "title": "php registration known#20 p1",
             "target_locales": [
                 "es-es"
             ],
-            "website_url": "https://site.local",
-            "machine_translate_new_phrases": true,
+            "phrases": [
+                {
+                    "phrase": "Known",
+                    "translations": {
+                        "es-es": "Conocido"
+                    }
+                }
+            ],
             "user": {
                 "token": "120620|ae316ae16adcf53d1896093735ac1c4b3144cb56",
                 "device_id": "php-registration-120"
@@ -1482,7 +1482,7 @@
         },
         {
             "id": "77000200-0079-4000-8000-000000000000",
-            "title": "php registration held-back#1 p1",
+            "title": "php registration reader#1 p1",
             "target_locales": [
                 "es-es"
             ],
@@ -1493,7 +1493,7 @@
         },
         {
             "id": "77000200-007a-4000-8000-000000000000",
-            "title": "php registration held-back#2 p1",
+            "title": "php registration reader#2 p1",
             "target_locales": [
                 "es-es"
             ],
@@ -1504,7 +1504,7 @@
         },
         {
             "id": "77000200-007b-4000-8000-000000000000",
-            "title": "php registration held-back#3 p1",
+            "title": "php registration reader#3 p1",
             "target_locales": [
                 "es-es"
             ],
@@ -1515,7 +1515,7 @@
         },
         {
             "id": "77000200-007c-4000-8000-000000000000",
-            "title": "php registration held-back#4 p1",
+            "title": "php registration reader#4 p1",
             "target_locales": [
                 "es-es"
             ],
@@ -1526,7 +1526,7 @@
         },
         {
             "id": "77000200-007d-4000-8000-000000000000",
-            "title": "php registration held-back#5 p1",
+            "title": "php registration reader#5 p1",
             "target_locales": [
                 "es-es"
             ],
@@ -1537,7 +1537,7 @@
         },
         {
             "id": "77000200-007e-4000-8000-000000000000",
-            "title": "php registration held-back#6 p1",
+            "title": "php registration reader#6 p1",
             "target_locales": [
                 "es-es"
             ],
@@ -1548,7 +1548,7 @@
         },
         {
             "id": "77000200-007f-4000-8000-000000000000",
-            "title": "php registration held-back#7 p1",
+            "title": "php registration reader#7 p1",
             "target_locales": [
                 "es-es"
             ],
@@ -1559,13 +1559,405 @@
         },
         {
             "id": "77000200-0080-4000-8000-000000000000",
-            "title": "php registration held-back#8 p1",
+            "title": "php registration reader#8 p1",
             "target_locales": [
                 "es-es"
             ],
             "user": {
                 "token": "120628|d0b92a6c43e1c71db766691061bcc8a891c2ebf5",
                 "device_id": "php-registration-128"
+            }
+        },
+        {
+            "id": "77000200-0081-4000-8000-000000000000",
+            "title": "php registration reader#9 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120629|eed8cf5a1e952321c4eae32d5328e91b151580e8",
+                "device_id": "php-registration-129"
+            }
+        },
+        {
+            "id": "77000200-0082-4000-8000-000000000000",
+            "title": "php registration reader#10 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120630|7103dfcd3d5f7aacef0f5a46b4e723dcf316296f",
+                "device_id": "php-registration-130"
+            }
+        },
+        {
+            "id": "77000200-0083-4000-8000-000000000000",
+            "title": "php registration reporting-writer#1 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "120631|0d1b2660ee68757bb49d07dbd2f47445f75b1936",
+                "device_id": "php-registration-131"
+            }
+        },
+        {
+            "id": "77000200-0084-4000-8000-000000000000",
+            "title": "php registration reporting-writer#2 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "120632|79bd4b2d62e9b726e05db438e37e01696a56fc67",
+                "device_id": "php-registration-132"
+            }
+        },
+        {
+            "id": "77000200-0085-4000-8000-000000000000",
+            "title": "php registration reporting-writer#3 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "120633|44ee85f7af94f4136ec3f1a3e5d091ac3eac4f22",
+                "device_id": "php-registration-133"
+            }
+        },
+        {
+            "id": "77000200-0086-4000-8000-000000000000",
+            "title": "php registration reporting-writer#4 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "120634|573c39f4d1fd274d76ae89859d67556fe7572629",
+                "device_id": "php-registration-134"
+            }
+        },
+        {
+            "id": "77000200-0087-4000-8000-000000000000",
+            "title": "php registration reporting-writer#5 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "120635|7dc1a49dcd59b968e636ec33ad4f2181d631ccbc",
+                "device_id": "php-registration-135"
+            }
+        },
+        {
+            "id": "77000200-0088-4000-8000-000000000000",
+            "title": "php registration reporting-writer#6 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "120636|365121e8346a179d4c5aa085b99273c2ca09e9aa",
+                "device_id": "php-registration-136"
+            }
+        },
+        {
+            "id": "77000200-0089-4000-8000-000000000000",
+            "title": "php registration reporting-writer#7 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "120637|56ee010625b2475ade4ae91a9d7fafb637adeb5b",
+                "device_id": "php-registration-137"
+            }
+        },
+        {
+            "id": "77000200-008a-4000-8000-000000000000",
+            "title": "php registration reporting-writer#8 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "120638|c684dba2092e08cad87e4ab3bcf0755e17a135ff",
+                "device_id": "php-registration-138"
+            }
+        },
+        {
+            "id": "77000200-008b-4000-8000-000000000000",
+            "title": "php registration reporting-writer#9 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "120639|1c046291eb0507e30c69da05d08658646132a5d1",
+                "device_id": "php-registration-139"
+            }
+        },
+        {
+            "id": "77000200-008c-4000-8000-000000000000",
+            "title": "php registration reporting-writer#10 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "120640|9644d51a99d7fa63c7eb14b755a13efe4fecf2a0",
+                "device_id": "php-registration-140"
+            }
+        },
+        {
+            "id": "77000200-008d-4000-8000-000000000000",
+            "title": "php registration reporting-reader#1 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "120641|f24fef0739e62e5e04dcb444a85168b6b3843c2c",
+                "device_id": "php-registration-141"
+            }
+        },
+        {
+            "id": "77000200-008e-4000-8000-000000000000",
+            "title": "php registration reporting-reader#2 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "120642|681b73737a7422f08064ade894d95f26f2574e2f",
+                "device_id": "php-registration-142"
+            }
+        },
+        {
+            "id": "77000200-008f-4000-8000-000000000000",
+            "title": "php registration reporting-reader#3 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "120643|3ce8350890607e75d873164ae4c983fdff872c57",
+                "device_id": "php-registration-143"
+            }
+        },
+        {
+            "id": "77000200-0090-4000-8000-000000000000",
+            "title": "php registration reporting-reader#4 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "120644|18f488a2526699b27bf1f69172221509d077abd1",
+                "device_id": "php-registration-144"
+            }
+        },
+        {
+            "id": "77000200-0091-4000-8000-000000000000",
+            "title": "php registration reporting-reader#5 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "120645|241898e55de482b54eee08b24567fcf670e0f713",
+                "device_id": "php-registration-145"
+            }
+        },
+        {
+            "id": "77000200-0092-4000-8000-000000000000",
+            "title": "php registration reporting-reader#6 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "120646|bb5d512f6bf42258f02faa744ee9d0085b929e34",
+                "device_id": "php-registration-146"
+            }
+        },
+        {
+            "id": "77000200-0093-4000-8000-000000000000",
+            "title": "php registration reporting-reader#7 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "120647|82b28cb987bae880854465e7bf06564cd9eb6b36",
+                "device_id": "php-registration-147"
+            }
+        },
+        {
+            "id": "77000200-0094-4000-8000-000000000000",
+            "title": "php registration reporting-reader#8 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "120648|f449a96f9de03312014835961df3e2cc263077ec",
+                "device_id": "php-registration-148"
+            }
+        },
+        {
+            "id": "77000200-0095-4000-8000-000000000000",
+            "title": "php registration reporting-reader#9 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "120649|dd241c904ed0c0f1a915a4841f486cb94d675c24",
+                "device_id": "php-registration-149"
+            }
+        },
+        {
+            "id": "77000200-0096-4000-8000-000000000000",
+            "title": "php registration reporting-reader#10 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "machine_translate_new_phrases": true,
+            "user": {
+                "token": "120650|689f93083c26f653a707e27999836b163fce1263",
+                "device_id": "php-registration-150"
+            }
+        },
+        {
+            "id": "77000200-0097-4000-8000-000000000000",
+            "title": "php registration held-back#1 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120651|7f5253a0d0c5f0941e9b1ad9106fa380ec5cc65c",
+                "device_id": "php-registration-151"
+            }
+        },
+        {
+            "id": "77000200-0098-4000-8000-000000000000",
+            "title": "php registration held-back#2 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120652|91884a1262a608e41ea7077a589bb7295e0d3ef9",
+                "device_id": "php-registration-152"
+            }
+        },
+        {
+            "id": "77000200-0099-4000-8000-000000000000",
+            "title": "php registration held-back#3 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120653|b4d8f4c3e6506171d8cee2bde382803d46781b96",
+                "device_id": "php-registration-153"
+            }
+        },
+        {
+            "id": "77000200-009a-4000-8000-000000000000",
+            "title": "php registration held-back#4 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120654|d6075607e0b82f15e2c9765b26303ce4a26cbbd6",
+                "device_id": "php-registration-154"
+            }
+        },
+        {
+            "id": "77000200-009b-4000-8000-000000000000",
+            "title": "php registration held-back#5 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120655|145f688c064890fed2d64e20ee5b585828d52318",
+                "device_id": "php-registration-155"
+            }
+        },
+        {
+            "id": "77000200-009c-4000-8000-000000000000",
+            "title": "php registration held-back#6 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120656|671ec59c1ff0ead796ec81eccdbee9528a31dbae",
+                "device_id": "php-registration-156"
+            }
+        },
+        {
+            "id": "77000200-009d-4000-8000-000000000000",
+            "title": "php registration held-back#7 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120657|bf6eb49ef44df7f13d34533612a553f2c1448c35",
+                "device_id": "php-registration-157"
+            }
+        },
+        {
+            "id": "77000200-009e-4000-8000-000000000000",
+            "title": "php registration held-back#8 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120658|ff85b26d6e81a8e8abe49a23e31c98d516f586c5",
+                "device_id": "php-registration-158"
+            }
+        },
+        {
+            "id": "77000200-009f-4000-8000-000000000000",
+            "title": "php registration held-back#9 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120659|6cf6b91368400face044fcb3d5b3170a5d816683",
+                "device_id": "php-registration-159"
+            }
+        },
+        {
+            "id": "77000200-00a0-4000-8000-000000000000",
+            "title": "php registration held-back#10 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "120660|0e8d4c4f91a5bdfbbf8677d3250a4e94893c82e1",
+                "device_id": "php-registration-160"
             }
         }
     ],
@@ -2148,282 +2540,496 @@
         },
         {
             "id": "77000201-0061-4000-8000-000000000000",
-            "key": "php-registration-97-read",
-            "type": "read",
+            "key": "php-registration-97-write",
+            "type": "write",
             "project": "77000200-0061-4000-8000-000000000000"
         },
         {
             "id": "77000201-0062-4000-8000-000000000000",
-            "key": "php-registration-98-read",
-            "type": "read",
+            "key": "php-registration-98-write",
+            "type": "write",
             "project": "77000200-0062-4000-8000-000000000000"
         },
         {
             "id": "77000201-0063-4000-8000-000000000000",
-            "key": "php-registration-99-read",
-            "type": "read",
+            "key": "php-registration-99-write",
+            "type": "write",
             "project": "77000200-0063-4000-8000-000000000000"
         },
         {
             "id": "77000201-0064-4000-8000-000000000000",
-            "key": "php-registration-100-read",
-            "type": "read",
+            "key": "php-registration-100-write",
+            "type": "write",
             "project": "77000200-0064-4000-8000-000000000000"
         },
         {
             "id": "77000201-0065-4000-8000-000000000000",
-            "key": "php-registration-101-read",
-            "type": "read",
+            "key": "php-registration-101-write",
+            "type": "write",
             "project": "77000200-0065-4000-8000-000000000000"
         },
         {
             "id": "77000201-0066-4000-8000-000000000000",
-            "key": "php-registration-102-read",
-            "type": "read",
+            "key": "php-registration-102-write",
+            "type": "write",
             "project": "77000200-0066-4000-8000-000000000000"
         },
         {
             "id": "77000201-0067-4000-8000-000000000000",
-            "key": "php-registration-103-read",
-            "type": "read",
+            "key": "php-registration-103-write",
+            "type": "write",
             "project": "77000200-0067-4000-8000-000000000000"
         },
         {
             "id": "77000201-0068-4000-8000-000000000000",
-            "key": "php-registration-104-read",
-            "type": "read",
+            "key": "php-registration-104-write",
+            "type": "write",
             "project": "77000200-0068-4000-8000-000000000000"
         },
         {
             "id": "77000201-0069-4000-8000-000000000000",
-            "key": "php-registration-105-ip",
-            "type": "ip_write",
-            "report_discovered_content": true,
-            "project": "77000200-0069-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.4.105"
-            ]
+            "key": "php-registration-105-write",
+            "type": "write",
+            "project": "77000200-0069-4000-8000-000000000000"
         },
         {
             "id": "77000201-006a-4000-8000-000000000000",
-            "key": "php-registration-106-ip",
-            "type": "ip_write",
-            "report_discovered_content": true,
-            "project": "77000200-006a-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.4.106"
-            ]
+            "key": "php-registration-106-write",
+            "type": "write",
+            "project": "77000200-006a-4000-8000-000000000000"
         },
         {
             "id": "77000201-006b-4000-8000-000000000000",
-            "key": "php-registration-107-ip",
-            "type": "ip_write",
-            "report_discovered_content": true,
-            "project": "77000200-006b-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.4.107"
-            ]
+            "key": "php-registration-107-write",
+            "type": "write",
+            "project": "77000200-006b-4000-8000-000000000000"
         },
         {
             "id": "77000201-006c-4000-8000-000000000000",
-            "key": "php-registration-108-ip",
-            "type": "ip_write",
-            "report_discovered_content": true,
-            "project": "77000200-006c-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.4.108"
-            ]
+            "key": "php-registration-108-write",
+            "type": "write",
+            "project": "77000200-006c-4000-8000-000000000000"
         },
         {
             "id": "77000201-006d-4000-8000-000000000000",
-            "key": "php-registration-109-ip",
-            "type": "ip_write",
-            "report_discovered_content": true,
-            "project": "77000200-006d-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.4.109"
-            ]
+            "key": "php-registration-109-write",
+            "type": "write",
+            "project": "77000200-006d-4000-8000-000000000000"
         },
         {
             "id": "77000201-006e-4000-8000-000000000000",
-            "key": "php-registration-110-ip",
-            "type": "ip_write",
-            "report_discovered_content": true,
-            "project": "77000200-006e-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.4.110"
-            ]
+            "key": "php-registration-110-write",
+            "type": "write",
+            "project": "77000200-006e-4000-8000-000000000000"
         },
         {
             "id": "77000201-006f-4000-8000-000000000000",
-            "key": "php-registration-111-ip",
-            "type": "ip_write",
-            "report_discovered_content": true,
-            "project": "77000200-006f-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.4.111"
-            ]
+            "key": "php-registration-111-write",
+            "type": "write",
+            "project": "77000200-006f-4000-8000-000000000000"
         },
         {
             "id": "77000201-0070-4000-8000-000000000000",
-            "key": "php-registration-112-ip",
-            "type": "ip_write",
-            "report_discovered_content": true,
-            "project": "77000200-0070-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.4.112"
-            ]
+            "key": "php-registration-112-write",
+            "type": "write",
+            "project": "77000200-0070-4000-8000-000000000000"
         },
         {
             "id": "77000201-0071-4000-8000-000000000000",
-            "key": "php-registration-113-ip",
-            "type": "ip_write",
-            "report_discovered_content": true,
-            "project": "77000200-0071-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.104.113"
-            ]
+            "key": "php-registration-113-write",
+            "type": "write",
+            "project": "77000200-0071-4000-8000-000000000000"
         },
         {
             "id": "77000201-0072-4000-8000-000000000000",
-            "key": "php-registration-114-ip",
-            "type": "ip_write",
-            "report_discovered_content": true,
-            "project": "77000200-0072-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.104.114"
-            ]
+            "key": "php-registration-114-write",
+            "type": "write",
+            "project": "77000200-0072-4000-8000-000000000000"
         },
         {
             "id": "77000201-0073-4000-8000-000000000000",
-            "key": "php-registration-115-ip",
-            "type": "ip_write",
-            "report_discovered_content": true,
-            "project": "77000200-0073-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.104.115"
-            ]
+            "key": "php-registration-115-write",
+            "type": "write",
+            "project": "77000200-0073-4000-8000-000000000000"
         },
         {
             "id": "77000201-0074-4000-8000-000000000000",
-            "key": "php-registration-116-ip",
-            "type": "ip_write",
-            "report_discovered_content": true,
-            "project": "77000200-0074-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.104.116"
-            ]
+            "key": "php-registration-116-write",
+            "type": "write",
+            "project": "77000200-0074-4000-8000-000000000000"
         },
         {
             "id": "77000201-0075-4000-8000-000000000000",
-            "key": "php-registration-117-ip",
-            "type": "ip_write",
-            "report_discovered_content": true,
-            "project": "77000200-0075-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.104.117"
-            ]
+            "key": "php-registration-117-write",
+            "type": "write",
+            "project": "77000200-0075-4000-8000-000000000000"
         },
         {
             "id": "77000201-0076-4000-8000-000000000000",
-            "key": "php-registration-118-ip",
-            "type": "ip_write",
-            "report_discovered_content": true,
-            "project": "77000200-0076-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.104.118"
-            ]
+            "key": "php-registration-118-write",
+            "type": "write",
+            "project": "77000200-0076-4000-8000-000000000000"
         },
         {
             "id": "77000201-0077-4000-8000-000000000000",
-            "key": "php-registration-119-ip",
-            "type": "ip_write",
-            "report_discovered_content": true,
-            "project": "77000200-0077-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.104.119"
-            ]
+            "key": "php-registration-119-write",
+            "type": "write",
+            "project": "77000200-0077-4000-8000-000000000000"
         },
         {
             "id": "77000201-0078-4000-8000-000000000000",
-            "key": "php-registration-120-ip",
-            "type": "ip_write",
-            "report_discovered_content": true,
-            "project": "77000200-0078-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.104.120"
-            ]
+            "key": "php-registration-120-write",
+            "type": "write",
+            "project": "77000200-0078-4000-8000-000000000000"
         },
         {
             "id": "77000201-0079-4000-8000-000000000000",
-            "key": "php-registration-121-ip",
-            "type": "ip_write",
-            "project": "77000200-0079-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.104.121"
-            ]
+            "key": "php-registration-121-read",
+            "type": "read",
+            "project": "77000200-0079-4000-8000-000000000000"
         },
         {
             "id": "77000201-007a-4000-8000-000000000000",
-            "key": "php-registration-122-ip",
-            "type": "ip_write",
-            "project": "77000200-007a-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.104.122"
-            ]
+            "key": "php-registration-122-read",
+            "type": "read",
+            "project": "77000200-007a-4000-8000-000000000000"
         },
         {
             "id": "77000201-007b-4000-8000-000000000000",
-            "key": "php-registration-123-ip",
-            "type": "ip_write",
-            "project": "77000200-007b-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.104.123"
-            ]
+            "key": "php-registration-123-read",
+            "type": "read",
+            "project": "77000200-007b-4000-8000-000000000000"
         },
         {
             "id": "77000201-007c-4000-8000-000000000000",
-            "key": "php-registration-124-ip",
-            "type": "ip_write",
-            "project": "77000200-007c-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.104.124"
-            ]
+            "key": "php-registration-124-read",
+            "type": "read",
+            "project": "77000200-007c-4000-8000-000000000000"
         },
         {
             "id": "77000201-007d-4000-8000-000000000000",
-            "key": "php-registration-125-ip",
-            "type": "ip_write",
-            "project": "77000200-007d-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.104.125"
-            ]
+            "key": "php-registration-125-read",
+            "type": "read",
+            "project": "77000200-007d-4000-8000-000000000000"
         },
         {
             "id": "77000201-007e-4000-8000-000000000000",
-            "key": "php-registration-126-ip",
-            "type": "ip_write",
-            "project": "77000200-007e-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.104.126"
-            ]
+            "key": "php-registration-126-read",
+            "type": "read",
+            "project": "77000200-007e-4000-8000-000000000000"
         },
         {
             "id": "77000201-007f-4000-8000-000000000000",
-            "key": "php-registration-127-ip",
-            "type": "ip_write",
-            "project": "77000200-007f-4000-8000-000000000000",
-            "ip_allowlist": [
-                "10.77.104.127"
-            ]
+            "key": "php-registration-127-read",
+            "type": "read",
+            "project": "77000200-007f-4000-8000-000000000000"
         },
         {
             "id": "77000201-0080-4000-8000-000000000000",
-            "key": "php-registration-128-ip",
+            "key": "php-registration-128-read",
+            "type": "read",
+            "project": "77000200-0080-4000-8000-000000000000"
+        },
+        {
+            "id": "77000201-0081-4000-8000-000000000000",
+            "key": "php-registration-129-read",
+            "type": "read",
+            "project": "77000200-0081-4000-8000-000000000000"
+        },
+        {
+            "id": "77000201-0082-4000-8000-000000000000",
+            "key": "php-registration-130-read",
+            "type": "read",
+            "project": "77000200-0082-4000-8000-000000000000"
+        },
+        {
+            "id": "77000201-0083-4000-8000-000000000000",
+            "key": "php-registration-131-ip",
             "type": "ip_write",
-            "project": "77000200-0080-4000-8000-000000000000",
+            "report_discovered_content": true,
+            "project": "77000200-0083-4000-8000-000000000000",
             "ip_allowlist": [
-                "10.77.104.128"
+                "10.77.4.131"
+            ]
+        },
+        {
+            "id": "77000201-0084-4000-8000-000000000000",
+            "key": "php-registration-132-ip",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "project": "77000200-0084-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.4.132"
+            ]
+        },
+        {
+            "id": "77000201-0085-4000-8000-000000000000",
+            "key": "php-registration-133-ip",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "project": "77000200-0085-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.4.133"
+            ]
+        },
+        {
+            "id": "77000201-0086-4000-8000-000000000000",
+            "key": "php-registration-134-ip",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "project": "77000200-0086-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.4.134"
+            ]
+        },
+        {
+            "id": "77000201-0087-4000-8000-000000000000",
+            "key": "php-registration-135-ip",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "project": "77000200-0087-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.4.135"
+            ]
+        },
+        {
+            "id": "77000201-0088-4000-8000-000000000000",
+            "key": "php-registration-136-ip",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "project": "77000200-0088-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.4.136"
+            ]
+        },
+        {
+            "id": "77000201-0089-4000-8000-000000000000",
+            "key": "php-registration-137-ip",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "project": "77000200-0089-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.4.137"
+            ]
+        },
+        {
+            "id": "77000201-008a-4000-8000-000000000000",
+            "key": "php-registration-138-ip",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "project": "77000200-008a-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.4.138"
+            ]
+        },
+        {
+            "id": "77000201-008b-4000-8000-000000000000",
+            "key": "php-registration-139-ip",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "project": "77000200-008b-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.4.139"
+            ]
+        },
+        {
+            "id": "77000201-008c-4000-8000-000000000000",
+            "key": "php-registration-140-ip",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "project": "77000200-008c-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.4.140"
+            ]
+        },
+        {
+            "id": "77000201-008d-4000-8000-000000000000",
+            "key": "php-registration-141-ip",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "project": "77000200-008d-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.104.141"
+            ]
+        },
+        {
+            "id": "77000201-008e-4000-8000-000000000000",
+            "key": "php-registration-142-ip",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "project": "77000200-008e-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.104.142"
+            ]
+        },
+        {
+            "id": "77000201-008f-4000-8000-000000000000",
+            "key": "php-registration-143-ip",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "project": "77000200-008f-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.104.143"
+            ]
+        },
+        {
+            "id": "77000201-0090-4000-8000-000000000000",
+            "key": "php-registration-144-ip",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "project": "77000200-0090-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.104.144"
+            ]
+        },
+        {
+            "id": "77000201-0091-4000-8000-000000000000",
+            "key": "php-registration-145-ip",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "project": "77000200-0091-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.104.145"
+            ]
+        },
+        {
+            "id": "77000201-0092-4000-8000-000000000000",
+            "key": "php-registration-146-ip",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "project": "77000200-0092-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.104.146"
+            ]
+        },
+        {
+            "id": "77000201-0093-4000-8000-000000000000",
+            "key": "php-registration-147-ip",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "project": "77000200-0093-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.104.147"
+            ]
+        },
+        {
+            "id": "77000201-0094-4000-8000-000000000000",
+            "key": "php-registration-148-ip",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "project": "77000200-0094-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.104.148"
+            ]
+        },
+        {
+            "id": "77000201-0095-4000-8000-000000000000",
+            "key": "php-registration-149-ip",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "project": "77000200-0095-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.104.149"
+            ]
+        },
+        {
+            "id": "77000201-0096-4000-8000-000000000000",
+            "key": "php-registration-150-ip",
+            "type": "ip_write",
+            "report_discovered_content": true,
+            "project": "77000200-0096-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.104.150"
+            ]
+        },
+        {
+            "id": "77000201-0097-4000-8000-000000000000",
+            "key": "php-registration-151-ip",
+            "type": "ip_write",
+            "project": "77000200-0097-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.104.151"
+            ]
+        },
+        {
+            "id": "77000201-0098-4000-8000-000000000000",
+            "key": "php-registration-152-ip",
+            "type": "ip_write",
+            "project": "77000200-0098-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.104.152"
+            ]
+        },
+        {
+            "id": "77000201-0099-4000-8000-000000000000",
+            "key": "php-registration-153-ip",
+            "type": "ip_write",
+            "project": "77000200-0099-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.104.153"
+            ]
+        },
+        {
+            "id": "77000201-009a-4000-8000-000000000000",
+            "key": "php-registration-154-ip",
+            "type": "ip_write",
+            "project": "77000200-009a-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.104.154"
+            ]
+        },
+        {
+            "id": "77000201-009b-4000-8000-000000000000",
+            "key": "php-registration-155-ip",
+            "type": "ip_write",
+            "project": "77000200-009b-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.104.155"
+            ]
+        },
+        {
+            "id": "77000201-009c-4000-8000-000000000000",
+            "key": "php-registration-156-ip",
+            "type": "ip_write",
+            "project": "77000200-009c-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.104.156"
+            ]
+        },
+        {
+            "id": "77000201-009d-4000-8000-000000000000",
+            "key": "php-registration-157-ip",
+            "type": "ip_write",
+            "project": "77000200-009d-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.104.157"
+            ]
+        },
+        {
+            "id": "77000201-009e-4000-8000-000000000000",
+            "key": "php-registration-158-ip",
+            "type": "ip_write",
+            "project": "77000200-009e-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.104.158"
+            ]
+        },
+        {
+            "id": "77000201-009f-4000-8000-000000000000",
+            "key": "php-registration-159-ip",
+            "type": "ip_write",
+            "project": "77000200-009f-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.104.159"
+            ]
+        },
+        {
+            "id": "77000201-00a0-4000-8000-000000000000",
+            "key": "php-registration-160-ip",
+            "type": "ip_write",
+            "project": "77000200-00a0-4000-8000-000000000000",
+            "ip_allowlist": [
+                "10.77.104.160"
             ]
         }
     ]

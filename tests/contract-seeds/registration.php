@@ -12,7 +12,7 @@ $reporting = ['target_locales' => ['es-es'], 'website_url' => 'https://site.loca
 
 return [
     'index' => 2,
-    'runs' => 8,
+    'runs' => 10,
     'worlds' => [
         'writer' => ['count' => 10, 'projects' => ['p1' => $project], 'keys' => ['write' => ['project' => 'p1', 'type' => 'write']]],
         'known' => ['count' => 2, 'projects' => ['p1' => $project + ['phrases' => [['phrase' => 'Known', 'translations' => ['es-es' => 'Conocido']]]]], 'keys' => ['write' => ['project' => 'p1', 'type' => 'write']]],

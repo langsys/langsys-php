@@ -75,6 +75,44 @@
                 "token": "125004|645abb68fed72f10b9164a3c2809c6f6ef492197",
                 "device_id": "php-unconfigured-4"
             }
+        },
+        {
+            "id": "77000b00-0005-4000-8000-000000000000",
+            "title": "php unconfigured hello#5 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "125005|4c7d95a9cb5428212cda5533e3a08642667858f0",
+                "device_id": "php-unconfigured-5"
+            }
+        },
+        {
+            "id": "77000b00-0006-4000-8000-000000000000",
+            "title": "php unconfigured hello#6 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "125006|7bf9c5941715e3142888d17d860713c935055bc2",
+                "device_id": "php-unconfigured-6"
+            }
         }
     ],
     "keys": [
@@ -101,6 +139,18 @@
             "key": "php-unconfigured-4-write",
             "type": "write",
             "project": "77000b00-0004-4000-8000-000000000000"
+        },
+        {
+            "id": "77000b01-0005-4000-8000-000000000000",
+            "key": "php-unconfigured-5-write",
+            "type": "write",
+            "project": "77000b00-0005-4000-8000-000000000000"
+        },
+        {
+            "id": "77000b01-0006-4000-8000-000000000000",
+            "key": "php-unconfigured-6-write",
+            "type": "write",
+            "project": "77000b00-0006-4000-8000-000000000000"
         }
     ]
 }
