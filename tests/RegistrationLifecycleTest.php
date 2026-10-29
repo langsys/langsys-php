@@ -165,7 +165,7 @@ class RegistrationLifecycleTest extends TestCase
         $this->http->failPosts = true;
         $client->flushPendingRegistrations();
 
-        $client->resetRequestState();
+        $client->resetRequestState()->setLocale('es-es');
         $this->assertFalse($client->hasPendingRegistrations(), 'one request\'s phrases never ride another\'s send');
 
         $client->translate('From the second request', null, 'UI');
@@ -258,7 +258,7 @@ class RegistrationLifecycleTest extends TestCase
         $this->http->failCatalog = false;
         $this->assertSame('Guardar', $client->translate('Save', null, 'UI'));
 
-        $client->resetRequestState();
+        $client->resetRequestState()->setLocale('es-es');
         $this->http->failCatalog = true;
         $client->translate('Save', null, 'UI');
         $fetches = $this->catalogFetches();

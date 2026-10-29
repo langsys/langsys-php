@@ -190,6 +190,22 @@ class RequestLocaleTest extends TestCase
     }
 
     /**
+     * A locale set with setLocale() belongs to the request that set it: on a
+     * long-lived worker the next request resolves its own.
+     */
+    public function testResetRequestStateClearsASetLocale(): void
+    {
+        $client = $this->client();
+        $client->setLocale('fr-fr');
+        $this->assertSame('fr-fr', $client->getLocale());
+
+        $client->resetRequestState();
+        $client->request = ['accept_language' => 'es'];
+
+        $this->assertSame('es-es', $client->getLocale());
+    }
+
+    /**
      * A binding that sets Vary on its own response turns the Client's off;
      * the decision still comes back, Vary included.
      */

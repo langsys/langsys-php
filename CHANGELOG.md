@@ -275,9 +275,11 @@ its id or re-registers it.
   because attaching the wrong translations is visible to a reader while silently
   serving nothing is indistinguishable from a block that was never registered.
 
-- `Client::resetRequestState()` — clears the per-request write decision and the
-  request-scoped caches. Required under long-lived runtimes (Octane, Swoole,
-  RoadRunner, queue workers) where the `Client` outlives the request.
+- `Client::resetRequestState()` — clears the per-request write decision, the
+  locale (one set with `setLocale()` included) and the request-scoped caches.
+  Required under long-lived runtimes (Octane, Swoole, RoadRunner, queue workers)
+  where the `Client` outlives the request; a worker serving one fixed locale calls
+  `setLocale()` again after each reset.
 
 ### Fixed
 

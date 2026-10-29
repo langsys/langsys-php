@@ -876,9 +876,11 @@ class Client
      *
      * Under a long-lived runtime (Octane, Swoole, RoadRunner, a queue worker)
      * this Client can outlive the request it was built for, which would carry
-     * one caller's write decision into the next caller's request. Call this
-     * between requests. Flush pending registrations first - this drops what is
-     * still queued rather than sending it.
+     * one caller's write decision and locale into the next caller's request.
+     * Call this between requests. Flush pending registrations first - this
+     * drops what is still queued rather than sending it. A locale set with
+     * setLocale() is cleared too, so a worker that serves one fixed locale
+     * sets it again after each reset.
      *
      * @return $this
      */
@@ -896,6 +898,7 @@ class Client
         $this->pendingContentBlocks = [];
 
         $this->writeEnabled = null;
+        $this->locale = null;
         $this->requestLocale = null;
         $this->liveCatalogs = [];
         $this->unavailableCatalogs = [];

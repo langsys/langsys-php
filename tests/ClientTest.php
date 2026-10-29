@@ -800,7 +800,7 @@ class ClientTest extends TestCase
         $this->assertSame('Guardar', $client->translate('Save', null, 'UI'), 'Control: this unit must have read the seeded catalog.');
 
         $mockHttp->setResponse('GET', 'translations', ['data' => ['UI' => ['Save' => 'Salvar']]]);
-        $client->resetRequestState();
+        $client->resetRequestState()->setLocale('es-es');
 
         $this->assertSame('Salvar', $client->translate('Save', null, 'UI'), "The next unit served the previous unit's catalog.");
     }

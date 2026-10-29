@@ -60,6 +60,14 @@ and it is never registered again.
   answers `write_enabled: true`. An address-restricted write key used from outside its
   allow-list registers nothing; it registered before.
 
+## Long-lived workers
+
+A worker that keeps one `Client` across requests (Octane, Swoole, RoadRunner, a queue
+worker) calls `flushPendingRegistrations()` and then `resetRequestState()` between
+requests. The reset clears everything that belongs to one request: the write decision, the
+queue, the catalogs read for it and the locale, including one set with `setLocale()`. A
+worker that serves one fixed locale calls `setLocale()` again after each reset.
+
 ## Output that changed
 
 - **`translatePage()` and `translateContentBlock()`** add `data-ls-contentblock="<id>"` to

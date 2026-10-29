@@ -755,7 +755,8 @@ function. Neither happens when the process is killed (out of memory, a hard time
 and a long-lived worker (Octane, Swoole, a queue worker) that keeps one `Client` for
 its whole life reaches neither until it exits. Call `flushPendingRegistrations()`
 yourself at the end of each request or job, then `resetRequestState()`; the reset
-drops anything still queued, so one request's phrases never go out with another's.
+drops anything still queued, so one request's phrases never go out with another's, and
+clears the locale, one set with `setLocale()` included.
 
 **When a send fails** the items stay queued and the SDK backs off: the next flush
 waits 3 seconds, then 6, doubling up to 5 minutes, and the first successful send
