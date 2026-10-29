@@ -596,6 +596,22 @@ class ValueMarkersTest extends TestCase
     }
 
     /**
+     * A `{name}` that a param or a translation writes is text: only text
+     * nothing rewrote has its marked values put back.
+     *
+     * @dataProvider pathProvider
+     */
+    public function testALiteralPlaceholderARenderWritesStaysText($path): void
+    {
+        $client = $this->client(['UI' => ['Hello {name} {who}' => 'Hola {who}']]);
+
+        $this->assertSame(
+            '<p>Hola {name}</p>',
+            $this->render($client, $path, '<p>Hello ' . self::comment('name', 'Ana') . ' {who}</p>', ['who' => '{name}'])
+        );
+    }
+
+    /**
      * In a line rendered as a string, a placeholder its reader issued is its
      * marker, and one no live reader issued is text as given.
      */

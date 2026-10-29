@@ -330,7 +330,7 @@ final class ValueMarkers
     {
         foreach ($this->runs as $run) {
             $node = $run['node'];
-            if ($node->parentNode === null || strpos($node->textContent, self::OPEN) !== false) {
+            if ($node->parentNode === null || $node->textContent !== $run['text']) {
                 continue;
             }
 
