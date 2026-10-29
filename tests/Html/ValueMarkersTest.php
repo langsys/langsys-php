@@ -596,6 +596,36 @@ class ValueMarkersTest extends TestCase
     }
 
     /**
+     * A unit renders the values of the text it registered from: never one
+     * read inside a nested marked unit, an element its author excluded, or
+     * another phrase host, whichever comes first.
+     *
+     * @dataProvider pathProvider
+     */
+    public function testAUnitTakesItsValuesOnlyFromTheTextItRegistered($path): void
+    {
+        $client = $this->client(['UI' => [
+            'Outer {name} {m0o}{m0c}' => 'Fuera {name} {m0o}{m0c}',
+            '{m0o}{m0c} Outer {name}' => '{m0o}{m0c} Fuera {name}',
+            '{n} items' => '{n} cosas',
+        ]]);
+        $nested = '<span data-ls-contentblock="inner">Inner ' . self::comment('name', 'Q') . '</span>';
+
+        $out = $this->render($client, $path, '<p data-ls-phrase>Outer ' . self::comment('name', 'Ana') . ' ' . $nested . '</p>');
+        $this->assertStringContainsString('Fuera ' . self::comment('name', 'Ana') . ' <span', $out, 'a nested block after the host\'s text');
+
+        $out = $this->render($client, $path, '<p data-ls-phrase>' . $nested . ' Outer ' . self::comment('name', 'Ana') . '</p>');
+        $this->assertStringContainsString('</span> Fuera ' . self::comment('name', 'Ana'), $out, 'a nested block before the host\'s text');
+
+        $out = $this->render($client, $path, '<div><span translate="no">' . self::comment('n', '5') . ' items</span><p>' . self::comment('n', '7') . ' items</p></div>');
+        $this->assertStringContainsString('<p>' . self::comment('n', '7') . ' cosas</p>', $out, 'an excluded element first');
+
+        $out = $this->render($client, $path, '<div><p data-ls-phrase>' . self::comment('n', '5') . ' items</p><p>' . self::comment('n', '7') . ' items</p></div>');
+        $this->assertStringContainsString('<p data-ls-phrase>' . self::comment('n', '5') . ' cosas</p>', $out, 'the host');
+        $this->assertStringContainsString('<p>' . self::comment('n', '7') . ' cosas</p>', $out, 'another phrase host first');
+    }
+
+    /**
      * A `{name}` that a param or a translation writes is text: only text
      * nothing rewrote has its marked values put back.
      *

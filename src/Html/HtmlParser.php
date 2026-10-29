@@ -730,7 +730,7 @@ class HtmlParser
      * unit made only of markers.
      *
      * @param string $html
-     * @return array{tokens: string[], textNodes: int, markers: ValueMarkers|null}
+     * @return array{tokens: string[], textNodes: int, markers: ValueMarkers|null, root: \DOMElement|null}
      */
     public function fragmentUnit($html)
     {
@@ -751,7 +751,7 @@ class HtmlParser
             $this->walkNode($doc->documentElement, $tokens, $textNodes);
         }
 
-        return ['tokens' => $tokens, 'textNodes' => $textNodes, 'markers' => $markers];
+        return ['tokens' => $tokens, 'textNodes' => $textNodes, 'markers' => $markers, 'root' => isset($doc) ? $doc->documentElement : null];
     }
 
     /**

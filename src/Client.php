@@ -2955,7 +2955,7 @@ class Client
         // that text node in place. A value read from a marker renders as the
         // param of its name, under any the caller sets.
         if (!$declared && HtmlParser::isPhraseUnit($unit)) {
-            $runParams = $markers === null ? [] : $markers->sentinels();
+            $runParams = $markers === null ? [] : $markers->sentinels($unit['root']);
             $rendered = $this->translateSource($phrases[0], $locale, $category, null, array_merge($runParams, $params));
 
             return $this->replaceFragmentText($html, $phrases[0], $rendered);

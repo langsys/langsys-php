@@ -246,8 +246,8 @@ final class ValueMarkers
 
     /**
      * The params a render of $text inside $scope interpolates with: the values
-     * of every run at or below $scope, under $callerParams, which win for any
-     * name the caller sets itself.
+     * of every run $scope registers from, under $callerParams, which win for
+     * any name the caller sets itself.
      *
      * @param DOMNode $scope A collapsed text node, or an element holding some
      * @param string $text The text about to be interpolated
@@ -259,7 +259,7 @@ final class ValueMarkers
         $params = [];
 
         foreach ($this->runs as $run) {
-            if (!self::within($run['node'], $scope)) {
+            if (!self::ownText($run['node'], $scope)) {
                 continue;
             }
 
@@ -272,16 +272,22 @@ final class ValueMarkers
     }
 
     /**
-     * The values of every run read, each as its sentinel, for a render that
-     * has no node to scope them to: a fragment interpolated as one phrase.
-     * Where two runs name the same value, the first is used.
+     * The values of every run read, each as its sentinel, for a render
+     * interpolated as one phrase: a rich line, or with $scope, the runs a
+     * fragment registers from. Where two runs name the same value, the first
+     * is used.
      *
+     * @param DOMNode|null $scope
      * @return array
      */
-    public function sentinels()
+    public function sentinels(?DOMNode $scope = null)
     {
         $params = [];
         foreach ($this->runs as $run) {
+            if ($scope !== null && !self::ownText($run['node'], $scope)) {
+                continue;
+            }
+
             foreach ($run['values'] as $name => $entry) {
                 if (!isset($params[$name])) {
                     $params[$name] = $this->sentinel($name, $entry);
@@ -576,6 +582,32 @@ final class ValueMarkers
     private function sentinel($name, array $entry)
     {
         return self::OPEN . $this->nonce . base64_encode((string) json_encode([$name, $entry['value'], $entry['form']])) . self::CLOSE;
+    }
+
+    /**
+     * Whether $scope registers from $node: it is at or below $scope, and not
+     * inside an element below it that is read apart - a marked phrase host or
+     * content block, which is a unit of its own, or an element its author
+     * excluded. No run is read inside an element whose text is not prose
+     * (SKIPPED), so none needs checking for one.
+     *
+     * @param DOMNode $node
+     * @param DOMNode $scope
+     * @return bool
+     */
+    private static function ownText(DOMNode $node, DOMNode $scope)
+    {
+        for ($at = $node; $at !== null; $at = $at->parentNode) {
+            if ($at === $scope) {
+                return true;
+            }
+
+            if ($at instanceof DOMElement && (HtmlParser::isMarkedHost($at) || HtmlParser::isTranslationExcluded($at))) {
+                return false;
+            }
+        }
+
+        return false;
     }
 
     /**
