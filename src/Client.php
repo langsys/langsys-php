@@ -1124,7 +1124,8 @@ class Client
      * node: a translation can place the source's tags but never add one,
      * change an attribute or inject script, and a token the source lacks is
      * dropped. A line from the miss fallback is the app's own and comes back
-     * as the framework prints it; with neither, the source line comes back
+     * as the framework prints it, a marked value in it as its marker; with
+     * neither, the source line comes back
      * with its values filled. An element its author excluded is kept whole,
      * one empty token pair restored as written, and a line made only of such
      * elements registers nothing (TOK-1).
@@ -1163,7 +1164,7 @@ class Client
         $rendered = $this->translateCall($encoded['text'], $locale, $category, null, array_merge($markers->sentinels(), $params, $tokenizer->tokenParams(count($slots))), $from, $this->earlierLookup($tokenizer, $encoded['earlier']));
 
         if ($from === 'fallback') {
-            return ['html' => $rendered, 'from' => $from];
+            return ['html' => \Langsys\SDK\Html\ValueMarkers::expandHtml($rendered), 'from' => $from];
         }
 
         // Every token the source has is a param, so one still in the text

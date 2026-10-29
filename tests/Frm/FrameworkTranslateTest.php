@@ -258,6 +258,31 @@ class FrameworkTranslateTest extends TestCase
         $this->assertSame(['html' => 'Lee <a href="/es/terminos">los términos</a>', 'from' => 'fallback'], $client->translateRich('Read our <a href="/terms">terms</a>'));
     }
 
+    /**
+     * A marked value comes back in a language file's line as the marker it
+     * was read from, its value escaped; inside a tag, where no marker can
+     * stand, as its escaped value.
+     */
+    public function testALanguageFileLineGivesAMarkedValueBackAsItsMarker(): void
+    {
+        $lines = [
+            'Hello {name} {m0o}x{m0c}' => 'Hola {name} <b>x</b>',
+            'Hi {name} {m0o}y{m0c}' => 'Hola <abbr title="{name}">{name}</abbr> <i>y</i>',
+        ];
+        $client = $this->client()->useMissFallback(function ($phrase) use ($lines) {
+            return isset($lines[$phrase]) ? $lines[$phrase] : null;
+        });
+
+        $this->assertSame(
+            ['html' => 'Hola <!--ls:name-->B&amp;ob<!--/ls--> <b>x</b>', 'from' => 'fallback'],
+            $client->translateRich('Hello <!--ls:name-->B&amp;ob<!--/ls--> <b>x</b>')
+        );
+        $this->assertSame(
+            ['html' => 'Hola <abbr title="Ana &lt;3 &quot;A&quot;"><span data-ls-param="name">Ana &lt;3 "A"</span></abbr> <i>y</i>', 'from' => 'fallback'],
+            $client->translateRich('Hi <span data-ls-param="name">Ana &lt;3 "A"</span> <i>y</i>')
+        );
+    }
+
     public function testWithNeitherTheSourceLineComesBack(): void
     {
         $client = $this->client();

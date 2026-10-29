@@ -478,6 +478,56 @@ final class ValueMarkers
     }
 
     /**
+     * $html with every sentinel a live reader issued written as the marker it
+     * came from, its value escaped: how a line rendered as a string rather
+     * than as nodes, such as a language file's, gives its values back. Inside
+     * a tag, where no marker can stand, a sentinel is its escaped value.
+     * Anything else shaped like one is left as it is.
+     *
+     * @param string $html
+     * @return string
+     */
+    public static function expandHtml($html)
+    {
+        $html = (string) $html;
+        if (strpos($html, self::OPEN) === false || !preg_match_all(self::SENTINEL_PATTERN, $html, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE)) {
+            return $html;
+        }
+
+        $out = '';
+        $at = 0;
+        foreach ($matches as $match) {
+            list($whole, $offset) = $match[0];
+            $decoded = self::issued($match[1][0], $match[2][0]);
+            if ($decoded === null) {
+                continue;
+            }
+            list($name, $value, $form) = $decoded;
+
+            $before = substr($html, 0, $offset);
+            $lt = strrpos($before, '<');
+            $gt = strrpos($before, '>');
+
+            if ($lt !== false && ($gt === false || $lt > $gt)) {
+                $marker = htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            } elseif (is_array($form)) {
+                $marker = '<span';
+                foreach ($form as $attribute => $attributeValue) {
+                    $marker .= ' ' . $attribute . '="' . htmlspecialchars((string) $attributeValue, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '"';
+                }
+                $marker .= '>' . htmlspecialchars((string) $value, ENT_NOQUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</span>';
+            } else {
+                $marker = '<!--ls:' . $name . '-->' . htmlspecialchars((string) $value, ENT_NOQUOTES | ENT_SUBSTITUTE, 'UTF-8') . '<!--/ls-->';
+            }
+
+            $out .= substr($html, $at, $offset - $at) . $marker;
+            $at = $offset + strlen($whole);
+        }
+
+        return $out . substr($html, $at);
+    }
+
+    /**
      * $text with each sentinel's nonce left out, so the same values read by
      * two readers compare equal: a form for comparing, never for rendering.
      *

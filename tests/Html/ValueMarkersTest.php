@@ -595,6 +595,21 @@ class ValueMarkersTest extends TestCase
         $this->assertTrue($other->any());
     }
 
+    /**
+     * In a line rendered as a string, a placeholder its reader issued is its
+     * marker, and one no live reader issued is text as given.
+     */
+    public function testAStringLineExpandsOnlyItsReadersPlaceholders(): void
+    {
+        $markers = ValueMarkers::read(self::fragmentRoot('<p>Hello <!--ls:name-->Ana<!--/ls--></p>'));
+        $forged = self::forged('name', '<b>x</b>', null, str_repeat('0', 32));
+
+        $this->assertSame(
+            'Hola <!--ls:name-->Ana<!--/ls--> y ' . $forged,
+            ValueMarkers::expandHtml('Hola ' . $markers->sentinels()['name'] . ' y ' . $forged)
+        );
+    }
+
     private static function fragmentRoot($html)
     {
         $internalErrors = libxml_use_internal_errors(true);
