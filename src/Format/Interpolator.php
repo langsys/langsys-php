@@ -907,6 +907,17 @@ class Interpolator
             return $this->formatDate($value, $locale);
         }
 
+        // An enum renders as Laravel's enum_value() reads it: a backed enum by
+        // its value, a plain one by its name. Before PHP 8.1 neither interface
+        // exists and both checks are false.
+        if ($value instanceof \BackedEnum) {
+            return $this->formatValue($value->value, $locale);
+        }
+
+        if ($value instanceof \UnitEnum) {
+            return $value->name;
+        }
+
         if (is_object($value) && method_exists($value, '__toString')) {
             return (string) $value;
         }
@@ -988,6 +999,14 @@ class Interpolator
 
         if (is_bool($value)) {
             return $value ? 'true' : 'false';
+        }
+
+        if ($value instanceof \BackedEnum) {
+            return $value->value;
+        }
+
+        if ($value instanceof \UnitEnum) {
+            return $value->name;
         }
 
         if (is_object($value) && method_exists($value, '__toString')) {

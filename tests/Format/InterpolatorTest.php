@@ -155,6 +155,44 @@ class InterpolatorTest extends TestCase
         );
     }
 
+    /**
+     * An enum renders as Laravel's enum_value() reads it: a backed enum by its
+     * value, a plain enum by its name, in a placeholder and as an ICU argument.
+     */
+    public function testAnEnumParamRendersByItsValueOrName()
+    {
+        if (PHP_VERSION_ID < 80100) {
+            $this->markTestSkipped('Enums need PHP 8.1');
+        }
+
+        // Declared at run time, so the file still parses on PHP 7.4.
+        if (!class_exists(\Langsys\SDK\Tests\Format\Fixtures\TicketStatus::class, false)) {
+            eval('namespace Langsys\SDK\Tests\Format\Fixtures;
+                enum TicketStatus: string { case Open = \'open\'; case OnHold = \'on hold\'; }
+                enum Priority: int { case High = 3; }
+                enum Channel { case Email; }');
+        }
+
+        $this->assertSame(
+            'Status: on hold, priority 3, via Email',
+            $this->interpolator->interpolate('Status: {status}, priority {priority}, via {channel}', [
+                'status' => \Langsys\SDK\Tests\Format\Fixtures\TicketStatus::OnHold,
+                'priority' => \Langsys\SDK\Tests\Format\Fixtures\Priority::High,
+                'channel' => \Langsys\SDK\Tests\Format\Fixtures\Channel::Email,
+            ])
+        );
+
+        $this->requireIntl();
+
+        $this->assertSame(
+            'Abierto por Email',
+            $this->interpolator->interpolate('{status, select, open {Abierto} other {Otro}} por {channel}', [
+                'status' => \Langsys\SDK\Tests\Format\Fixtures\TicketStatus::Open,
+                'channel' => \Langsys\SDK\Tests\Format\Fixtures\Channel::Email,
+            ], 'es-es')
+        );
+    }
+
     public function testBooleansRenderAsJsStyleTrueFalse()
     {
         // Matches JS String(bool), NOT PHP's native "1" / "".
