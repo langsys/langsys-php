@@ -178,9 +178,9 @@ class HttpClientTest extends TestCase
             '/currencies/es-es',
             '/countries/es-es',
             '/countries/dial-codes/es-es',
-            '/locales?locales%5B0%5D=es-es',
-            '/locales/flat?locales%5B0%5D=es-es',
-            '/locales/data?locales%5B0%5D=es-es',
+            '/locales?locales%5B0%5D=es-es&append_target_locales=0',
+            '/locales/flat?locales%5B0%5D=es-es&append_target_locales=0',
+            '/locales/data?locales%5B0%5D=es-es&append_target_locales=0',
         ], $reads);
     }
 

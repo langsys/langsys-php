@@ -86,9 +86,14 @@ class Client
     protected $utilities;
 
     /**
-     * @var array<string, array> Reference lists read, by route and display locale
+     * @var array<string, array> Reference lists held, by list and display locale
      */
     private $referenceLists = [];
+
+    /**
+     * @var array<string, array{failures: int, until: float}> Failed reference reads, by list and display locale
+     */
+    private $referenceFailures = [];
 
     /**
      * @var string|null Target locale for translations
@@ -2334,10 +2339,14 @@ class Client
      * The currencies, each named in a display locale: `code`, `name`, `symbol`,
      * `symbol_native`, `decimal_digits` and `rounding`.
      *
-     * Each reference list is the TS core's: the display locale is the one given,
-     * else the current one, the project's base locale when nothing chose one; a list is read once
-     * per locale for the Client's life; and a list the API cannot give is empty,
-     * with the cause logged, never an exception (WIRE-4). A client built without
+     * Each reference list (REF-1) is named in a display locale: the one given,
+     * else the current one, the project's base locale when nothing chose one. A
+     * list the API answered is held per display locale, in memory and in the
+     * persistent cache with the catalog's lifetime, so a request after the
+     * first sends nothing for it. A list the API cannot give, or an answer not
+     * of the list's shape, is empty, with the cause logged, never an exception
+     * (WIRE-4), and the failure is remembered for CACHE-2's window, inside which
+     * the call answers empty without a request. A client built without
      * credentials sends nothing and answers an empty list.
      *
      * @param string|null $locale
@@ -2345,7 +2354,7 @@ class Client
      */
     public function getCurrencies($locale = null)
     {
-        return $this->referenceList('currencies/', $locale, false);
+        return $this->referenceList('currencies', 'currencies/', $locale, false);
     }
 
     /**
@@ -2356,7 +2365,7 @@ class Client
      */
     public function getCountries($locale = null)
     {
-        return $this->referenceList('countries/', $locale, false);
+        return $this->referenceList('countries', 'countries/', $locale, false);
     }
 
     /**
@@ -2368,14 +2377,16 @@ class Client
      */
     public function getDialCodes($locale = null)
     {
-        return $this->referenceList('countries/dial-codes/', $locale, false);
+        return $this->referenceList('dial-codes', 'countries/dial-codes/', $locale, false);
     }
 
     /**
      * The locales, named in a display locale, in one of the API's three forms:
      * `''` grouped by language name (`['Español' => [['code' => 'es-cr', 'name'
      * => ...], ...]]`), `'flat'` a list of `code` and `name`, `'data'` a list of
-     * `code`, `locale_name` and `lang_name`. Any other format sends nothing.
+     * `code`, `locale_name` and `lang_name`. Every code is in the lowercase,
+     * hyphenated form (`es-cr`) whatever form the organisation writes codes in.
+     * Any other format sends nothing.
      *
      * @param string $format
      * @param string|null $locale
@@ -2391,20 +2402,24 @@ class Client
             return [];
         }
 
-        return $this->referenceList($format === '' ? 'locales' : 'locales/' . $format, $locale, true);
+        return $this->referenceList($format === '' ? 'locales' : 'locales-' . $format, $format === '' ? 'locales' : 'locales/' . $format, $locale, true);
     }
 
     /**
-     * One reference list, read or held.
+     * One reference list, held or read.
      *
+     * A locale list asks for its one display locale with the project's target
+     * locales left out and no project named, since the API otherwise appends
+     * them in an order nothing can rely on, and answers the entry keyed by the
+     * display locale. So a list depends on nothing but its display locale.
+     *
+     * @param string $list The list's name in the cache
      * @param string $route The route, or for a locale list the whole of it
      * @param string|null $locale
-     * @param bool $localeList Whether the display locale goes in the query,
-     *                         answered under that locale as the organisation
-     *                         formats it
+     * @param bool $localeList Whether the display locale goes in the query
      * @return array
      */
-    private function referenceList($route, $locale, $localeList)
+    private function referenceList($list, $route, $locale, $localeList)
     {
         $this->requireCredentialsAtUse();
 
@@ -2417,45 +2432,129 @@ class Client
             return [];
         }
 
-        $endpoint = $localeList ? $route : $route . $display;
-        $params = $localeList ? ['locales' => [$display]] : [];
-        $key = $endpoint . '|' . $display;
-
-        if (isset($this->referenceLists[$key])) {
+        $key = $list . '|' . $display;
+        if (array_key_exists($key, $this->referenceLists)) {
             return $this->referenceLists[$key];
         }
+
+        $cacheKey = 'reference_' . $this->config->getProjectId() . '_' . $list . '_' . $display;
+        $cached = $this->cache->get($cacheKey);
+        if (is_array($cached)) {
+            return $this->referenceLists[$key] = $cached;
+        }
+
+        if (isset($this->referenceFailures[$key]) && $this->currentTime() < $this->referenceFailures[$key]['until']) {
+            return [];
+        }
+
+        $endpoint = $localeList ? $route : $route . $display;
+        $params = $localeList ? ['locales' => [$display], 'append_target_locales' => 0] : [];
 
         try {
             $response = $this->http->get($endpoint, $params);
         } catch (\Throwable $e) {
             $this->logger->error('Reference list could not be read', ['route' => $endpoint, 'locale' => $display, 'error' => $e->getMessage()]);
 
-            return [];
+            return $this->referenceFailed($key);
         }
 
         $data = is_array($response) && isset($response['data']) && is_array($response['data']) ? $response['data'] : null;
-
-        // One display locale was asked for, so its one entry is the list,
-        // whatever the key's case ('es-ES' for 'es-es').
-        if ($data !== null && $localeList) {
-            $data = $data === [] ? [] : reset($data);
-            $data = is_array($data) ? $data : null;
+        if ($data !== null) {
+            $data = $localeList ? self::displayLocaleEntry($data, $display) : (self::isList($data) ? $data : null);
         }
 
         if ($data === null) {
-            $this->logger->error('Reference list answer is not a list', ['route' => $endpoint, 'locale' => $display]);
+            $this->logger->error('Reference list answer is not of the list\'s shape', ['route' => $endpoint, 'locale' => $display]);
 
-            return [];
+            return $this->referenceFailed($key);
         }
+
+        unset($this->referenceFailures[$key]);
+        $this->cache->set($cacheKey, $data);
 
         return $this->referenceLists[$key] = $data;
     }
 
     /**
+     * Remember a failed reference read for CACHE-2's window, doubling on each
+     * consecutive failure, and answer the list's empty value.
+     *
+     * @param string $key
+     * @return array
+     */
+    private function referenceFailed($key)
+    {
+        $failures = isset($this->referenceFailures[$key]) ? $this->referenceFailures[$key]['failures'] + 1 : 1;
+        $this->referenceFailures[$key] = [
+            'failures' => $failures,
+            'until' => $this->currentTime() + $this->backoffDelay($failures),
+        ];
+
+        return [];
+    }
+
+    /**
+     * A locale list's answer: a map keyed by locale, in whatever code format
+     * the organisation uses. Answers the display locale's entry with every
+     * code in the lowercase, hyphenated form, an empty list when the API holds
+     * no entry for it, or null when the answer is not of the shape.
+     *
+     * @param array $data
+     * @param string $display
+     * @return array|null
+     */
+    private static function displayLocaleEntry(array $data, $display)
+    {
+        if ($data !== [] && self::isList($data)) {
+            return null;
+        }
+
+        foreach ($data as $locale => $entry) {
+            if (LocaleDetector::normalize((string) $locale) !== $display) {
+                continue;
+            }
+            if (!is_array($entry)) {
+                return null;
+            }
+
+            $rows = function (array $list) {
+                foreach ($list as $i => $row) {
+                    if (is_array($row) && isset($row['code']) && is_string($row['code'])) {
+                        $list[$i]['code'] = LocaleDetector::normalize($row['code']);
+                    }
+                }
+
+                return $list;
+            };
+
+            if (self::isList($entry)) {
+                return $rows($entry);
+            }
+            foreach ($entry as $group => $list) {
+                $entry[$group] = is_array($list) ? $rows($list) : $list;
+            }
+
+            return $entry;
+        }
+
+        return [];
+    }
+
+    /**
+     * @param array $value
+     * @return bool
+     */
+    private static function isList(array $value)
+    {
+        return $value === [] || array_keys($value) === range(0, count($value) - 1);
+    }
+
+    /**
      * The locale a reference list is named in: the one given, else the current
      * one, which a request with no locale of its own resolves to the project's
-     * base locale. One that is not shaped as a locale - a path, a query - is
-     * refused, since it is written into the request path.
+     * base locale, both normalised as the current locale is. One that is not
+     * shaped as a locale - a path, a query - is refused, since it is written
+     * into the request path, and the API does not check it.
      *
      * @param string|null $locale
      * @return string|null
@@ -2464,7 +2563,7 @@ class Client
     {
         $display = is_string($locale) && $locale !== '' ? LocaleDetector::normalize($locale) : $this->getLocale();
 
-        if (!is_string($display) || !preg_match('/^[a-z]{2,3}(?:-[a-z0-9]{1,8})*$/', $display)) {
+        if (!is_string($display) || !preg_match('/^[a-z]{2,8}(?:-[a-z0-9]{1,8})*$/', $display)) {
             if ($display !== null && $display !== '') {
                 $this->logger->warning('A reference list was asked for in something that is not a locale; nothing was sent', ['locale' => $display]);
             }
