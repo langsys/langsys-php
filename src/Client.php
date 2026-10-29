@@ -3442,7 +3442,9 @@ class Client
 
     /**
      * The elements below $element whose attributes its host translates, in
-     * document order, down to a marked host, which translates its own.
+     * document order, down to a marked host, which translates its own. An
+     * element its author excluded, or one whose text is not prose, is read
+     * for nothing, attributes and descendants alike.
      *
      * @param \DOMElement $element
      * @param \DOMElement[] $targets
@@ -3451,7 +3453,8 @@ class Client
     private static function attributeTargets(\DOMElement $element, array &$targets)
     {
         foreach ($element->childNodes as $child) {
-            if ($child instanceof \DOMElement && !HtmlParser::isMarkedHost($child)) {
+            if ($child instanceof \DOMElement && !HtmlParser::isMarkedHost($child) && !HtmlParser::isTranslationExcluded($child)
+                && !in_array(strtolower($child->nodeName), HtmlParser::NON_PROSE_ELEMENTS, true)) {
                 $targets[] = $child;
                 self::attributeTargets($child, $targets);
             }

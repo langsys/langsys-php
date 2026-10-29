@@ -196,6 +196,39 @@ class ExcludedElementTest extends TestCase
     }
 
     /**
+     * A host translates no attribute inside an element its author excluded or
+     * one whose text is not prose, on the page as in a block: none registers,
+     * and a translation for one is never written.
+     *
+     * @dataProvider routeProvider
+     */
+    public function testAHostTranslatesNoAttributeInsideAnExcludedOrNonProseElement($route): void
+    {
+        if ($route === 'rich') {
+            $this->addToAssertionCount(1);
+
+            return;
+        }
+
+        $inner = 'Hi <b translate="no" title="Secret">X</b> <span data-notrans title="Hidden">Y</span>'
+            . ' <template><img alt="Tpl"></template> <noscript><img alt="Ns"></noscript>'
+            . ' <math title="Formula"><mi>x</mi></math> <img alt="Logo">';
+
+        list(, $queued) = $this->render($route, $inner);
+        $this->assertContains('Logo', $queued, 'control: an attribute the host reads registers');
+        $this->assertSame([], array_values(array_intersect(['Secret', 'Hidden', 'Tpl', 'Ns', 'Formula'], $queued)));
+
+        $client = $this->client(['Logo' => 'Logotipo', 'Secret' => 'S', 'Hidden' => 'H', 'Tpl' => 'T', 'Ns' => 'N', 'Formula' => 'F']);
+        $out = $route === 'page'
+            ? $client->translatePage('<html><body><p data-ls-phrase>' . $inner . '</p></body></html>', 'UI')
+            : $client->translateContentBlock('<p data-ls-phrase>' . $inner . '</p>', 'UI');
+        $this->assertStringContainsString('alt="Logotipo"', $out, 'control');
+        foreach (['title="Secret"', 'title="Hidden"', 'alt="Tpl"', 'alt="Ns"', 'title="Formula"'] as $kept) {
+            $this->assertStringContainsString($kept, $out);
+        }
+    }
+
+    /**
      * `data-notrans="false"` is no exclusion: its text is the phrase's.
      *
      * @dataProvider routeProvider

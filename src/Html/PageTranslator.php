@@ -716,7 +716,9 @@ class PageTranslator
     }
 
     /**
-     * An element and its descendants, stopping at a marked host below it.
+     * An element and its descendants, stopping at a marked host below it, and
+     * at an element its author excluded or one whose text is not prose, which
+     * is read for nothing.
      *
      * @param DOMElement $element
      * @return DOMElement[]
@@ -726,7 +728,8 @@ class PageTranslator
         $elements = [$element];
 
         foreach ($element->childNodes as $child) {
-            if ($child instanceof DOMElement && !HtmlParser::isMarkedHost($child)) {
+            if ($child instanceof DOMElement && !HtmlParser::isMarkedHost($child) && !HtmlParser::isTranslationExcluded($child)
+                && !in_array(strtolower($child->nodeName), HtmlParser::NON_PROSE_ELEMENTS, true)) {
                 foreach ($this->ownElements($child) as $own) {
                     $elements[] = $own;
                 }
