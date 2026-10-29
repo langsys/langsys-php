@@ -1,8 +1,8 @@
-# Upgrading from v1.3.1
+# Upgrading from 1.x to 2.0.0
 
-Everything here is in `CHANGELOG.md` under Unreleased. This page lists only what an app
-already running v1.3.1 notices, and what to do about each. New features that change nothing
-until you use them are not listed.
+`CHANGELOG.md` lists everything in 2.0.0. This page lists only what an app already running
+1.x notices, and what to do about each. New features that change nothing until you use them
+are not listed.
 
 ## Content that registers under a new identity
 
@@ -18,6 +18,7 @@ machine translated, and billed, again.
 | A phrase written with `%name%` | Stored as `{name}` |
 | A content block containing `<script>`, `<style>`, `<template>`, `<noscript>` or `<math>` | Their contents are no longer part of the block |
 | Text inside `<svg>` | Translated now, so a block containing it has new text |
+| A content block holding a `<textarea>` or `<title>` with markup in it | Its body is read as the text a browser shows |
 | `translateContentBlock('<p>Hello</p>')` — one phrase in one text node | Registers as the phrase `Hello`, not as a block |
 | A paragraph with a translatable attribute (`title`, `alt`, …) on the page | Registers as one block of the attribute and the text |
 | An `<img alt>`, `<input placeholder>` or inline element outside a paragraph | Registers; it did not before |
@@ -56,9 +57,18 @@ and it is never registered again.
   throws a `ConfigurationException` (a `LangsysException`). An app that relies on the
   exception to fail fast passes `'require_credentials' => true`; the exception then comes
   from the client's first use rather than from the constructor.
-- **Registration is decided by the server.** A key registers only when authorization
-  answers `write_enabled: true`. An address-restricted write key used from outside its
-  allow-list registers nothing; it registered before.
+- **Registration is decided by the API, per request.** `canWrite()` returns, and every
+  registration follows, the `write_enabled` the API answers for the request, never the
+  key's type: the answer depends on the key, the caller's address and any write grant.
+  An answer without the field is read-only, for a `write` key too. An `ip_write` key used
+  from an address off its allow-list registers nothing; it registered before.
+  `getKeyType()` still reports the key's type.
+- **A request that writes asks the API for its decision.** A cached authorization holds
+  no decision, so the first write of a request - usually the flush after the response -
+  asks the API once, whatever the key's type. If the API cannot be reached then, the
+  flush reports `decision_unavailable` and keeps its queue for a later flush.
+- **The `utilities()` resource throws `InvalidArgumentException`** for a display locale
+  that names no path segment (empty, `.` or `..`), and sends nothing.
 
 ## Long-lived workers
 
@@ -75,6 +85,11 @@ worker that serves one fixed locale calls `setLocale()` again after each reset.
 - **`translatePage()` in a locale other than the project's base** adds
   `data-ls-resolved="<locale>"` on `<html>`. A later walk of that page — a Langsys
   browser SDK, a second middleware — registers none of it.
+- **A `Vary` header.** With no locale set, the request locale comes from the URL, then a
+  `locale` cookie or session value, then `Accept-Language`, and is always one the project
+  serves. When the cookie or `Accept-Language` decided it, the response carries
+  `Vary: Cookie` or `Vary: Accept-Language`. A framework that sets the header on its own
+  response passes `'send_vary' => false` in the `request_locale` option.
 
 Selectors, snapshot tests or string comparisons on rendered HTML may need updating.
 

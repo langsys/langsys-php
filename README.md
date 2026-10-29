@@ -26,7 +26,7 @@ Official PHP SDK for the [Langsys](https://langsys.dev) Translation API. Manage 
 composer require langsys/langsys-php
 ```
 
-Coming from v1.3.1? [UPGRADING.md](UPGRADING.md) lists what an existing app notices.
+Coming from 1.x? [UPGRADING.md](UPGRADING.md) lists what an existing app notices.
 To see each feature work locally, against an API double or a local Langsys, follow
 [TESTING.md](TESTING.md).
 
@@ -127,22 +127,26 @@ framework can create it while it boots without secrets, and its first use throws
 
 ## API Key Types
 
-Langsys supports two types of API keys:
+Langsys has three types of API keys:
 
-- **Read**: Can only fetch translations
-- **Write**: Can fetch translations AND register new phrases/content blocks
+- **Read**: fetches translations
+- **Write**: fetches translations and registers new phrases and content blocks
+- **IP write**: writes only from the addresses on its allow-list, and reads from anywhere
 
-Check your key type:
+Whether a request may register is the API's decision for that request, `write_enabled`,
+which depends on the key, the caller's address and any write grant. The SDK never decides
+it from the key's type, and an answer without the field is read-only. A cached
+authorization holds no decision, so a request that writes asks the API once, when it
+first needs to:
 
 ```php
 if ($client->canWrite()) {
-    // Can register phrases
+    // This request may register phrases
 } else {
-    // Read-only access
+    // Read-only for this request
 }
 
-// Or get the type directly
-echo $client->getKeyType(); // "read" or "write"
+echo $client->getKeyType(); // "read", "write" or "ip_write": the key's type, not the decision
 ```
 
 ## Full Page Translation
@@ -542,6 +546,7 @@ paragraph.
 | String value | Passed through untouched — the **opt-out** from number formatting (IDs, codes) |
 | Int / float | Formatted for the locale (`1234.5` → `1.234,5` in de-DE) |
 | Bool | `"true"` / `"false"` |
+| Enum | A backed enum by its value, a plain enum by its name |
 | `DateTimeInterface` | Locale-formatted, medium date style |
 | Phrase not translated yet | Fallback text still interpolates, so users never see raw `{name}` |
 
@@ -1552,7 +1557,8 @@ add one, change its `href` or run script. An element you excluded is never trans
 renders as you wrote it, with the params you pass filled in, since the line is a template.
 A page or a block, by contrast, keeps excluded text exactly as written, so
 `<code translate="no">{name}</code>` can show the syntax itself. A line from your language
-files comes back as written.
+files comes back as your framework prints it, with a marked value in it given back as its
+marker.
 
 ### Declared value sets
 
@@ -1718,7 +1724,7 @@ $project = $client->getProject();
 echo $project['id'];           // Project UUID
 echo $project['title'];        // Project name
 echo $project['base_locale'];  // e.g., "en-us"
-echo $project['key_type'];     // "read" or "write"
+echo $project['key_type'];     // "read", "write" or "ip_write"
 
 print_r($project['target_locales']);  // ["es-es", "fr-ca", ...]
 print_r($project['default_locales']); // Default locale per language
@@ -1737,10 +1743,15 @@ $client->getLocalesFormat('flat'); // [['code' => 'es-cr', 'name' => 'Español (
 
 Each list is named in the locale you pass, else the current one. They match the Langsys JS
 SDK's lists of the same names. `getLocalesFormat()` takes `''` (grouped by language name),
-`'flat'` (`code` and `name`) or `'data'` (`code`, `locale_name` and `lang_name`). A list is
-read once per locale for the client's life. If the API cannot answer, or the client has no
-credentials, you get an empty list and the cause is logged; nothing throws, unless
-`require_credentials` is on and the client has none.
+`'flat'` (`code` and `name`) or `'data'` (`code`, `locale_name` and `lang_name`), answers the
+list for that one display locale, and writes every locale code `es-cr` however your
+organisation formats codes. A list is held per display locale, in memory and in the cache
+for the catalog's lifetime (`cache_ttl`), so a later request sends nothing for it. A display
+locale that is not shaped as a locale is refused, logged, and nothing is sent. If the API
+cannot answer, or answers something that is not the list, you get an empty list and the
+cause is logged; the list is not asked for again for 3 seconds, doubling on each failure to
+5 minutes. A client without credentials sends nothing and gets an empty list. Nothing
+throws, unless `require_credentials` is on and the client has none.
 
 The `utilities()` resource below gives the raw, paginated endpoints. A display locale is
 written into the request path as one segment; an empty one, `.` or `..` would reach another
@@ -1846,18 +1857,20 @@ The SDK includes a comprehensive test suite using PHPUnit.
 # Install dev dependencies
 composer install
 
-# Run all tests
-vendor/bin/phpunit
+# Run every test that needs nothing but this repository
+vendor/bin/phpunit --testsuite no-clone
 
 # Run specific test file
 vendor/bin/phpunit tests/ConfigTest.php
 
 # Run with coverage report (requires Xdebug)
-vendor/bin/phpunit --coverage-text
+vendor/bin/phpunit --testsuite no-clone --coverage-text
 ```
 
-The contract tests in `tests/Contract` run against a shared double of the Langsys API
-(`tests/contract-fixture/`) and need Node 18 or later; without Node they are skipped.
+The contract tests in `tests/Contract` run against a real Langsys API on an SDK test clone,
+reached through `tests/contract-fixture/`, and need Node 18 or later; without a clone named
+they fail rather than skip. `vendor/bin/phpunit` runs both suites. [tests/README.md](tests/README.md)
+says how to run them.
 
 
 ### Test Structure
@@ -1893,10 +1906,11 @@ tests/
 
 ### Test Coverage
 
-- **350 tests** covering all public methods
-- **765 assertions** validating functionality
-- Redis tests automatically skip if the extension is unavailable
-- Tests use a mock HTTP client to avoid real API calls
+- The no-clone suite uses a mock HTTP client or a loopback stand-in, and makes no real API
+  calls
+- The contract suite asserts on what a real Langsys API holds after each call
+- Redis tests skip if the extension or a server is unavailable, and fail instead with
+  `LANGSYS_REQUIRE_REDIS` set
 
 ## License
 

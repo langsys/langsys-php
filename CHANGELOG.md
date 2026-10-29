@@ -5,795 +5,155 @@ All notable changes to the Langsys PHP SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.0.0] - Unreleased
 
-### ⚠️ Release gate
+### Upgrading from 1.x
 
-**Canonicalization id change: measured on production and ruled negligible.**
-The figures are from a production measurement supplied by the operator on
-2026-09-12 — this repo has no production access and did not derive them. Aligning the tokenizer with the other SDKs changes the identity of
-any content block whose text contains a non-breaking space, a line separator, or
-script/style source. On production that is **1 live block of 516, behind it 794
-translated words, and 6 affected phrases of 17,432 — every one of them the
-non-breaking-space case.** No orphan handling and no id migration will be built;
-the affected block re-registers once and is retranslated.
+[UPGRADING.md](UPGRADING.md) says what to do about each of these.
 
-**Blocked on this branch landing: hash parity plus a verified pipe-form lookup
-fallback.** This supersedes both earlier framings — the "langsys re-keying
-migration" (cancelled; no rows move, ever) and "do not release" (which described
-damage as already done). Neither is accurate.
+- **Some content registers under a new id.** The SDK now reads text the way the other
+  Langsys SDKs do, so the same content gets the same id on every SDK. Content whose id
+  moves:
+  - text holding a non-breaking space, a line or paragraph separator, or an invisible
+    control character;
+  - a phrase written with `%name%`, now stored as `{name}`;
+  - a content block holding `<script>`, `<style>`, `<template>`, `<noscript>` or
+    `<math>`, whose contents are no longer part of it;
+  - a block holding text inside `<svg>`, which is translated now;
+  - a block holding a `<textarea>` or `<title>` with markup in it;
+  - a block holding an element marked `data-ls-phrase` or `data-ls-contentblock`,
+    which is a unit of its own;
+  - a one-phrase fragment such as `translateContentBlock('<p>Hello</p>')`, which is the
+    phrase `Hello`;
+  - on a page, a paragraph with a translatable attribute (`title`, `alt`, …), one block
+    of the attribute and the text, and an `<img alt>`, `<input placeholder>` or inline
+    element outside a paragraph, which registers now;
+  - a `data-langsys-contentblock` whose value is not `true`, `1`, `yes`, `false` or
+    `0`, which is the block's id;
+  - a `data-langsys-phrase` run made only of `translate="no"` or `data-notrans`
+    elements, which registers nothing.
 
-**What is actually true, from read-only production analysis on 2026-08-21, run
-by the backend rather than from this repo.** The content-block id change shipped
-in v1.0.2 and every release since, but it is a **pending hazard against a single
-project, not past damage**.
+  Each such item registers once under its new id and is machine translated again; the
+  page shows the source until then. Translations stay under the old entry, so re-apply
+  human translations in the Translation Manager. Content filed under the older
+  pipe-form ids is still found and is never registered again.
+- **Whether a request registers is the API's decision.** `canWrite()` and every
+  registration follow the `write_enabled` the API answers for that request, whatever
+  the key's type. An answer without the field is read-only. An `ip_write` key used from
+  an address off its allow-list registers nothing. A request that writes asks the API
+  once for its decision, when it flushes after the response, since a cached
+  authorization holds none.
+- **`flushPendingRegistrations()` reports `success: false` for work it did not do**,
+  and names a `reason`: `not_write_enabled`, `catalog_unavailable`, `backing_off`,
+  `decision_unavailable` or `send_failed`. A read key reports `not_write_enabled` on
+  every request by design.
+- **`getTranslations()` and `Translations::getTranslationMap()` throw** a
+  `LangsysException` for a response that is not a catalog and while a failed fetch's
+  window is open, where they returned `[]`. They return a plural Langsys generated for
+  a target locale as ICU MessageFormat, where they returned its `other` branch.
+- **`new Client()` without an API key or project ID no longer throws**: it builds an
+  unconfigured client. Pass `'require_credentials' => true` to throw at first use.
+- **Rendered HTML carries more.** `translatePage()` and `translateContentBlock()` mark
+  each rendered block with `data-ls-contentblock="<id>"`, and a page rendered in a
+  locale other than the base carries `data-ls-resolved="<locale>"` on `<html>`. A
+  response whose locale a cookie or `Accept-Language` decided carries a `Vary` header,
+  unless `send_vary` is `false`.
+- **Warnings and errors go to PHP's error log** when no `log_path` is set.
+- **Subclasses**: several protected methods take new optional parameters,
+  `PageTranslator::markItemsAsRegistered()` and `markItemsAsRegisteredWithCategory()`
+  are gone, and `Client` has a destructor.
 
-The population, with denominators — two independent sweeps initially reported
-figures an order of magnitude apart, and the difference was live-versus-deleted
-rather than a disagreement:
+### What's new
 
-```
-content_blocks, all rows          3,012        of which soft-deleted   2,494
-content_blocks, live                518
-
-pipe-form ids, all rows             330  (of 3,012)   all in Enagic.com
-pipe-form ids, LIVE                  32  (of 518)
-```
-
-**32 is the impact figure**; 330 is the size of the historical corpus. The 298
-that differ are soft-deleted and serve no lookup, so they cannot be affected by
-an id change. Both numbers are correct and neither alone is honest — an earlier
-draft of this entry cited only the larger one, which overstates customer impact
-roughly tenfold. (One sweep counted 335 rather than 330; a method difference at
-the margin, not chased, and immaterial at this precision.)
-
-Of the 32 live blocks: 2 human-touched es-es translations, 204
-machine-translated rows. **Zero stranding has occurred** — nothing has
-registered there since February, and the mechanism needs a re-registration event
-to fire. The hazard fires only if that site upgrades the SDK before this
-fallback ships.
-
-Nothing needs repairing yet, so the fallback below is preventive rather than
-half of a data repair. It covers **both** rendering paths — `translatePage()`
-and `translateContentBlock()` — which matters because the site in question is a
-website and most plausibly renders through the page path. An earlier revision of
-this branch covered only the content-block path and would have left the hazard
-fully live where it is most likely to fire.
-
-**Scope limit — RESOLVED SINCE, and left here as a record rather than deleted.**
-When this gate was written, content blocks containing an inline `<script>` or
-`<style>` were outside what the fallback could reach: `HtmlParser::walkNode()`
-had no skip list at all, so script source was extracted as a phrase. TOK-1 in
-this same release closed it — the content-block path now skips `<script>`,
-`<style>`, `<template>`, `<noscript>` and `<math>`, so
-`<div><h2>Our pricing</h2><script>track({sku:"SKU-1"});</script></div>` yields
-`["Our pricing"]` and its id no longer moves with the script payload. The
-paragraph below described the behaviour accurately when written; it is kept
-because the cost analysis is the reason the rule exists, and struck through in
-substance rather than silently removed.
-
-What follows is the original analysis, EDITED rather than quoted: its descriptions of the behaviour are moved to the past tense, and its closing claims that the hazard was still live are rewritten, because leaving them in the present tense under a RESOLVED header would assert a hazard that no longer exists. `HtmlParser::walkNode()` had no skip
-list and the content-block path never consulted `PageTranslator::SKIP_ELEMENTS`
-(the fixture's script/style coverage is discussed on `main` in 224dc8b, which is
-a README commit — it is not where that behaviour was introduced), so script
-source was extracted as a phrase.
-When that source varies between renders — an analytics payload carrying a SKU,
-a nonce, a timestamp — the phrase set varies with it, and the block's id is
-different every time:
-
-```
-category 'pricing' — the id is a hash of [category, phrases], so it is part of
-the input and the example does not reproduce without it:
-
-<div><h2>Our pricing</h2><script>track({sku:"SKU-1"});</script></div>
-  -> c036bbafe124e916a45f8b39b9ef7d8c   (legacy form: 328feff25c5a…)
-<div><h2>Our pricing</h2><script>track({sku:"SKU-2"});</script></div>
-  -> 55b0f8a69c72a22b3dd829d9e4d2e3ac   (legacy form: 97250baee9d7…)
-```
-
-Neither the current nor the legacy id was stable, so no id-based lookup could
-match such a block. They resolved to nothing, rendered untranslated, and
-re-registered on every request.
-
-**This was not a defect in the fallback, and was not 838's to fix — until the
-coordinated decision it asked for actually arrived.** `walkNode()` had never had
-a skip list, so the harvesting predated the id change and both id forms were
-equally unstable under it. It was tracked as a cross-SDK defect affecting both
-the PHP and JS lineages, needing a coordinated tokenizer decision rather than a
-unilateral change here. That decision is TOK-1, and this release implements it;
-the re-keying it warned about was measured on production and is the 1-block,
-6-phrase figure at the top of this gate.
-
-The consequence is worth stating plainly, because it is larger than catalog
-noise: per render such a block creates a new block row that is never cleaned up
-(deletion needs a matching id), new phrase rows for each script variant, and a
-**billed machine-translation batch covering the whole block × every target
-locale**. Confirmed against the backend by the verification pass.
-
-At the time this meant "the hazard is covered" held only for content blocks
-whose extracted content was stable between renders. TOK-1 made that all of
-them: script and style source no longer reaches the token list at all.
-
-**Measured population: zero.** A read-only production investigation (run by the
-backend verification pass, not by this repo — recorded here because it bounds
-the statement above) found **no script-bearing content among the 335 pipe-form
-blocks**, and no genuine instance anywhere in production (~3,012 blocks): no
-harvested script content, no re-registration clusters, no material machine-
-translation spend. So the scope limit was a **prospective** statement rather than a description of
-exposure, and the gate closed clean for the population it was written for.
-
-The limit stays on record, but it no longer describes the SDK: TOK-1 removed the
-mechanism, so an analytics snippet inside a translated block no longer changes
-its id or re-registers it.
-
-### Added
-
-- **Reference lists, as the JS SDK serves them.** `getCurrencies()`,
-  `getCountries()`, `getDialCodes()` and `getLocalesFormat($format)` on the
-  client return each list named in a display locale, the current one by
-  default, read once per locale for the client's life. A list the API cannot
-  give, or any list on a client without credentials, is an empty array with the
-  cause logged, never an exception.
-- **An app's own messages can state their sentence and code.** A class
-  implementing `HasAppMessageTemplate` returns its template with `{name}`
-  markers for its public properties and its code; `MessageCatalog::addMessage()`
-  lists it - an instance or its class name - once under the messages category
-  with that code, and `ServerMessage::fromApp()` builds the runtime entry from
-  the same template. A translate call inside its `template()` - including an
-  enum's, and one in a class named in `message_classes` - and any call whose
-  sentence is among the `listed_templates` is listed in
-  `SyncPlan::$viaMessageListing` instead of registering on its own.
-- **A line printed raw registers as the page looks it up.** `Sync\SourceScanner`
-  reads `app('translator')->getHtml(...)`, what a binding compiles `@lang` and
-  `@t` to, as `->get(...)` and marks the hit `rich`; the planner registers its
-  line with inline markup as tokens (`Read our {m0o}terms{m0c} today`), read by
-  the same `MarkupTokenizer::readLine()` `translateRich()` uses, never as raw
-  HTML. Translations carried from other languages' files are tokenized the same
-  way, each run on the source element it belongs to: a tag the line holds once
-  is that element, and of a tag it holds more than once each is the element
-  with the same attributes. One whose elements cannot be matched so is listed
-  in `SyncPlan::$skipped` as `not_converted`. A key only rich lines reach gets no
-  raw copy from the base-language lines.
-- **A sync can be planned offline.** `Sync\Planner::offline()` plans without a
-  client or a key - every phrase new, non-literal calls, label lines and
-  covered groups reported - for a CI gate. A call passing its replacements as
-  `compact()` or a variable registers the placeholders the running call looks
-  up, rather than leaving them as `:name`.
-- **The messages listing gives advice that never fails it.**
-  `MessageCatalog::advise()` names something the app may want to change - a
-  validated field with no declared label - and the listing command prints it
-  under "Advice"; unlike a problem, it never fails `--strict`.
-- **A key built inside a literal group is covered at sync.** `__("validation.$key")`
-  and `__('auth.' . $key)` are listed in `SyncPlan::$covered` when the
-  base-language files hold that group, or when the binding names it in
-  `planSync()`'s `covered_groups` option, and no longer fail `--strict`.
-  `translate()` and `resolve()` report a catalog they cannot read once per
-  process at debug, where they logged an error on every call.
-- **Validation rule objects can state their sentence.** A rule implementing
-  `HasMessageTemplate` returns its template with the label placeholder and
-  `{name}` markers for its public properties; `MessageCatalog::addRule()` lists
-  it once per field with the label written in, and `RuleTemplate` gives the
-  runtime entry the same template and values. A rule without it is listed from
-  its filled message and reported. `planSync()` no longer registers a line that
-  holds `:attribute`, `:other` or `:values`; it lists it in `viaValidation`.
-- **Pieces for a framework binding's own translate function.**
-  `Sync\SourceScanner` and `planSync()`/`applySync()` register phrases from the
-  app's literal calls and language files, with existing translations, against
-  the catalog; `runtime_registration => false` stops `translate()` and
-  `emitMessage()` registering. `useMissFallback()` answers a catalog miss from
-  the framework's language files, and `resolve()` says whether text came from
-  the catalog, the fallback or the source. `translateRich()` renders a line with
-  inline markup by rebuilding only the source's own elements around escaped
-  translated text. Declared value sets (`TranslatableValues`, `#[TranslatesAs]`,
-  `value_sets`) register a sentence once per value with the value written in.
-  `markResolved()` marks a server-rendered page without re-serializing it.
-- **Existing translations can be imported with their phrases.**
-  `importLegacyTranslations([locale => files])` registers every key of the
-  `migration` files with each target locale's translation of the same key,
-  stored by Langsys as human translations. Non-target locales are refused
-  before anything is sent; values that are missing, empty or can't be
-  converted are listed and left for machine translation.
-- **A value marked as a variable is read as a placeholder.** `translatePage()`
-  and `translateContentBlock()` read `<!--ls:NAME-->VALUE<!--/ls-->` and
-  `<span data-ls-param="NAME">VALUE</span>` as `{NAME}` with the value as its
-  param, so a sentence registers once for every user, and render the value back
-  inside its marker. A plural or select in the translation chooses on the value.
-  A unit made only of markers, or holding a marker whose name is outside
-  `[a-z][a-z0-9_]*`, registers nothing. Unmarked markup reads exactly as before.
-- **A client can be seeded from a snapshot.** Pass `'snapshot' => $snapshot` or
-  call `useSnapshot()`: phrases, blocks, pages and server messages the snapshot
-  holds render from it with no API call; anything it lacks is read from the live
-  catalog, which then outranks the snapshot, or stays source text offline. Only
-  the live catalog decides registrations. While authorization is unavailable,
-  the snapshot's base locale and locales are the ones the request locale can
-  resolve to.
-- **`LegacyValue::fromCall()` converts the text a Laravel call passes when it is
-  not a key.** For `__()` only the placeholders the call passes become `{name}`,
-  substituted as Laravel substitutes them; `trans_choice()` also converts
-  Laravel's plural forms, with the number as `count`. `:Name` and `:NAME` are
-  returned as written and flagged. A binding's `__()` hook uses it so a legacy
-  call and a Langsys call for the same sentence register one phrase.
-- **Catalog snapshots.** `vendor/bin/langsys-snapshot` (and `Snapshot::export()`)
-  saves the catalog for chosen locales and categories to a file, and
-  `Snapshot::load()` reads it back for setups that shouldn't call the API while
-  rendering. A snapshot refreshes by exporting again; one edited by hand is refused
-  on load.
-
-- **Migrating from key-based translation files.** With the new `migration`
-  option naming an app's source-language files (JSON or PHP arrays, with an optional
-  fallback tier and package namespaces), `translate()` resolves its argument as a
-  key first: the key's text is what registers and translates, and the key's
-  namespace becomes the category. Legacy placeholders are converted to `{name}`,
-  and plurals to ICU by each file's declared format (`laravel`, `vue-i18n`,
-  `i18next` or `plain`; a PHP array file defaults to `laravel`, JSON to `plain`).
-  Forms that can't be converted are registered as written, warned, and listed. Off
-  unless configured.
-
-- **Translated pages are marked as resolved.** `translatePage()` writes
-  `data-ls-resolved="<locale>"` on the root of a page rendered in a non-base locale,
-  and the page path registers nothing inside a subtree carrying the marker (either
-  spelling; `false` or `0` opts a subtree back out). A translated page walked again,
-  by a JS SDK or a response middleware, no longer registers its translated text as
-  source. A base-locale render is not marked.
-
-- **Server messages.** Validation errors and system messages can now be registered
-  and translated ahead of time, without changing how the framework reports them. An
-  entry is a `template` - the framework's own sentence, label written in - and its
-  `params`; `message` is the filled sentence, and `code` and `field` are the
-  framework's own, carried unchanged or absent. `Langsys\SDK\Messages` fills
-  `{name}` markers, reads entries from any response body - beside a framework's own
-  errors, under a configurable key and piece names - and refuses a template holding
-  a brace that is not a marker or a framework placeholder left unfilled.
-  `vendor/bin/langsys-messages` lists every template an app declares, reports each
-  message it cannot list (failing only with `--strict`), and with `--register`
-  registers only what the catalog lacks. `Client::translateMessage()` renders an entry in the request locale
-  and falls back to the message the server sent; `Client::emitMessage()` registers a
-  template the catalog lacks after the response. Templates live under one category,
-  `Errors` by default (`messages_category`, `LANGSYS_MESSAGES_CATEGORY`).
-
-- **Pipe-form lookup fallback for content blocks.** Content registered before the
-  JSON-form id change is filed under `md5(implode('|', [category, ...phrases]))`
-  and resolves to nothing under the current id — so it would be re-registered,
-  stranding its translations on the old key. Resolution now falls back to the
-  legacy id shapes, covering both category-slot variants (`''` and
-  `'__uncategorized__'`) because the old code disagreed with itself about which
-  to send.
-
-  Both rendering paths resolve through one shared entry point on `Client`
-  (`resolveContentBlockTranslations()`). They previously duplicated the rules,
-  which is how the page path came to miss the fallback — and, separately, how it
-  drifted on registration bookkeeping and on presence-vs-structure checks.
-
-  **Lookup only** — legacy ids are never emitted, never registered and never
-  written back. A block served from a legacy id is deliberately **not** queued
-  for registration: queuing it is precisely what would strand the translations,
-  so the suppression is the anti-stranding mechanism rather than an optimisation.
-
-  A resolved candidate must carry the same phrases as the block asking for it.
-  The old form's `|` is unescaped, so distinct tuples can flatten to the same
-  string; the phrases decide, not the id. The guard fails toward "no match",
-  because attaching the wrong translations is visible to a reader while silently
-  serving nothing is indistinguishable from a block that was never registered.
-
-- `Client::resetRequestState()` — clears the per-request write decision, the
-  locale (one set with `setLocale()` included) and the request-scoped caches.
-  Required under long-lived runtimes (Octane, Swoole, RoadRunner, queue workers)
-  where the `Client` outlives the request; a worker serving one fixed locale calls
-  `setLocale()` again after each reset.
+- **Long-lived workers.** `resetRequestState()` clears what belongs to one request:
+  the write decision, the queue, the catalogs read and the locale, one set with
+  `setLocale()` included.
+- **A client without credentials renders source text**, with its values filled, and
+  sends nothing; an explicit write throws `ConfigurationException`, and
+  `isConfigured()` reports the state.
+- **The request locale is chosen for you**: from the URL, then a `locale` cookie or
+  session value, then `Accept-Language`, always one the project serves, else the base
+  locale. A locale the framework already resolved, passed as `framework`, wins.
+  `resolveRequestLocale()` exposes the decision.
+- **Reference lists on the client.** `getCurrencies()`, `getCountries()`,
+  `getDialCodes()` and `getLocalesFormat($format)` answer each list named in a display
+  locale, the current one by default. A list is held per display locale, in memory and
+  in the cache for the catalog's lifetime, so later requests send nothing for it. A
+  locale list answers the display locale's own entry, every code written `es-cr`. A
+  display locale not shaped as a locale is refused and nothing is sent. A list the API
+  cannot give is empty, with the cause logged, never an exception, and is not asked for
+  again for a window of 3 seconds, doubling to 5 minutes.
+- **Values marked as variables.** `<!--ls:NAME-->VALUE<!--/ls-->` and
+  `<span data-ls-param="NAME">VALUE</span>` read as `{NAME}`, so a sentence registers
+  once for every user, and render back inside their marker. A plural or select chooses
+  on the value. Each unit takes only the values of the text it registered from.
+- **Enum params.** A backed enum renders as its value and a plain enum as its name, in
+  a placeholder and as an ICU argument.
+- **Migrating from key-based translation files.** The `migration` option resolves a
+  `translate()` argument as a key in your source-language files (`laravel`,
+  `vue-i18n`, `i18next` or `plain`), converting placeholders and plurals.
+  `importLegacyTranslations()` registers every key with the translations you already
+  have, stored as human translations.
+- **Behind a framework's translate function**: `planSync()`/`applySync()` register
+  from your source and language files, `runtime_registration => false` turns off
+  registering at runtime, `useMissFallback()` answers a miss from your language files,
+  `resolve()` says where text came from, `translateRich()` renders a line with links
+  and emphasis without letting a translation add markup, declared value sets register
+  a sentence once per value, and `markResolved()` marks a server-rendered page.
+- **Server messages.** Validation errors and system messages register and translate
+  ahead of time: `translateMessage()`, `emitMessage()`, `vendor/bin/langsys-messages`,
+  and rule and app-message classes that state their own sentence.
+- **Catalog snapshots.** `vendor/bin/langsys-snapshot` exports a catalog every Langsys
+  SDK loads, and `'snapshot' => $snapshot` or `useSnapshot()` renders from it without
+  calling the API.
+- **Excluded elements inside a phrase** (`translate="no"`, `data-notrans`) render as
+  you wrote them, a value inside them included.
+- **A marked element inside other content** is translated as its own unit.
+- **Text inside `<svg>`** is translated; the drawing is left alone.
+- **Stamped block ids are honoured**, and both the `data-ls-*` and `data-langsys-*`
+  spellings are read.
 
 ### Fixed
 
-- **A param holding invalid UTF-8 keeps its line's markup.** A phrase host or a
-  `translateRich()` line rebuilt its elements with a UTF-8 pattern, which fails
-  on invalid UTF-8, so a param such as `"Zo\xFFe"` cost the line its `<b>` and
-  `<a>` and left stray digits where they were. The line renders with its markup
-  and the param as given.
-- **A content block's script, style and noscript keep their text.** Applying a
-  block's translations wrote into every text node matching one of its phrases,
-  including a `<script>`, `<style>`, `<noscript>`, `<template>` or MathML body
-  that registration never reads, so a script whose text read like a phrase was
-  rewritten with the translation. Their text is left as written, and so is the
-  text of an element excluded from translation: a translation is written only
-  into the text it was registered from, in a block of one phrase as in any other.
-- **Text after a `<` that starts no tag is kept.** libxml read a `<` a browser
-  shows as text as opening a tag, and lost what followed it to the next `>`:
-  "Price < 10 and > 5" was translated to "Price  5", "if a < b then" lost
-  "b then", and a textarea holding "a < b" swallowed the rest of the page. Each
-  such `<` is now read as text on every path, and a textarea's or title's body
-  is the text a browser reads, so a content block holding one with markup in it
-  takes the JS SDKs' id, re-keying once. The bodies of xmp, iframe, noembed and
-  noframes, which a browser reads without decoding, come back as written, in an
-  svg's foreignObject or a MathML text element too. Inside a `<select>` a
-  browser reads such a body as markup, and so does the SDK; an svg or MathML
-  element of the same name holds ordinary text.
-- **`<!-->` no longer swallows the rest of a page.** A browser reads it, and
-  `<!--->`, as an empty comment; libxml read either as opening one that ran to
-  a later `-->` or to the end, so `translatePage()` returned an empty page, or
-  one with its body emptied, and a block lost what followed. Each is read as the
-  empty comment it is, and written back as `<!---->`.
-- **A display locale cannot steer a reference-list request.** The client's
-  `getCountries()` and the other lists refuse a locale that is not shaped as
-  one, logged, and send nothing. On the raw `utilities()` resource the locale is
-  encoded as one path segment, and one that names none - empty, `.` or `..`,
-  which an HTTP client resolves away - throws `InvalidArgumentException`, where
-  `getDialCodes('..')` asked for the countries list.
-- **A worker that builds a `Client` per request no longer keeps every one of
-  them.** The end-of-process flush held each `Client` that had queued anything
-  until the process ended, and a `Client` that had translated a page or a content
-  block sat in a reference cycle, through the page translator it kept and a
-  recursive closure, until PHP's cycle collector ran. Such a worker grew by a
-  whole `Client`, caches included, with every request. One shutdown handler now
-  serves the process and holds its clients weakly, and nothing a `Client` builds
-  holds it, so a `Client` its framework lets go is freed at once, whatever it
-  translated, and sends what it still has queued as it goes; one still alive at
-  the end is sent from the shutdown handler, while the framework is still up.
-  Measured flat over 1,000 requests of each kind with the cycle collector off.
-- **A page without `<html>`, or without a `<head>` or `<body>`, is translated
-  whole.** Such a page is read inside an `<html>` as a browser reads it, so
-  every top-level element is translated, where only the first was, and a
-  page that is a document - a doctype, a head, a body or a title - is written
-  back with the `<html>` and the head a browser implies, declaring UTF-8, so
-  its title and `lang` are set; one that is a fragment comes back as the fragment it was,
-  each of its top-level elements marked as translated output. Both are read
-  from the page's tags as a browser reads them, so `<html>` written in a
-  script, a comment or an attribute, or an inline svg's `<title>`, changes
-  neither. A minified page whose `<meta charset>` came first no longer loses
-  everything after it, and on a page with no `<body>` the head is no longer
-  read as body text.
-- **A page is read as a browser reads it.** `translatePage()` decodes a page
-  before anything reads it as a browser does: a byte-order mark first, then
-  the charset its first 1024 bytes declare, read as a browser's prescan reads
-  their metas (a `charset`, or a `content`'s `charset=` beside
-  `http-equiv="content-type"`, never a description that mentions one), else
-  UTF-8 when the bytes are
-  UTF-8 and windows-1252 when they are not. A declared label is read through
-  the browser's label table and decoded by the browser's decoder for it:
-  Latin-1 and ASCII labels as windows-1252, `gb2312` and `chinese` as GBK,
-  `euc-kr` as windows-949, Big5 with HKSCS, and a label browsers do not know,
-  such as `utf-7`, as no declaration. Curly quotes, dashes and the euro sign on
-  a Latin-1 page now survive, a byte-order mark wins over a conflicting meta, a
-  us-ascii page is no longer cut off at its first non-ASCII byte, and an
-  invalid byte becomes U+FFFD instead of turning the rest of the page into
-  mojibake, with the letter after a bad byte kept. Every encoding is decoded by
-  the standard's own decoders over its own indexes, generated from Firefox's
-  decoder (`src/Html/Encoding/`), so a page decodes alike on every host, Big5's
-  HKSCS characters and Hebrew vowel points included, and none needs intl.
-- **A page is written out in the UTF-8 it declares.** `translatePage()` wrote
-  every character outside ASCII as an entity unless the page carried an
-  http-equiv charset meta, so a `<meta charset>` page's JSON-LD read
-  `Caf&eacute;`, a script string `se&ntilde;or` and a CSS `content` `&laquo;`,
-  none of which is decoded there. It now writes the page in UTF-8, and the
-  `<?xml encoding="UTF-8">` hint it parsed a doctype page with no charset meta
-  under is no longer left in the output.
-- **A page's own scripts and styles come back byte for byte.** PHP's HTML
-  parser (libxml2 2.9) ends a `<script>` or `<style>` body at any end tag and
-  drops it, so `translatePage()` turned `el.innerHTML = '<p>hi</p>'` into
-  `'<p>hi'` and stripped `</b>` from JSON-LD and `</p>` from a CSS comment.
-  Every path now parses in libxml's recovery mode, which reads each body on
-  to its own end tag, including inside a translated line, and parses the rest
-  of the page as before. An end tag whose name begins with the element's own
-  (`</scripts>` inside a script) is still dropped.
-- **An element you excluded inside a phrase renders as you wrote it.** In a
-  `data-langsys-phrase` run or a `translateRich()` line, an element marked
-  `translate="no"` or `data-notrans` is one empty token pair whatever it holds
-  (`Signed in as {m0o}{m0c} today`), and it renders from your source. A value
-  marked inside it rendered as its placeholder, so the page showed a literal
-  `{email}`; it now shows the value. Text a translation put between the pair is
-  dropped, and a run made only of excluded elements registers nothing, where it
-  registered `{m0o}{m0c}`. In a `translateRich()` line a placeholder the caller
-  passes, `{name}` or `%name%`, is filled inside the excluded element as well,
-  as the framework fills the rest of the line (a boolean as `true`/`false`, a
-  date left as written); a page or a block keeps excluded text exactly as
-  written. A run that v1.0.1 and v1.0.2 keyed with the excluded
-  element's text inside (`Welcome to {m0o}Langsys{m0c}`) renders the translation
-  stored under that key until its current key has one; only the current key
-  registers.
-
-- **A client built without credentials renders source text instead of throwing.**
-  Without an API key or a project ID, `new Client()` threw, and whatever built it
-  went down with it: an app's tests, CI, a fresh clone or an image build. Such a
-  client is now unconfigured: every phrase and content block renders its source
-  text with its values filled and a page comes back as given, through the path a
-  catalog that failed to load takes; nothing is fetched or queued, and one warning per process names the missing settings. An
-  explicit write (`registerPhrases()`, `registerContentBlock()`, `sync()`,
-  `planSync()`, `applySync()`, `importLegacyTranslations()`) throws the new
-  `ConfigurationException`, and `isConfigured()` reports the state. The
-  `require_credentials` option, off by default, makes the client's first use
-  throw instead.
-
-- **A plural Langsys generates for a target locale renders its singular.**
-  Langsys turns a flat phrase into a plural or select in the target locales
-  that need one (`You have {count} new messages.` is stored for Spanish as
-  `{count, plural, one {Tienes # mensaje nuevo.} other {Tienes # mensajes nuevos.}}`),
-  and the API returns that form only to a client that sends
-  `X-Langsys-Capabilities: icu`; any other client gets the `other` branch, so a
-  count of 1 rendered "Tienes 1 mensajes nuevos.". Every request now sends the
-  header, and the Interpolator formats what comes back. A catalog cached before
-  upgrading keeps the flattened text until `cache_ttl` runs out (one hour by
-  default) or `clearCache()` is called.
-
-- **A locale the framework already resolved is served as is.** Passed as
-  `framework` in the request data, it wins over the URL, cookie and
-  `Accept-Language`, which are consulted only when nothing resolved the
-  locale. It is validated against the project's locales, a bare language maps
-  to the project's default locale for it, an unsupported one serves the base
-  locale, and no `Vary` is added for it.
-- **Snapshots use the one format every Langsys SDK reads.** A snapshot now
-  carries the project's base locale and the flat catalog the SDK loads from
-  `GET /translations`, and its checksum is computed over one canonical
-  serialisation, so a snapshot exported here loads in any other SDK. A refused
-  load names its reason through `SnapshotException::getReason()`. **Snapshots
-  exported before this change do not load: export them again.**
-- **A migration file in a format this SDK does not read is refused.** A file
-  declared, or typed, as anything but `laravel`, `plain`, `vue-i18n` or `i18next`
-  (a Rails YAML file, a gettext `.po`, an unknown name) now makes the `Client`
-  constructor throw, naming the format and the file; a compiled `.mo` names its
-  `.po`. Before, it was read as plain text and reported. More placeholder forms
-  convert in migrated values: `%{name}`, `%(name)s` and `%(name)d` become
-  `{name}`, `%%` becomes `%`, and a formatted or positional `%` placeholder is
-  registered as written with a warning. A JSON file may declare a `namespace`,
-  and an i18next root key pairs with its suffixes. `resolveLegacyKey()` also
-  returns `recognised` and `issue`.
-- **A server message param that is null keeps its marker.** Filling
-  `At least {min} characters.` with `min => null` now gives `At least {min}
-  characters.`, as a missing param does, instead of an empty gap.
-- **A server message that puts translatable text in a marker is reported.**
-  When a message is translated or emitted and a marker's value is itself a
-  phrase in the project's catalog, such as a status the app also translates,
-  one warning names the template, the marker and the value: that text is never
-  translated with the sentence. Numbers and values the catalog does not hold are
-  not reported.
-- **A rendered content block carries its id, and a stamped id is honoured.**
-  `translatePage()` now stamps each rendered block host with
-  `data-ls-contentblock="<id>"`, as `translateContentBlock()` does, and a
-  declaration marker (no value, `""`, `true`, `1` or `yes`) is set to the id when
-  rendered. A content-block marker holding any other value is read as that
-  block's id: the element renders from the catalog entry under it, and when the
-  catalog lacks that id its content registers under it, unless the element or an
-  ancestor carries `data-ls-resolved`, in which case nothing registers. Before,
-  such a value declared a new block under a derived id.
-- **Warnings and errors are logged even with no log file configured.** Without
-  a `log_path`, or with one whose directory cannot be written, they go to PHP's
-  error log with a `[langsys]` prefix; nothing below warning is written there.
-  Pass `'error_log' => false` to turn it off. A flush skipped because the key may
-  not write is now logged at debug, since it happens by design on every request.
-- **A marked element inside other content is translated on its own.** An
-  element carrying a phrase or content-block marker inside a paragraph, a block
-  or another marked element no longer adds its words to what surrounds it, on
-  the page path and in `translateContentBlock()`: it registers and renders as a
-  unit of its own, and the surrounding content registers without it. A block
-  that contained such an element gets a new id and registers once more.
-- **The request locale is chosen from the URL, then a cookie, then the browser,
-  and is always one the project serves.** With no locale set, `getLocale()` reads
-  a `?locale=` parameter, the first path segment or the subdomain, then a
-  `locale` cookie or session value, then `Accept-Language` negotiated against the
-  project's base and target locales, and otherwise serves the base locale. An
-  unsupported candidate is skipped; before, an `Accept-Language` the project did
-  not serve became the locale and every lookup failed. The response carries
-  `Vary: Cookie` or `Vary: Accept-Language` when those decided. The names and an
-  app resolver are set with the `request_locale` option, and
-  `resolveRequestLocale()` exposes the decision; `'send_vary' => false` leaves the
-  `Vary` header to a framework that sets it on its own response.
-- **An outage of the translations API is not paid for on every request.** A
-  failed catalog fetch is remembered per locale for 3 seconds, doubling on each
-  consecutive failure up to 5 minutes, and cleared by the first success. Inside
-  that window pages render their source text without calling the API. The window
-  belongs to the `Client`, so on a long-lived worker it spans requests.
-  `resetRequestState()` no longer clears it.
-- **A failing registration endpoint is no longer asked again on every flush.**
-  After a failed send the items stay queued and the next flush waits 3 seconds,
-  doubling up to 5 minutes; the first success resets the wait. A failed
-  content-block send is now counted as `retained` like a failed phrase send.
-  The wait belongs to the `Client`, so on a long-lived worker it carries across
-  requests, while `resetRequestState()` now drops whatever is still queued rather
-  than sending one request's phrases with the next request's.
-- **A key that should write but cannot is reported.** When the server answers
-  `write_enabled: false` for a `write` or `ip_write` key, one warning is logged
-  for the life of the `Client`.
-- **A truncated phrase is not registered beside its full text.** A phrase ending
-  in `…` or `...` is logged at debug level, and not registered when a longer
-  phrase starting with the same text is already known in its category.
-- **Invisible control characters no longer change a phrase's identity.** The 28
-  C0 controls (U+0001–U+0008, U+000B, U+000C, U+000E–U+001F) are removed from
-  every phrase and content-block token before whitespace collapses: text,
-  translatable attributes, `translate()` keys, registered phrases and server
-  message templates, on registration and lookup alike. A phrase or block whose
-  source carried one, such as a stray U+001C pasted into an `alt`, gets the same
-  id as the other Langsys SDKs and re-registers once. TAB, LF and CR still
-  collapse to a space.
-- **A content-block fragment holding one phrase in one text node is a phrase.**
-  `translateContentBlock('<p>Hello</p>')`, `registerContentBlock()` and
-  `createContentBlocks()` register such a fragment as the phrase "Hello", and
-  `translateContentBlock()` renders it from that phrase's translation, written
-  back into the text node. This is the shape every other Langsys SDK gives the
-  same content. A block previously registered for such a fragment is not looked
-  up: the fragment registers as a phrase once and is translated again. A
-  fragment registered with an explicit custom id stays a content block.
-- **A translation that fails to format renders its sentence.** A phrase whose
-  pattern parses but that intl cannot format, such as `{count}` written inside
-  the branches of its own plural, rendered the raw plural construct. It now
-  renders the branch for the value, by its CLDR category in the render locale,
-  with the value filled in ("You have 3 cars"), and logs a warning at every log
-  level, once per phrase and locale, naming the phrase and intl's error.
-- **`translatePage()` registers every element the other SDKs register, in the
-  same shape.** An `<img alt>`, `<input placeholder>`, `<button data-confirm>`
-  or any inline element outside a paragraph is now registered and translated;
-  a paragraph's own `title` (or any listed attribute) is registered with its
-  text, as the block `[Tooltip, Hello]`; and a paragraph whose only text sits
-  in an svg `<text>` is a phrase, translated in place so the drawing survives.
-  A page carrying these shapes registers new items on its next render.
-- **A page translation holding ICU rendered as raw pattern text when no params
-  were passed.** `translatePage()` returned early on empty params, so a translated
-  `{gender, select, …}` reached the page, the `<title>` and attribute values as
-  MessageFormat source. It now renders the recovered branch, as `translate()` and
-  `translateContentBlock()` do.
-- **A locale in another spelling fetched the catalog again.** `es-ES` or `es_ES`
-  passed to `translate()`, `getTranslations()`, `clearCache()`, the page translator
-  or the Translations resource reached the API and the cache as given, splitting
-  one catalog into two. Every entry point now uses the lowercase `es-es` form.
-- **An API error in the langsys error envelope raised a TypeError instead of the
-  error.** When the API sent `error` as an object (code, message, template), the
-  client passed the whole object as the exception message. The exception now carries
-  the object's message and exposes `getErrorCode()` and `getServerMessages()`.
-- **A null catalog value no longer reaches the caller.** A registered but
-  untranslated phrase comes back present with a `null` value; the lookup guarded
-  only against `''`, so `null` passed through `interpolate()`'s empty-params
-  early return and out of a method that contracts to return a string.
-- **Write capability is decided by the server, not inferred from the key type.**
-  `canWrite()` branches on `write_enabled` when the response carries it —
-  `key_type` describes the key, while capability is per-session and depends on
-  the caller's address and any write grant. When the flag is absent the SDK falls
-  back to `key_type === 'write'`, which on an API too old to emit the flag is not
-  a lossy proxy but the complete answer, since such an API has no address-gated
-  keys and no grants. **That fallback must stay**: failing closed on a missing
-  flag would silently disable all registration against today's API.
-- **The write decision is never persisted.** It is address-dependent, and was
-  being written to a cache shared by every request on the host — and by the whole
-  fleet on Redis. It is now stripped before caching and held per request.
-  Resolution costs no extra request for `read`/`write` keys, whose answer their
-  type fully determines; only address-gated keys resolve per request.
-- **An empty or null category no longer creates a second, unreachable
-  namespace.** The catalog keys uncategorised items under `__uncategorized__`, so
-  a lookup under `''` missed forever while registration wrote the phrase as
-  uncategorised — re-registering the same phrase on every request, never
-  converging.
-- **`flushPendingRegistrations()` no longer reports success for work it did not
-  do.** `success` now means every queued item was accepted, and the result
-  carries `skipped`, split into `dropped` (gone) and `retained` (a later flush
-  can send them) — the two need opposite responses from a caller. A result that
-  is not a success names its `reason`: `not_write_enabled`,
-  `catalog_unavailable`, `backing_off`, `decision_unavailable` or `send_failed`.
-  A flush after the catalog could not be read reports `catalog_unavailable`
-  rather than an empty success.
-
-### Notes
-
-- Ported semantically from `fix/write-enabled-gate`, not file-by-file: that
-  branch forked before the v1.0.0–v1.3.1 line, so a file-level re-land would have
-  regressed non-blocking `translatePage` (v1.3.0) and the ICU argument fix
-  (v1.3.1). Items already present on `main` were deliberately **not** ported —
-  the `json_encode`-failure fallback in `generateCustomId()`, the ICU
-  `\Throwable` guard (broader than the version it would have replaced), and the
-  `translate()` signature, where `main`'s
-  `(phrase, locale, category, contentBlockId, params)` supersedes the older
-  branch's shape rather than the other way round.
-
-### Fixed — regressions found by verification
-
-Four rules that the source branch had fixed were live again on `main`, having
-been reintroduced by the v1.3.0 queue rearchitecture and missed by a port list
-scoped to `Client`:
-
-- **The legacy fallback did not cover `translatePage()`** — the page path
-  resolved the current id only, so a pre-change block read as new, was queued
-  under the new id, and its translations were stranded. See above.
-- **Discovered items were recorded as registered when only queued.** The flush
-  that sends them runs later and can skip, fail, or never run; the marker
-  suppresses the item on every later render until the cache expires, so one
-  failed flush cost the content indefinitely. Nothing is recorded now until the
-  server has accepted it.
-- **Phrase discovery disagreed with `translate()` about content-block ids.** Text
-  colliding with a block id re-registered on every render.
-- **The registered-items cache key carried no project id** — the only
-  un-namespaced key in the SDK, so two projects sharing a cache suppressed each
-  other's registrations.
-
-### Fixed — found by review of the fixes above
-
-The previous round closed WIRE-4 and REG-9. Both were closed too narrowly, and
-one of them broke something that had been working:
-
-- **A malformed cache entry was only rejected at the top level.** The guard
-  tested `is_array()` on the whole entry, which a map of *scalar slices*
-  satisfies — and that shape then raised a `TypeError` at the first index into a
-  category, out of all three entry points, leaving the entry poisoned for the
-  rest of its TTL. The check is now depth 2.
-- **The SDK was writing the poison it guarded against.** Whatever the API
-  returned went straight into the shared cache, so one malformed response was
-  re-read by every request until the TTL expired. Responses are now validated
-  before they can reach a cache.
-- **A batch limit of `0` took the request down — a regression introduced by the
-  REG-9 fix.** Reading the server's limit for the first time also meant
-  honouring a bad one: `array_chunk()` raises a `ValueError` on a non-positive
-  length, and this runs from the shutdown handler, where it is a fatal *after*
-  the response has been sent. Before that fix the value was never read, so it
-  was harmless. Non-positive limits are ignored, and the flush now catches
-  `\Throwable` so no `\Error` can escape a best-effort lane.
-- **Blocks registered by an untyped JS caller were still stranded.** The legacy
-  JS generator did not coalesce `null`, so those blocks are filed under
-  `[null,[...]]` — an id the PHP lookup could not produce, because every
-  category slot it tries is a string. Found by driving the public lookup with
-  the reference vectors' own inputs; the existing tests exercised the hash
-  directly and could not have caught it.
-
-### Fixed — a regression in the previous round's fix
-
-The WIRE-4 fix rejected malformed responses by returning an empty catalog. That
-was worse than the defect it replaced:
-
-- **One malformed response blanked translations for the whole cache TTL** — an
-  hour by default, and fleet-wide on a shared Redis. An empty catalog is a
-  valid shape, so it was cached like any other answer and every later request
-  read it. Under a read key nothing refetches, so it could not self-heal at
-  all; measured as request 1 malformed, then requests 2 and 3 against a
-  *healthy* server still rendering source text with no calls made. A rejected
-  payload now leaves the cache untouched, exactly as an unreachable API does.
-
-Three things that were claimed as tested and were not:
-
-- The depth-1 cache vectors were keyed on a category no render reads, so the
-  malformed slice was never indexed and the test passed against the unfixed
-  code. Re-keyed, it fails 9 out of 9 without the fix.
-- Four of the five `\Throwable` degradation seams could be narrowed back to
-  `\Exception` with the suite still green. Each is now driven by a transport
-  that fails with an `\Error`.
-- Every client-level test of the legacy content-block fallback used ASCII,
-  where the two hash forms agree — so all of them passed against a wrong
-  implementation. Added Cyrillic, Japanese, Greek, Hebrew, Arabic and
-  astral-plane cases driven from the shared reference vectors.
-
-### Fixed — the carve-out in the round above
-
-- **An empty 200 from a proxy could still blank a project's translations for
-  the cache TTL.** The fix above rejected malformed responses but waved through
-  a 2xx with no `data` key, treating it as an empty catalog — and an
-  empty-bodied 2xx becomes exactly that shape on the way in. The reasoning was
-  checkable and wrong: the API always sends the `data` key, an empty catalog
-  included, so a response without it is never ours. Now rejected like any other
-  malformed body.
-- **A failed catalog fetch was retried once per phrase.** Nothing about a
-  failure can be cached — that is what caused the blanking — but retrying per
-  call meant a 200-phrase page during an incident sent 200 requests to a
-  service already struggling. A failure is now remembered for the rest of the
-  request, and forgotten when the next one begins.
-- **Two more degradation seams could silently lose their protection**, one of
-  them on every render path: the fallback that looks up a project's base locale
-  runs before the guard the entry points rely on, so a failure there escaped
-  all three. Both are now covered by tests that fail if the protection is
-  weakened.
-
-### Fixed — the tokenizer now agrees with the other SDKs
-
-The rules that decide what counts as a *phrase* are shared across every Langsys
-SDK, because a content block's identity is derived from its phrases. This SDK
-disagreed with the others in two ways, and both silently changed which block a
-translation belonged to:
-
-- **A non-breaking space was not treated as a space.** Text containing one — and
-  it is what every editor inserts for a "hard" space — produced a different
-  block identity here than in the JavaScript SDKs, so the same content could be
-  registered twice and translated twice. The same applied to the rarer line and
-  paragraph separators. A paragraph containing *only* a non-breaking space
-  counted as a phrase, which changed the identity of every block around it.
-- **Script and style contents were being registered as text.** A content block
-  containing a `<script>` or `<style>` had its source code extracted as
-  translatable phrases, sent for machine translation, and — because identity
-  follows the phrase list — re-identified whenever that source changed, which
-  for an analytics tag carrying a timestamp is every single render.
-
-Both are fixed, and the fix is one shared routine rather than the seven
-near-copies that had drifted apart. Three further places (the page `<title>` and
-both meta-description paths) had never normalised at all.
-
-- **`%name%` placeholders reached readers as literal text.** Both `{name}` and
-  `%name%` are now accepted. Percentages in ordinary copy are untouched: a
-  placeholder is only substituted when a value for that name was actually
-  supplied.
-
-Note for integrators: a content block being seen for the first time is now
-returned re-serialised rather than byte-for-byte as given, so entity spellings
-and self-closing tags may differ from the input even when nothing was
-translated. The rendered result is equivalent HTML; it is not guaranteed to be
-the identical string.
-
-### Fixed — links and emphasis no longer vanish from translated pages
-
-- **A phrase wrapped in a link or other inline markup lost that markup when
-  translated.** `<li><a href="/pricing">Pricing</a></li>` came back as
-  `<li>Precios</li>` — the link gone, so a translated navigation menu stopped
-  being clickable. The same applied to `<strong>`, `<span>` and anything else
-  wrapping the whole of a phrase, and to a `<br>` inside one. This is older
-  than the current work and affects released versions.
-
-### Fixed — found reviewing the tokenizer work above
-
-- **Page titles stopped translating.** Collapsing whitespace when a title was
-  *recorded* but not when it was *looked up* meant the two never matched again,
-  so titles silently stayed in the source language — and were not re-recorded
-  either, because as far as the SDK could tell the work was already done. The
-  same mismatch affected image alt text and other attributes on translated
-  pages, where it went unnoticed because it only showed up when the text was
-  written across more than one line.
-- **A translated block could claim an identity that wasn't its own.** Where a
-  block was a mix of text and markup (`Buy <strong>now</strong>`), the identity
-  stamp landed on the inner element, labelling it as the whole block. Anything
-  reading the page afterwards believed it.
-- **Padding around a translated phrase could vanish**, running words together,
-  when that padding was a non-breaking space.
-
-### Notes
-
-- **Some markup is read differently by this SDK than by the JavaScript ones,
-  and it is not something either side can fix in its own code.** PHP and the
-  browser disagree about how to interpret three kinds of imperfect HTML: text
-  inside `<textarea>` and `<title>`, content that strays inside a `<table>`,
-  and unclosed tags. Unclosed tags agree. The other two do not, which means the
-  same source can be filed under two different entries depending on which SDK
-  saw it. The table case is the one to know about, because a stray element
-  inside a table splits a phrase with nothing visibly wrong on the page.
-  Measured and recorded in `CONFORMANCE.md` rather than worked around; keeping
-  table markup well-formed avoids it.
-- **Which of those two splits applies also depends on the libxml2 version PHP
-  was built with, and composer cannot pin that.** The splits above were measured
-  on libxml2 2.9.13. A newer libxml2 (2.14.6, measured through another SDK) reads
-  markup inside `<textarea>` and `<title>` the way the JavaScript SDKs do, so the
-  identity of content carrying markup inside those elements can change when a
-  server's libxml2 is upgraded, with no change to the SDK or to the page.
-
-### Changed
-
-- **What counts as whitespace now matches the JavaScript SDKs exactly.** Three
-  characters were treated differently on either side, so the same content could
-  be filed under two identities depending on which SDK saw it first.
-- **Text inside `<svg>` is now translated**, on whole-page translation,
-  block-by-block translation, and inside a marked keep-together phrase. Labels in charts, diagrams and inline icons are
-  copy a reader reads, so they are treated as copy. The drawing itself is left
-  alone — only the text inside it changes — and text sitting beside an icon is
-  unaffected. MathML remains untranslated, being notation rather than prose.
-- **A phrase written with `%name%` is now stored as `{name}`**, matching the
-  other SDKs, so the same sentence written either way is one phrase rather than
-  two.
-
-### Added
-
-- **Rendered content blocks now carry their own identity** (`data-ls-contentblock`),
-  and both the `data-ls-*` and `data-langsys-*` spellings are understood when
-  reading. A page rendered by this SDK that also hosts a JavaScript-rendered
-  component no longer risks the two halves disagreeing about where one block
-  ends and the next begins — which previously registered the same content twice
-  and stranded whichever copy was written first.
-
-### Removed
-
-- **Two unreachable methods in `PageTranslator`** (78 lines). They wrote the
-  "already registered" cache, and their only entry point lost its last caller
-  when items stopped being marked as registered at queue time — a fix made
-  because marking them early cost the content whenever a later flush failed.
-  Nothing has called them since; they are `protected`, so anyone subclassing
-  `PageTranslator` and calling them directly is affected.
-
-  Note for whoever touches this next: nothing writes that cache any more, so
-  the read side of the mechanism can no longer return anything. It is left in
-  place deliberately — a sibling process on an older version of this SDK may
-  still have written entries that are valid until they expire — but once that
-  is no longer a concern the reads are dead weight.
-
-### Changed
-
-- **`CONFORMANCE.md` rebased onto the current spec** (blob `45cdddf8`). GRANT-1…4
-  were re-profiled to `browser`, so they no longer bind a server SDK: 41 of 67
-  rules bind, all rowed. The existing "no `X-Write-Grant` header" test is now the
-  affirmative non-participation test the spec asks for rather than a placeholder.
+- **Links and emphasis survive translation.** A phrase wrapped in a link, `<strong>`,
+  `<span>` or a `<br>` keeps that markup.
+- **A page is read and written as a browser reads it.** It is decoded by its byte-order
+  mark, its declared charset or its bytes, by the browser's own decoders; written out
+  in UTF-8; a page without `<html>`, `<head>` or `<body>` is translated whole; its
+  scripts and styles come back byte for byte; a `<` that starts no tag is text; and
+  `<!-->` is an empty comment. Each of these lost or mangled part of a page.
+- **Script, style and excluded text are never rewritten** by a translation.
+- **A plural Langsys generates for a target locale renders its singular** at a count
+  of 1. Every request asks the API for ICU.
+- **ICU renders on every path.** A page translated without params, and a translation
+  that fails to format, render their branch for the value, not the raw pattern.
+- **One catalog per locale, whatever its spelling** (`es-ES`, `es_ES`, `es-es`).
+- **An empty or null category is one category**, so an uncategorised phrase stops
+  re-registering on every request.
+- **A registered but untranslated phrase is known**, renders its source and is not
+  registered again.
+- **An outage costs one failed request, not one per phrase.** A failed catalog fetch
+  is remembered for 3 seconds, doubling to 5 minutes, and nothing is queued meanwhile.
+  A malformed or empty response is never cached.
+- **A failing registration endpoint is backed off**, its items kept queued, and a
+  refused send records nothing that stops the next request registering.
+- **The write decision is never cached**, so one request's or one key's answer never
+  reaches another.
+- **Every cache key is namespaced by project**, so two projects sharing a cache no
+  longer suppress each other's registrations.
+- **Registrations are chunked to the batch limit the API advertises**, and a bad limit
+  cannot take the request down.
+- **An API error in the error envelope** raises its message, with `getErrorCode()` and
+  `getServerMessages()`, instead of a `TypeError`.
+- **A key whose type writes but that the API answers not write-enabled** is reported
+  once, as a warning.
+- **A worker that builds a `Client` per request no longer grows** with every request.
+  A `Client` its framework lets go is freed at once and sends what it still has
+  queued.
+- **A display locale cannot steer a request.** The `utilities()` resource throws
+  `InvalidArgumentException` for one that names no path segment (empty, `.` or `..`).
+- **A truncated phrase ending in `…` is not registered beside its full text.**
+- **No deprecation notices on PHP 8.4.**
 
 ## [1.3.1] - 2026-08-16
 
