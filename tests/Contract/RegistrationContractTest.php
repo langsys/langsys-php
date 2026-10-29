@@ -114,7 +114,9 @@ class RegistrationContractTest extends ContractTestCase
     }
 
     /**
-     * GATE-7, the writer's direction: every detection path registers.
+     * GATE-7, the writer's direction: every detection path registers. The
+     * API refuses a block without content, so the block is stored with the
+     * markup its phrases were read from.
      */
     public function testAWriterRegistersFromEveryPath(): void
     {
@@ -124,6 +126,9 @@ class RegistrationContractTest extends ContractTestCase
 
         $this->assertSame(['__uncategorized__' => ['Page path', 'Phrase path']], $this->phrases($world, 'write'));
         $this->assertSame(['UI' => [['Block one', 'Block two']]], $this->blocks($world, 'write'));
+        $stored = $this->storedBlocks($world, $world->key('write'), 'en-us');
+        $this->assertCount(1, $stored);
+        $this->assertStringContainsString('<p>Block one</p><p>Block two</p>', (string) $stored[0]['content'], 'the block is stored with its markup');
     }
 
     /**

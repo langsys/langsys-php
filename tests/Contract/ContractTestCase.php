@@ -296,12 +296,12 @@ abstract class ContractTestCase extends TestCase
      * A call to the API under an API key, made by the test itself.
      *
      * @param string $path
-     * @param array $init key, method, body
+     * @param array $init key, method, body, headers
      * @return array{status: int, body: mixed}
      */
     protected function api($path, array $init = [])
     {
-        $headers = isset($init['key']) ? ['X-Authorization: ' . $init['key']] : [];
+        $headers = array_merge(isset($init['key']) ? ['X-Authorization: ' . $init['key']] : [], isset($init['headers']) ? $init['headers'] : []);
 
         return $this->call($path, isset($init['method']) ? $init['method'] : null, $headers, array_key_exists('body', $init) ? $init['body'] : null, array_key_exists('body', $init));
     }
