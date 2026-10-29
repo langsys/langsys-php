@@ -23,60 +23,62 @@ class TwoTemplates implements MessageSource
  */
 class ServerMessagesContractTest extends ContractTestCase
 {
+    protected static $seed = 'server-messages';
+
     const TEMPLATE = 'The password must be at least {min} characters.';
 
     public function testATemplateFiledUnderTheMessagesCategoryIsFoundThereAndNowhereElse(): void
     {
-        $this->seedProject(['k-read' => ['type' => 'read']], ['phrases' => [['category' => 'Errors', 'phrase' => self::TEMPLATE, 'translations' => ['es-es' => 'La contraseña debe tener al menos {min} caracteres.']]]]);
+        $world = $this->world('translated');
         $entry = ServerMessage::make('too_short', self::TEMPLATE, ['min' => 12], 'password');
 
-        $client = $this->client('k-read');
+        $client = $this->client($world->key('read'), $world->project());
         $client->setLocale('es-es');
         $this->assertSame('La contraseña debe tener al menos 12 caracteres.', $client->translateMessage($entry));
 
-        $elsewhere = $this->client('k-read', null, ['messages_category' => 'Validation']);
+        $elsewhere = $this->client($world->key('read'), $world->project(), null, ['messages_category' => 'Validation']);
         $elsewhere->setLocale('es-es');
         $this->assertSame('The password must be at least 12 characters.', $elsewhere->translateMessage($entry));
     }
 
     public function testTheCommandRegistersOnlyWhatTheCatalogLacks(): void
     {
-        $this->seedProject(['k-write' => ['type' => 'write']], ['phrases' => [['category' => 'Errors', 'phrase' => 'The name is required.']]]);
+        $world = $this->world('one-listed');
         $catalog = MessageCatalogCommand::collect([new TwoTemplates()]);
 
-        $client = $this->client('k-write');
+        $client = $this->client($world->key('write'), $world->project());
         $client->setLocale('en-us');
         $this->assertSame(['registered' => 1, 'skipped' => 1], MessageCatalogCommand::register($catalog, $client));
 
-        $again = $this->client('k-write');
+        $again = $this->client($world->key('write'), $world->project());
         $again->setLocale('en-us');
         $this->assertSame(['registered' => 0, 'skipped' => 2], MessageCatalogCommand::register($catalog, $again), 'a second run registers nothing new');
 
-        $this->assertEqualsCanonicalizing([['Errors', 'The name is required.'], ['Errors', self::TEMPLATE]], $this->registeredPhrases());
+        $this->assertSame(['Errors' => ['The name is required.', self::TEMPLATE]], $this->held($world->key('write'), $world->project(), 'en-us')['phrases']);
     }
 
     public function testAnEmittedTemplateTheCatalogLacksIsRegisteredUnderTheMessagesCategory(): void
     {
-        $this->seedProject(['k-write' => ['type' => 'write']]);
+        $world = $this->world('writer');
 
-        $client = $this->client('k-write');
+        $client = $this->client($world->key('write'), $world->project());
         $client->setLocale('es-es');
         $client->emitMessage(ServerMessage::make('too_short', self::TEMPLATE, ['min' => 12], 'password'));
-        $this->assertSame([], $this->registeredPhrases(), 'nothing is sent while the request is served');
+        $this->assertSame([], $this->held($world->key('write'), $world->project(), 'en-us')['phrases'], 'nothing is sent while the request is served');
 
         $client->flushPendingRegistrations();
-        $this->assertSame([['Errors', self::TEMPLATE]], $this->registeredPhrases());
+        $this->assertSame(['Errors' => [self::TEMPLATE]], $this->held($world->key('write'), $world->project(), 'en-us')['phrases']);
     }
 
     public function testAKeyThatMayNotWriteRegistersNoEmittedTemplate(): void
     {
-        $this->seedProject(['k-read' => ['type' => 'read']]);
+        $world = $this->world('reader');
 
-        $client = $this->client('k-read');
+        $client = $this->client($world->key('read'), $world->project());
         $client->setLocale('es-es');
         $client->emitMessage(ServerMessage::make('too_short', self::TEMPLATE, ['min' => 12], 'password'));
         $client->flushPendingRegistrations();
 
-        $this->assertSame([], $this->registeredPhrases());
+        $this->assertSame([], $this->held($world->key('read'), $world->project(), 'en-us')['phrases']);
     }
 }

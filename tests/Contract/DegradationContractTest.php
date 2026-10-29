@@ -3,12 +3,14 @@
 namespace Langsys\SDK\Tests\Contract;
 
 /**
- * WIRE-4 against the contract fixture: a catalog read the server refuses, or a
- * connection it drops, degrades every rendering path to source and queues
- * nothing - so the outage leaves nothing behind in the server's state.
+ * WIRE-4 against the contract fixture: a catalog read that fails with a 500,
+ * or a connection dropped, degrades every rendering path to source and queues
+ * nothing - so the outage leaves nothing behind in what the API holds.
  */
 class DegradationContractTest extends ContractTestCase
 {
+    protected static $seed = 'degradation';
+
     public function failures()
     {
         return [
@@ -22,14 +24,9 @@ class DegradationContractTest extends ContractTestCase
      */
     public function testEveryPathRendersSourceAndStoresNothing(array $fault): void
     {
-        $this->seedProject(
-            ['k-write' => ['type' => 'write']],
-            ['phrases' => [['phrase' => 'Hello', 'translations' => ['es-es' => 'Hola']]]],
-            [],
-            [array_merge(['method' => 'GET', 'path' => '/translations', 'times' => 5], $fault)]
-        );
+        $world = $this->world('hello', ['faults' => [array_merge(['method' => 'GET', 'path' => '/translations', 'times' => 5], $fault)]]);
 
-        $client = $this->client('k-write');
+        $client = $this->client($world->key('write'), $world->project());
         $client->setLocale('es-es');
 
         $this->assertSame('Hello', $client->translate('Hello'));
@@ -38,38 +35,40 @@ class DegradationContractTest extends ContractTestCase
         $this->assertStringContainsString('<p>Page text</p>', $client->translatePage('<html><body><p>Page text</p></body></html>'));
         $client->flushPendingRegistrations();
 
-        $this->assertSame([[null, 'Hello']], $this->registeredPhrases(), 'only the seeded phrase; the outage registered nothing');
-        $this->assertSame([], $this->registeredBlocks());
+        $held = $this->held($world->key('write'), $world->project(), 'en-us');
+        $this->assertSame(['__uncategorized__' => ['Hello']], $held['phrases'], 'only the seeded phrase; the outage registered nothing');
+        $this->assertSame([], $held['blocks']);
     }
 
     /**
      * WIRE-2: an empty 204 - no body, no content type - is a status to branch
      * on, not a body to parse. A write answered 204 was accepted; a catalog read
      * answered 204 carries no catalog, so it degrades like any failed read.
+     * The 204s are the fixture's, as something in front of the API would send.
      */
     public function testAnEmpty204IsAcceptedOnAWriteAndDegradesOnARead(): void
     {
-        $this->seedProject(['k-write' => ['type' => 'write']], [], [], [['method' => 'POST', 'path' => '/translatable-items', 'status' => 204]]);
-        $client = $this->client('k-write');
+        $world = $this->world('writer', ['faults' => [['method' => 'POST', 'path' => '/translatable-items', 'status' => 204]]]);
+        $client = $this->client($world->key('write'), $world->project());
         $client->setLocale('es-es');
         $client->translate('Sent');
 
         $this->assertTrue($client->flushPendingRegistrations()['success'], 'a 204 on a write is the server accepting it');
 
-        $this->seedProject(['k-write' => ['type' => 'write']], ['phrases' => [['phrase' => 'Hello', 'translations' => ['es-es' => 'Hola']]]], [], [['method' => 'GET', 'path' => '/translations', 'status' => 204]]);
-        $client = $this->client('k-write');
+        $world = $this->world('hello', ['faults' => [['method' => 'GET', 'path' => '/translations', 'status' => 204]]]);
+        $client = $this->client($world->key('write'), $world->project());
         $client->setLocale('es-es');
 
         $this->assertSame('Unknown', $client->translate('Unknown'));
         $client->flushPendingRegistrations();
-        $this->assertSame([[null, 'Hello']], $this->registeredPhrases(), 'an empty read queued nothing');
+        $this->assertSame(['__uncategorized__' => ['Hello']], $this->held($world->key('write'), $world->project(), 'en-us')['phrases'], 'an empty read queued nothing');
     }
 
     public function testControlTheSameCatalogTranslatesWhenTheReadSucceeds(): void
     {
-        $this->seedProject(['k-write' => ['type' => 'write']], ['phrases' => [['phrase' => 'Hello', 'translations' => ['es-es' => 'Hola']]]]);
+        $world = $this->world('hello');
 
-        $client = $this->client('k-write');
+        $client = $this->client($world->key('write'), $world->project());
         $client->setLocale('es-es');
 
         $this->assertSame('Hola', $client->translate('Hello'));

@@ -11,36 +11,24 @@ use Langsys\SDK\Snapshot\Snapshot;
  */
 class SnapshotContractTest extends ContractTestCase
 {
-    private function seedCatalog()
-    {
-        $this->seedProject(['k-read' => ['type' => 'read']], [
-            'target_locales' => ['es-es', 'fr-fr'],
-            'phrases' => [
-                ['category' => 'UI', 'phrase' => 'Save', 'translations' => ['es-es' => 'Guardar', 'fr-fr' => 'Enregistrer']],
-                ['category' => 'Errors', 'phrase' => 'Oops', 'translations' => ['es-es' => 'Uy']],
-                ['category' => 'Billing', 'phrase' => 'Pay', 'translations' => ['es-es' => 'Pagar']],
-                ['category' => null, 'phrase' => 'Loose'],
-            ],
-            'blocks' => [['category' => 'UI', 'custom_id' => 'abc123', 'phrases' => [['phrase' => 'One', 'translations' => ['es-es' => 'Uno']], ['phrase' => 'Two']]]],
-        ]);
-    }
+    protected static $seed = 'snapshot';
 
-    private function served($locale)
+    private function served(World $world, $locale)
     {
-        $context = stream_context_create(['http' => ['header' => "X-Authorization: k-read\r\n", 'ignore_errors' => true]]);
-        $body = json_decode(file_get_contents(self::$baseUrl . '/translations?project_id=' . self::PROJECT . '&locale=' . $locale . '&format=flat', false, $context), true);
+        $answer = $this->api('/translations?' . http_build_query(['project_id' => $world->project(), 'locale' => $locale, 'format' => 'flat']), ['key' => $world->key('read')]);
+        $this->assertSame(200, $answer['status']);
 
-        return $body['data'];
+        return $answer['body']['data'];
     }
 
     public function testTheSnapshotCarriesExactlyWhatTheApiReturnsForTheChosenCategories(): void
     {
-        $this->seedCatalog();
+        $world = $this->world('catalog');
 
-        $snapshot = Snapshot::export($this->client('k-read'), ['es-es', 'fr-fr'], ['UI', 'Errors']);
+        $snapshot = Snapshot::export($this->client($world->key('read'), $world->project()), ['es-es', 'fr-fr'], ['UI', 'Errors']);
 
         foreach (['es-es', 'fr-fr'] as $locale) {
-            $served = $this->served($locale);
+            $served = $this->served($world, $locale);
             $this->assertSame(['Errors' => $served['Errors'], 'UI' => $served['UI']], $snapshot->catalog($locale), $locale);
         }
         $this->assertSame('en-us', $snapshot->baseLocale(), 'the project\'s base locale travels with the snapshot');
@@ -51,9 +39,9 @@ class SnapshotContractTest extends ContractTestCase
 
     public function testNothingOutsideTheCatalogIsCarried(): void
     {
-        $this->seedCatalog();
+        $world = $this->world('catalog');
 
-        $json = Snapshot::export($this->client('k-read'), ['es-es'], ['UI'])->toJson();
+        $json = Snapshot::export($this->client($world->key('read'), $world->project()), ['es-es'], ['UI'])->toJson();
 
         foreach (['write_enabled', 'discovery_base_locale_only', 'untranslated_words'] as $field) {
             $this->assertStringNotContainsString($field, $json);
@@ -62,10 +50,10 @@ class SnapshotContractTest extends ContractTestCase
 
     public function testTheCommandWritesASnapshotThatLoads(): void
     {
-        $this->seedCatalog();
+        $world = $this->world('catalog');
         $out = sys_get_temp_dir() . '/langsys-snapshot-cli-' . bin2hex(random_bytes(4)) . '.json';
         $config = sys_get_temp_dir() . '/langsys-snapshot-config-' . bin2hex(random_bytes(4)) . '.php';
-        file_put_contents($config, '<?php return ["client" => function () { return new \\Langsys\\SDK\\Client("k-read", ' . var_export(self::PROJECT, true) . ', ["api_url" => ' . var_export(self::$baseUrl, true) . ', "cache" => new \\Langsys\\SDK\\Cache\\NullCache()]); }];');
+        file_put_contents($config, '<?php return ["client" => function () { return new \\Langsys\\SDK\\Client(' . var_export($world->key('read'), true) . ', ' . var_export($world->project(), true) . ', ["api_url" => ' . var_export(self::$baseUrl, true) . ', "cache" => new \\Langsys\\SDK\\Cache\\NullCache()]); }];');
 
         try {
             $bin = dirname(__DIR__, 2) . '/bin/langsys-snapshot';

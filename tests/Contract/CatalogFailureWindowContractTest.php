@@ -14,9 +14,11 @@ use Langsys\SDK\Client;
  */
 class CatalogFailureWindowContractTest extends ContractTestCase
 {
-    private function clockedClient()
+    protected static $seed = 'catalog-failure-window';
+
+    private function clockedClient(World $world)
     {
-        $client = new class ('k-write', self::PROJECT, ['api_url' => self::$baseUrl, 'cache' => new NullCache()]) extends Client {
+        $client = new class ($world->key('write'), $world->project(), ['api_url' => self::$baseUrl, 'cache' => new NullCache()]) extends Client {
             public $now = 1000.0;
 
             protected function currentTime()
@@ -29,27 +31,20 @@ class CatalogFailureWindowContractTest extends ContractTestCase
         return $client;
     }
 
-    private function seedWithFailures($times)
+    private function withFailures($times)
     {
-        $faults = $times > 0 ? [['method' => 'GET', 'path' => '/translations', 'status' => 500, 'times' => $times]] : [];
-
-        $this->seedProject(
-            ['k-write' => ['type' => 'write']],
-            ['phrases' => [['phrase' => 'Hello', 'translations' => ['es-es' => 'Hola']]]],
-            [],
-            $faults
-        );
+        return $this->world('hello', ['faults' => $times > 0 ? [['method' => 'GET', 'path' => '/translations', 'status' => 500, 'times' => $times]] : []]);
     }
 
     public function testInsideTheWindowALookupRendersSourceWithoutFetching(): void
     {
-        $this->seedWithFailures(1);
-        $client = $this->clockedClient();
+        $client = $this->clockedClient($this->withFailures(1));
 
         $this->assertSame('Hello', $client->translate('Hello'), 'the failed fetch degrades to source');
 
         // A later request on the same long-lived Client, inside the window.
         $client->resetRequestState();
+        $client->setLocale('es-es');
         $client->now += 2.5;
         $this->assertSame('Hello', $client->translate('Hello'), 'a refetch would have received the catalog');
         $this->assertFalse($client->hasPendingRegistrations(), 'nothing is queued inside the window');
@@ -60,8 +55,7 @@ class CatalogFailureWindowContractTest extends ContractTestCase
 
     public function testTheWindowDoublesOnAConsecutiveFailure(): void
     {
-        $this->seedWithFailures(2);
-        $client = $this->clockedClient();
+        $client = $this->clockedClient($this->withFailures(2));
 
         $this->assertSame('Hello', $client->translate('Hello'));
         $client->now += 3;
@@ -76,8 +70,6 @@ class CatalogFailureWindowContractTest extends ContractTestCase
 
     public function testControlASuccessfulFirstFetchRendersAtOnce(): void
     {
-        $this->seedWithFailures(0);
-
-        $this->assertSame('Hola', $this->clockedClient()->translate('Hello'));
+        $this->assertSame('Hola', $this->clockedClient($this->withFailures(0))->translate('Hello'));
     }
 }

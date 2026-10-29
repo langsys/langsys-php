@@ -7,11 +7,11 @@ use Langsys\SDK\Client;
 
 /**
  * WIRE-4: a client built without an API key leaves nothing behind, asserted on
- * the state the double accepted and on what a configured client sharing its
- * cache then reads.
+ * what the API holds and on what a configured client sharing its cache then
+ * reads.
  *
- * The double would refuse a keyless request, so its state alone is no evidence
- * that nothing was sent (CONF-2); HttpClientTest::testAClientWithoutCredentialsSendsNothing
+ * The API would refuse a keyless request, so what it holds is no evidence that
+ * nothing was sent (CONF-2); HttpClientTest::testAClientWithoutCredentialsSendsNothing
  * asserts that on a stand-in that records arrivals. What this proves is the
  * residue: the unconfigured client writes no catalog into a cache another
  * client reads, and the configured client then translates and registers as
@@ -19,6 +19,8 @@ use Langsys\SDK\Client;
  */
 class UnconfiguredContractTest extends ContractTestCase
 {
+    protected static $seed = 'unconfigured';
+
     /**
      * @var string
      */
@@ -36,15 +38,12 @@ class UnconfiguredContractTest extends ContractTestCase
 
     public function testAnUnconfiguredClientRendersSourceAndLeavesNothingForAConfiguredOne(): void
     {
-        $this->seedProject(
-            ['k-write' => ['type' => 'write']],
-            ['phrases' => [['phrase' => 'Hello', 'translations' => ['es-es' => 'Hola']]]]
-        );
+        $world = $this->world('hello');
 
         $this->dir = sys_get_temp_dir() . '/langsys-unconfigured-contract-' . bin2hex(random_bytes(4));
         $cache = new FileCache($this->dir);
 
-        $unconfigured = new Client('', self::PROJECT, [
+        $unconfigured = new Client('', $world->project(), [
             'api_url' => self::$baseUrl,
             'cache' => $cache,
             'warn_runtime_requirements' => false,
@@ -58,19 +57,20 @@ class UnconfiguredContractTest extends ContractTestCase
         $this->assertStringContainsString('<p>One</p>', $unconfigured->translateContentBlock('<div><p>One</p><p>Two</p></div>', 'UI'));
         $unconfigured->flushPendingRegistrations();
 
-        $this->assertSame([[null, 'Hello']], $this->registeredPhrases(), 'the unconfigured client stored nothing');
-        $this->assertSame([], $this->registeredBlocks());
+        $held = $this->held($world->key('write'), $world->project(), 'en-us');
+        $this->assertSame(['__uncategorized__' => ['Hello']], $held['phrases'], 'the unconfigured client stored nothing');
+        $this->assertSame([], $held['blocks']);
 
         // Control, on the same cache: a configured client reads the live
         // catalog, not anything the unconfigured one left, and registers what
         // it misses.
-        $configured = $this->client('k-write', $cache);
+        $configured = $this->client($world->key('write'), $world->project(), $cache);
         $configured->setLocale('es-es');
 
         $this->assertSame('Hola', $configured->translate('Hello'));
         $this->assertSame('Unknown', $configured->translate('Unknown'));
         $this->assertTrue($configured->flushPendingRegistrations()['success']);
 
-        $this->assertSame([[null, 'Hello'], [null, 'Unknown']], $this->registeredPhrases());
+        $this->assertSame(['__uncategorized__' => ['Hello', 'Unknown']], $this->held($world->key('write'), $world->project(), 'en-us')['phrases']);
     }
 }

@@ -1,0 +1,438 @@
+{
+    "projects": [
+        {
+            "id": "77000600-0001-4000-8000-000000000000",
+            "title": "php import importing#1 p1",
+            "target_locales": [
+                "es-es",
+                "fr-fr"
+            ],
+            "user": {
+                "token": "122501|8302c5e61ba747feb1c1fd85d300eb88a7087033",
+                "device_id": "php-import-1"
+            }
+        },
+        {
+            "id": "77000600-0002-4000-8000-000000000000",
+            "title": "php import importing#2 p1",
+            "target_locales": [
+                "es-es",
+                "fr-fr"
+            ],
+            "user": {
+                "token": "122502|7e1a742ecddd0ef13e333be9ee1798675cfac65b",
+                "device_id": "php-import-2"
+            }
+        },
+        {
+            "id": "77000600-0003-4000-8000-000000000000",
+            "title": "php import importing#3 p1",
+            "target_locales": [
+                "es-es",
+                "fr-fr"
+            ],
+            "user": {
+                "token": "122503|f43517d83b6197f28c71f5d648c399c476245359",
+                "device_id": "php-import-3"
+            }
+        },
+        {
+            "id": "77000600-0004-4000-8000-000000000000",
+            "title": "php import importing#4 p1",
+            "target_locales": [
+                "es-es",
+                "fr-fr"
+            ],
+            "user": {
+                "token": "122504|e4cd6a2628f2dca0b9a4fdf02cba3ce9bf142af9",
+                "device_id": "php-import-4"
+            }
+        },
+        {
+            "id": "77000600-0005-4000-8000-000000000000",
+            "title": "php import importing#5 p1",
+            "target_locales": [
+                "es-es",
+                "fr-fr"
+            ],
+            "user": {
+                "token": "122505|647187760b745d15c3e33188db038e754a5475ca",
+                "device_id": "php-import-5"
+            }
+        },
+        {
+            "id": "77000600-0006-4000-8000-000000000000",
+            "title": "php import importing#6 p1",
+            "target_locales": [
+                "es-es",
+                "fr-fr"
+            ],
+            "user": {
+                "token": "122506|e017ef47260322dc6c1627e04129d2e47d7a8eb4",
+                "device_id": "php-import-6"
+            }
+        },
+        {
+            "id": "77000600-0007-4000-8000-000000000000",
+            "title": "php import importing#7 p1",
+            "target_locales": [
+                "es-es",
+                "fr-fr"
+            ],
+            "user": {
+                "token": "122507|fe1aedb574d720e49fcb4b934427b7fa20abeabf",
+                "device_id": "php-import-7"
+            }
+        },
+        {
+            "id": "77000600-0008-4000-8000-000000000000",
+            "title": "php import importing#8 p1",
+            "target_locales": [
+                "es-es",
+                "fr-fr"
+            ],
+            "user": {
+                "token": "122508|6dc28bba03c53160ebbeffed42daa8827cd21c5f",
+                "device_id": "php-import-8"
+            }
+        },
+        {
+            "id": "77000600-0009-4000-8000-000000000000",
+            "title": "php import importing#9 p1",
+            "target_locales": [
+                "es-es",
+                "fr-fr"
+            ],
+            "user": {
+                "token": "122509|5f1cecf2ef517f9d744d93d9c7257f24bb27a59e",
+                "device_id": "php-import-9"
+            }
+        },
+        {
+            "id": "77000600-000a-4000-8000-000000000000",
+            "title": "php import importing#10 p1",
+            "target_locales": [
+                "es-es",
+                "fr-fr"
+            ],
+            "user": {
+                "token": "122510|c7d2ecbcfde5c3dfacb26a455be352a5a351f079",
+                "device_id": "php-import-10"
+            }
+        },
+        {
+            "id": "77000600-000b-4000-8000-000000000000",
+            "title": "php import importing#11 p1",
+            "target_locales": [
+                "es-es",
+                "fr-fr"
+            ],
+            "user": {
+                "token": "122511|ac7260b5b20d3578d7740a0d7cdeac2a10b7ac7b",
+                "device_id": "php-import-11"
+            }
+        },
+        {
+            "id": "77000600-000c-4000-8000-000000000000",
+            "title": "php import importing#12 p1",
+            "target_locales": [
+                "es-es",
+                "fr-fr"
+            ],
+            "user": {
+                "token": "122512|d4a3439885375f02f780998814f9287faaae5a2b",
+                "device_id": "php-import-12"
+            }
+        },
+        {
+            "id": "77000600-000d-4000-8000-000000000000",
+            "title": "php import capped#1 p1",
+            "target_locales": [
+                "es-es",
+                "fr-fr"
+            ],
+            "human_translation_word_limit": 2,
+            "user": {
+                "token": "122513|2651df21821ae3381fd4196805446584662f8ee0",
+                "device_id": "php-import-13"
+            }
+        },
+        {
+            "id": "77000600-000e-4000-8000-000000000000",
+            "title": "php import capped#2 p1",
+            "target_locales": [
+                "es-es",
+                "fr-fr"
+            ],
+            "human_translation_word_limit": 2,
+            "user": {
+                "token": "122514|aaac65147a8f1f89dbf282825a40b8eb09d6ff4d",
+                "device_id": "php-import-14"
+            }
+        },
+        {
+            "id": "77000600-000f-4000-8000-000000000000",
+            "title": "php import capped#3 p1",
+            "target_locales": [
+                "es-es",
+                "fr-fr"
+            ],
+            "human_translation_word_limit": 2,
+            "user": {
+                "token": "122515|a5c3fe96501c3d9759cafa239d3c4ccafe3d4f47",
+                "device_id": "php-import-15"
+            }
+        },
+        {
+            "id": "77000600-0010-4000-8000-000000000000",
+            "title": "php import capped#4 p1",
+            "target_locales": [
+                "es-es",
+                "fr-fr"
+            ],
+            "human_translation_word_limit": 2,
+            "user": {
+                "token": "122516|33cd73867b21679e27915a3fd9adc5eec18e88bf",
+                "device_id": "php-import-16"
+            }
+        },
+        {
+            "id": "77000600-0011-4000-8000-000000000000",
+            "title": "php import capped#5 p1",
+            "target_locales": [
+                "es-es",
+                "fr-fr"
+            ],
+            "human_translation_word_limit": 2,
+            "user": {
+                "token": "122517|f4822c43e4e8df703f2f0be499ff36a90a4dfce8",
+                "device_id": "php-import-17"
+            }
+        },
+        {
+            "id": "77000600-0012-4000-8000-000000000000",
+            "title": "php import capped#6 p1",
+            "target_locales": [
+                "es-es",
+                "fr-fr"
+            ],
+            "human_translation_word_limit": 2,
+            "user": {
+                "token": "122518|b152142f8c718fe8141782daa2a7f941bee0da36",
+                "device_id": "php-import-18"
+            }
+        },
+        {
+            "id": "77000600-0013-4000-8000-000000000000",
+            "title": "php import reader#1 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "122519|5f235a36d081bb6427a01c9700783138ad4500cb",
+                "device_id": "php-import-19"
+            }
+        },
+        {
+            "id": "77000600-0014-4000-8000-000000000000",
+            "title": "php import reader#2 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "122520|ae2cd2554875d5dff1f1ea0d5fe9e5664c585c9f",
+                "device_id": "php-import-20"
+            }
+        },
+        {
+            "id": "77000600-0015-4000-8000-000000000000",
+            "title": "php import reader#3 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "122521|3f3adfe5f8a76907cc9b6dd05d1e6d9bdfa8c025",
+                "device_id": "php-import-21"
+            }
+        },
+        {
+            "id": "77000600-0016-4000-8000-000000000000",
+            "title": "php import reader#4 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "122522|2524433b2283ba99c3c6b15dd928761232592920",
+                "device_id": "php-import-22"
+            }
+        },
+        {
+            "id": "77000600-0017-4000-8000-000000000000",
+            "title": "php import reader#5 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "122523|315168eeb020cd308f63e1b5f39440b7d9293290",
+                "device_id": "php-import-23"
+            }
+        },
+        {
+            "id": "77000600-0018-4000-8000-000000000000",
+            "title": "php import reader#6 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "122524|93d8eebfa256ba2a7f884eafd7cbb9a0c40ce663",
+                "device_id": "php-import-24"
+            }
+        }
+    ],
+    "keys": [
+        {
+            "id": "77000601-0001-4000-8000-000000000000",
+            "key": "php-import-1-write",
+            "type": "write",
+            "project": "77000600-0001-4000-8000-000000000000"
+        },
+        {
+            "id": "77000601-0002-4000-8000-000000000000",
+            "key": "php-import-2-write",
+            "type": "write",
+            "project": "77000600-0002-4000-8000-000000000000"
+        },
+        {
+            "id": "77000601-0003-4000-8000-000000000000",
+            "key": "php-import-3-write",
+            "type": "write",
+            "project": "77000600-0003-4000-8000-000000000000"
+        },
+        {
+            "id": "77000601-0004-4000-8000-000000000000",
+            "key": "php-import-4-write",
+            "type": "write",
+            "project": "77000600-0004-4000-8000-000000000000"
+        },
+        {
+            "id": "77000601-0005-4000-8000-000000000000",
+            "key": "php-import-5-write",
+            "type": "write",
+            "project": "77000600-0005-4000-8000-000000000000"
+        },
+        {
+            "id": "77000601-0006-4000-8000-000000000000",
+            "key": "php-import-6-write",
+            "type": "write",
+            "project": "77000600-0006-4000-8000-000000000000"
+        },
+        {
+            "id": "77000601-0007-4000-8000-000000000000",
+            "key": "php-import-7-write",
+            "type": "write",
+            "project": "77000600-0007-4000-8000-000000000000"
+        },
+        {
+            "id": "77000601-0008-4000-8000-000000000000",
+            "key": "php-import-8-write",
+            "type": "write",
+            "project": "77000600-0008-4000-8000-000000000000"
+        },
+        {
+            "id": "77000601-0009-4000-8000-000000000000",
+            "key": "php-import-9-write",
+            "type": "write",
+            "project": "77000600-0009-4000-8000-000000000000"
+        },
+        {
+            "id": "77000601-000a-4000-8000-000000000000",
+            "key": "php-import-10-write",
+            "type": "write",
+            "project": "77000600-000a-4000-8000-000000000000"
+        },
+        {
+            "id": "77000601-000b-4000-8000-000000000000",
+            "key": "php-import-11-write",
+            "type": "write",
+            "project": "77000600-000b-4000-8000-000000000000"
+        },
+        {
+            "id": "77000601-000c-4000-8000-000000000000",
+            "key": "php-import-12-write",
+            "type": "write",
+            "project": "77000600-000c-4000-8000-000000000000"
+        },
+        {
+            "id": "77000601-000d-4000-8000-000000000000",
+            "key": "php-import-13-write",
+            "type": "write",
+            "project": "77000600-000d-4000-8000-000000000000"
+        },
+        {
+            "id": "77000601-000e-4000-8000-000000000000",
+            "key": "php-import-14-write",
+            "type": "write",
+            "project": "77000600-000e-4000-8000-000000000000"
+        },
+        {
+            "id": "77000601-000f-4000-8000-000000000000",
+            "key": "php-import-15-write",
+            "type": "write",
+            "project": "77000600-000f-4000-8000-000000000000"
+        },
+        {
+            "id": "77000601-0010-4000-8000-000000000000",
+            "key": "php-import-16-write",
+            "type": "write",
+            "project": "77000600-0010-4000-8000-000000000000"
+        },
+        {
+            "id": "77000601-0011-4000-8000-000000000000",
+            "key": "php-import-17-write",
+            "type": "write",
+            "project": "77000600-0011-4000-8000-000000000000"
+        },
+        {
+            "id": "77000601-0012-4000-8000-000000000000",
+            "key": "php-import-18-write",
+            "type": "write",
+            "project": "77000600-0012-4000-8000-000000000000"
+        },
+        {
+            "id": "77000601-0013-4000-8000-000000000000",
+            "key": "php-import-19-read",
+            "type": "read",
+            "project": "77000600-0013-4000-8000-000000000000"
+        },
+        {
+            "id": "77000601-0014-4000-8000-000000000000",
+            "key": "php-import-20-read",
+            "type": "read",
+            "project": "77000600-0014-4000-8000-000000000000"
+        },
+        {
+            "id": "77000601-0015-4000-8000-000000000000",
+            "key": "php-import-21-read",
+            "type": "read",
+            "project": "77000600-0015-4000-8000-000000000000"
+        },
+        {
+            "id": "77000601-0016-4000-8000-000000000000",
+            "key": "php-import-22-read",
+            "type": "read",
+            "project": "77000600-0016-4000-8000-000000000000"
+        },
+        {
+            "id": "77000601-0017-4000-8000-000000000000",
+            "key": "php-import-23-read",
+            "type": "read",
+            "project": "77000600-0017-4000-8000-000000000000"
+        },
+        {
+            "id": "77000601-0018-4000-8000-000000000000",
+            "key": "php-import-24-read",
+            "type": "read",
+            "project": "77000600-0018-4000-8000-000000000000"
+        }
+    ]
+}

@@ -64,11 +64,14 @@ jobs:
       # still expected and correct - the missing-intl degradation tests skip
       # precisely BECAUSE intl is present - so a blanket "no skips" check would
       # be wrong in the other direction.
+      # The no-clone suite: everything but tests/Contract, which runs against
+      # an SDK test clone (a real Langsys API) and fails without one. The
+      # suites are listed once, in phpunit.xml.
       - name: Run test suite
         env:
           LANGSYS_REQUIRE_INTL: '1'
           LANGSYS_REQUIRE_REDIS: '1'
-        run: vendor/bin/phpunit
+        run: vendor/bin/phpunit --testsuite no-clone
 
   # The graceful-degradation path (missing ext-intl warns once, falls back to
   # simple substitution, and NEVER throws) is skipped on every matrix leg above,
@@ -104,7 +107,7 @@ jobs:
       # LANGSYS_REQUIRE_INTL is deliberately NOT set here: the ICU tests should
       # skip, and the degradation tests should run.
       - name: Run test suite
-        run: vendor/bin/phpunit
+        run: vendor/bin/phpunit --testsuite no-clone
 
   lint:
     name: Syntax check

@@ -3,13 +3,17 @@
 namespace Langsys\SDK\Tests\Contract;
 
 use Langsys\SDK\Cache\FileCache;
+use Langsys\SDK\Cache\NullCache;
+use Langsys\SDK\Client;
 
 /**
  * Registration against the contract fixture: GATE-5, GATE-6, GATE-7, REG-9 and
- * REG-10, each asserted on the state the server accepted.
+ * REG-10, each asserted on what the API then holds.
  */
 class RegistrationContractTest extends ContractTestCase
 {
+    protected static $seed = 'registration';
+
     /** @var string[] */
     private $dirs = [];
 
@@ -31,6 +35,37 @@ class RegistrationContractTest extends ContractTestCase
         return new FileCache($dir);
     }
 
+    private function writer(World $world, $role, $cache = null)
+    {
+        $client = $this->client($world->key($role), $world->project(), $cache);
+        $client->setLocale('es-es');
+
+        return $client;
+    }
+
+    /** The phrases the project holds, by category, as its catalog serves them. */
+    private function phrases(World $world, $role)
+    {
+        return $this->held($world->key($role), $world->project(), 'en-us')['phrases'];
+    }
+
+    /** The phrases of each block the project holds, by category. */
+    private function blocks(World $world, $role)
+    {
+        $blocks = [];
+        foreach ($this->held($world->key($role), $world->project(), 'en-us')['blocks'] as $category => $held) {
+            $blocks[$category] = array_values($held);
+        }
+
+        return $blocks;
+    }
+
+    private function postHint(World $world, $role)
+    {
+        $answer = $this->api('/discovery/hint', ['key' => $world->key($role), 'body' => ['project_id' => $world->project(), 'page_url' => 'https://site.local/pricing']]);
+        $this->assertSame(204, $answer['status'], 'every hint path answers 204');
+    }
+
     /**
      * GATE-5: a refused send records nothing that suppresses the next attempt.
      * Two requests share a cache, as two requests on one host do; the first
@@ -38,79 +73,40 @@ class RegistrationContractTest extends ContractTestCase
      */
     public function testARefusedSendIsRetriedByTheNextRequestOnThePagePath(): void
     {
-        $this->seedProject(['k-write' => ['type' => 'write']], [], [], [['method' => 'POST', 'path' => '/translatable-items', 'status' => 500]]);
+        $world = $this->world('writer', ['faults' => [['method' => 'POST', 'path' => '/translatable-items', 'status' => 500]]]);
         $cache = $this->sharedCache();
 
-        $first = $this->client('k-write', $cache);
-        $first->setLocale('es-es');
+        $first = $this->writer($world, 'write', $cache);
         $first->translatePage('<html><body><p>Page phrase</p></body></html>');
         $this->assertFalse($first->flushPendingRegistrations()['success']);
-        $this->assertSame([], $this->registeredPhrases(), 'the refused send stored nothing');
+        $this->assertSame([], $this->phrases($world, 'write'), 'the refused send stored nothing');
 
-        $second = $this->client('k-write', $cache);
-        $second->setLocale('es-es');
+        $second = $this->writer($world, 'write', $cache);
         $second->translatePage('<html><body><p>Page phrase</p></body></html>');
         $second->flushPendingRegistrations();
 
-        $this->assertSame([[null, 'Page phrase']], $this->registeredPhrases());
+        $this->assertSame(['__uncategorized__' => ['Page phrase']], $this->phrases($world, 'write'));
     }
 
     public function testARefusedSendIsRetriedByTheNextRequestOnThePhrasePath(): void
     {
-        $this->seedProject(['k-write' => ['type' => 'write']], [], [], [['method' => 'POST', 'path' => '/translatable-items', 'status' => 500]]);
+        $world = $this->world('writer', ['faults' => [['method' => 'POST', 'path' => '/translatable-items', 'status' => 500]]]);
         $cache = $this->sharedCache();
 
-        $first = $this->client('k-write', $cache);
-        $first->setLocale('es-es');
+        $first = $this->writer($world, 'write', $cache);
         $first->translate('Loose phrase');
         $first->flushPendingRegistrations();
-        $this->assertSame([], $this->registeredPhrases());
+        $this->assertSame([], $this->phrases($world, 'write'));
 
-        $second = $this->client('k-write', $cache);
-        $second->setLocale('es-es');
+        $second = $this->writer($world, 'write', $cache);
         $second->translate('Loose phrase');
         $second->flushPendingRegistrations();
 
-        $this->assertSame([[null, 'Loose phrase']], $this->registeredPhrases());
+        $this->assertSame(['__uncategorized__' => ['Loose phrase']], $this->phrases($world, 'write'));
     }
 
-    /**
-     * A key that could report if anything reported: an ip_write key off its
-     * allow-list, with discovery enabled, renderer egress configured and a site
-     * the page is on. The control below proves a hint from it is stored, so an
-     * empty hint list means nothing was reported, not that nothing could be.
-     */
-    private function seedReportingCapable()
+    private function missOnEveryPath(Client $client)
     {
-        $this->seedProject(
-            [
-                'k-write' => ['type' => 'write', 'report_discovered_content' => true],
-                'k-reader' => ['type' => 'ip_write', 'ip_allowlist' => ['10.1.2.3'], 'report_discovered_content' => true],
-            ],
-            ['website_url' => 'https://example.com'],
-            ['renderer_egress_ips' => ['10.9.9.9']]
-        );
-    }
-
-    public function testControlAHintFromTheNonWritingKeyWouldBeStored(): void
-    {
-        $this->seedReportingCapable();
-
-        $context = stream_context_create(['http' => [
-            'method' => 'POST',
-            'header' => "Content-Type: application/json\r\nX-Authorization: k-reader\r\n",
-            'content' => json_encode(['project_id' => self::PROJECT, 'page_url' => 'https://example.com/pricing']),
-            'ignore_errors' => true,
-        ]]);
-        file_get_contents(self::$baseUrl . '/discovery/hint', false, $context);
-
-        $this->assertCount(1, $this->storedHints());
-    }
-
-    private function missOnEveryPath($key)
-    {
-        $client = $this->client($key);
-        $client->setLocale('es-es');
         $client->translate('Phrase path');
         $client->translateContentBlock('<div><p>Block one</p><p>Block two</p></div>', 'UI');
         $client->translatePage('<html><body><p>Page path</p></body></html>');
@@ -122,97 +118,92 @@ class RegistrationContractTest extends ContractTestCase
      */
     public function testAWriterRegistersFromEveryPath(): void
     {
-        $this->seedReportingCapable();
+        $world = $this->world('writer');
 
-        $this->missOnEveryPath('k-write');
+        $this->missOnEveryPath($this->writer($world, 'write'));
 
-        $this->assertEqualsCanonicalizing([[null, 'Phrase path'], [null, 'Page path']], $this->registeredPhrases());
-        $this->assertSame([['UI', ['Block one', 'Block two']]], $this->registeredBlocks());
+        $this->assertSame(['__uncategorized__' => ['Page path', 'Phrase path']], $this->phrases($world, 'write'));
+        $this->assertSame(['UI' => [['Block one', 'Block two']]], $this->blocks($world, 'write'));
     }
 
     /**
-     * GATE-6: a writer does not report. The double stores no hint from a caller
-     * that can write, so the absence is shown after drift: the session learns it
-     * may write, then the key loses its allow-list, and a hint from it would now
-     * be stored - the control, sent in that world.
+     * GATE-6: a writer does not report. The API stores no hint from a caller
+     * that can write, so the absence is shown after drift: the session learns
+     * it may write, then the case moves off its key's allow-list, where a hint
+     * from it would be stored - the control, sent in that world.
      */
     public function testAWriterReportsNothingEvenOnceTheServerWouldStoreAHint(): void
     {
-        $keys = function (array $allowList) {
-            return ['k-ip' => ['type' => 'ip_write', 'ip_allowlist' => $allowList, 'report_discovered_content' => true]];
-        };
-        $this->seedProject($keys(['127.0.0.1']), ['website_url' => 'https://example.com'], ['renderer_egress_ips' => ['10.9.9.9']]);
-        $client = $this->client('k-ip');
-        $client->setLocale('es-es');
+        $world = $this->world('reporting-writer');
+        $client = $this->writer($world, 'ip');
         $this->assertTrue($client->canWrite());
 
-        $this->seedProject($keys(['10.1.2.3']), ['website_url' => 'https://example.com'], ['renderer_egress_ips' => ['10.9.9.9']]);
+        $this->update($world, ['caller' => $world->moved]);
         $client->translate('Phrase path');
         $client->translatePage('<html><body><p>Page path</p></body></html>');
         $client->flushPendingRegistrations();
-        $this->assertSame([], $this->storedHints(), 'the writer reported nothing');
+        $this->assertSame([], $this->hints($world), 'the writer reported nothing');
 
-        $this->postHint('k-ip', 'https://example.com/pricing');
-        $this->assertCount(1, $this->storedHints(), 'control: in the drifted world a hint from this key is stored');
+        $this->postHint($world, 'ip');
+        $this->assertCount(1, $this->hints($world), 'control: in the drifted world a hint from this key is stored');
     }
 
     /**
      * GATE-7, the non-writer's direction: a server SDK's other lane is its log,
      * never a report (HINT-2), so nothing is reported - by a key whose hint the
-     * double would store, as the control above shows.
+     * API stores, as the control at the end shows in the same world.
      */
     public function testANonWriterReportsNothingFromAnyPath(): void
     {
-        $this->seedReportingCapable();
+        $world = $this->world('reporting-reader');
 
-        $this->missOnEveryPath('k-reader');
+        $this->missOnEveryPath($this->writer($world, 'ip'));
+        $this->assertSame([], $this->hints($world));
+        $this->assertSame([], $this->phrases($world, 'ip'));
 
-        $this->assertSame([], $this->storedHints());
+        $this->postHint($world, 'ip');
+        $this->assertCount(1, $this->hints($world), 'control: a hint from the non-writing key is stored');
     }
 
     /**
      * GATE-6 and GATE-7: a non-writer registers nothing from any path. Shown
-     * where the double would accept the writes: the session learns it may not
-     * write, then the key joins its allow-list.
+     * where the API would accept the writes: the session learns it may not
+     * write, then the case moves to an address on its key's allow-list.
      */
     public function testANonWriterHoldsBackEveryPathOnceTheServerWouldAcceptIt(): void
     {
-        $this->seedProject(['k-ip' => ['type' => 'ip_write', 'ip_allowlist' => ['10.1.2.3']]]);
-        $client = $this->client('k-ip');
-        $client->setLocale('es-es');
+        $world = $this->world('held-back');
+        $client = $this->writer($world, 'ip');
         $this->assertFalse($client->canWrite());
 
-        $this->seedProject(['k-ip' => ['type' => 'ip_write', 'ip_allowlist' => ['127.0.0.1']]]);
-        $client->translate('Phrase path');
-        $client->translateContentBlock('<div><p>Block one</p><p>Block two</p></div>', 'UI');
-        $client->translatePage('<html><body><p>Page path</p></body></html>');
-        $client->flushPendingRegistrations();
-        $this->assertSame([], $this->registeredPhrases());
-        $this->assertSame([], $this->registeredBlocks());
+        $this->update($world, ['caller' => $world->moved]);
+        $this->missOnEveryPath($client);
+        $this->assertSame([], $this->phrases($world, 'ip'));
+        $this->assertSame([], $this->blocks($world, 'ip'));
 
-        $this->missOnEveryPath('k-ip');
-        $this->assertNotEmpty($this->registeredPhrases(), 'control: in the drifted world a session that learns it may write does');
+        $this->missOnEveryPath($this->writer($world, 'ip'));
+        $this->assertNotSame([], $this->phrases($world, 'ip'), 'control: in the drifted world a session that learns it may write does');
     }
 
     /**
-     * REG-9: chunked to the limit the server advertises, on the phrase and the
-     * block path. The double answers 422 to an oversized batch, so anything sent
-     * unchunked would be missing from the state.
+     * REG-9: chunked to the limit the API advertises, on the phrase and the
+     * block path. The clone advertises 3 and answers 422 to an oversized batch,
+     * so anything sent unchunked would be missing from the catalog.
      */
     public function testEveryItemIsAcceptedWhenTheServerAdvertisesASmallBatchLimit(): void
     {
-        $this->seedProject(['k-write' => ['type' => 'write']], [], ['batch_limit' => 3]);
+        $world = $this->world('writer');
 
-        $client = $this->client('k-write');
-        $client->setLocale('es-es');
+        $client = $this->writer($world, 'write');
+        $this->assertSame(3, $client->getProject()['langsys_settings']['translatable_items']['batch_limit'], 'the clone advertises a limit of 3');
         for ($i = 1; $i <= 7; $i++) {
             $client->translate("Phrase $i");
             $client->translateContentBlock("<div><p>Block $i a</p><p>Block $i b</p></div>", 'UI');
         }
         $client->flushPendingRegistrations();
 
-        $this->assertCount(7, $this->registeredPhrases());
-        $this->assertCount(7, $this->registeredBlocks());
+        $this->assertCount(7, $this->phrases($world, 'write')['__uncategorized__']);
+        $this->assertCount(7, $this->blocks($world, 'write')['UI']);
     }
 
     /**
@@ -221,42 +212,39 @@ class RegistrationContractTest extends ContractTestCase
      */
     public function testAFailedSendReportsFailureAndStoresNothing(): void
     {
-        $this->seedProject(['k-write' => ['type' => 'write']], [], [], [['method' => 'POST', 'path' => '/translatable-items', 'status' => 500]]);
+        $world = $this->world('writer', ['faults' => [['method' => 'POST', 'path' => '/translatable-items', 'status' => 500]]]);
 
-        $client = $this->client('k-write');
-        $client->setLocale('es-es');
+        $client = $this->writer($world, 'write');
         $client->translate('Refused');
         $result = $client->flushPendingRegistrations();
 
         $this->assertFalse($result['success']);
-        $this->assertSame([], $this->registeredPhrases());
+        $this->assertSame([], $this->phrases($world, 'write'));
     }
 
     public function testAnAcceptedSendReportsSuccess(): void
     {
-        $this->seedProject(['k-write' => ['type' => 'write']]);
+        $world = $this->world('writer');
 
-        $client = $this->client('k-write');
-        $client->setLocale('es-es');
+        $client = $this->writer($world, 'write');
         $client->translate('Accepted');
         $result = $client->flushPendingRegistrations();
 
         $this->assertTrue($result['success']);
-        $this->assertSame([[null, 'Accepted']], $this->registeredPhrases());
+        $this->assertSame(['__uncategorized__' => ['Accepted']], $this->phrases($world, 'write'));
     }
 
     public function testASkippedWriteIsNotReportedAsSuccess(): void
     {
-        $this->seedProject(['k-read' => ['type' => 'read']]);
+        $world = $this->world('reader');
 
-        $client = $this->client('k-read');
-        $client->setLocale('es-es');
+        $client = $this->writer($world, 'read');
         $client->translate('Skipped');
         $result = $client->flushPendingRegistrations();
 
         $this->assertFalse($result['success']);
         $this->assertSame('not_write_enabled', $result['reason']);
-        $this->assertSame([], $this->registeredPhrases());
+        $this->assertSame([], $this->phrases($world, 'read'));
     }
 
     /**
@@ -266,16 +254,15 @@ class RegistrationContractTest extends ContractTestCase
      */
     public function testAFlushWhileTheCatalogIsUnavailableNamesIt(): void
     {
-        $this->seedProject(['k-write' => ['type' => 'write']], [], [], [['method' => 'GET', 'path' => '/translations', 'status' => 500, 'times' => 5]]);
+        $world = $this->world('writer', ['faults' => [['method' => 'GET', 'path' => '/translations', 'status' => 500, 'times' => 5]]]);
 
-        $client = $this->client('k-write');
-        $client->setLocale('es-es');
+        $client = $this->writer($world, 'write');
         $client->translate('Undecided');
         $result = $client->flushPendingRegistrations();
 
         $this->assertFalse($result['success']);
         $this->assertSame('catalog_unavailable', $result['reason']);
-        $this->assertSame([], $this->registeredPhrases());
+        $this->assertSame([], $this->phrases($world, 'write'));
     }
 
     /**
@@ -284,9 +271,9 @@ class RegistrationContractTest extends ContractTestCase
      */
     public function testARecoveredCatalogIsNoLongerReportedUnavailable(): void
     {
-        $this->seedProject(['k-write' => ['type' => 'write']], ['phrases' => [['phrase' => 'Known', 'translations' => ['es-es' => 'Conocido']]]], [], [['method' => 'GET', 'path' => '/translations', 'status' => 500, 'times' => 1]]);
+        $world = $this->world('known', ['faults' => [['method' => 'GET', 'path' => '/translations', 'status' => 500]]]);
 
-        $client = $this->clockedClient();
+        $client = $this->clockedClient($world);
 
         $this->assertSame('Known', $client->translate('Known'));
         $this->assertSame('catalog_unavailable', $client->flushPendingRegistrations()['reason']);
@@ -305,15 +292,13 @@ class RegistrationContractTest extends ContractTestCase
      */
     public function testACatalogRecoveredThroughTheCacheIsNoLongerReportedUnavailable(): void
     {
-        $this->seedProject(['k-write' => ['type' => 'write']], ['phrases' => [['phrase' => 'Known', 'translations' => ['es-es' => 'Conocido']]]], [], [['method' => 'GET', 'path' => '/translations', 'status' => 500, 'times' => 1]]);
+        $world = $this->world('known', ['faults' => [['method' => 'GET', 'path' => '/translations', 'status' => 500]]]);
         $cache = $this->sharedCache();
 
-        $client = $this->client('k-write', $cache);
-        $client->setLocale('es-es');
+        $client = $this->writer($world, 'write', $cache);
         $this->assertSame('Known', $client->translate('Known'));
 
-        $other = $this->client('k-write', $cache);
-        $other->setLocale('es-es');
+        $other = $this->writer($world, 'write', $cache);
         $this->assertSame('Conocido', $other->translate('Known'), 'another request caches the catalog');
 
         $this->assertSame('Conocido', $client->translate('Known'), 'read from the cache');
@@ -327,9 +312,9 @@ class RegistrationContractTest extends ContractTestCase
      */
     public function testTheMarkIsPerRequest(): void
     {
-        $this->seedProject(['k-write' => ['type' => 'write']], [], [], [['method' => 'GET', 'path' => '/translations', 'status' => 500, 'times' => 1]]);
+        $world = $this->world('writer', ['faults' => [['method' => 'GET', 'path' => '/translations', 'status' => 500]]]);
 
-        $client = $this->clockedClient();
+        $client = $this->clockedClient($world);
         $client->translate('Undecided');
         $this->assertSame('catalog_unavailable', $client->flushPendingRegistrations()['reason']);
 
@@ -337,14 +322,15 @@ class RegistrationContractTest extends ContractTestCase
         $this->assertTrue($client->flushPendingRegistrations()['success'], 'this request read no catalog');
 
         $client->resetRequestState();
+        $client->setLocale('es-es');
         $client->now += 1;
         $client->translate('Undecided');
         $this->assertSame('catalog_unavailable', $client->flushPendingRegistrations()['reason'], 'inside the window the catalog is still unavailable');
     }
 
-    private function clockedClient()
+    private function clockedClient(World $world)
     {
-        $client = new class ('k-write', self::PROJECT, ['api_url' => self::$baseUrl, 'cache' => new \Langsys\SDK\Cache\NullCache()]) extends \Langsys\SDK\Client {
+        $client = new class ($world->key('write'), $world->project(), ['api_url' => self::$baseUrl, 'cache' => new NullCache()]) extends Client {
             public $now = 1000.0;
 
             protected function currentTime()
@@ -359,10 +345,9 @@ class RegistrationContractTest extends ContractTestCase
 
     public function testASendTheServerRefusesIsDistinctFromBothSkips(): void
     {
-        $this->seedProject(['k-write' => ['type' => 'write']], [], [], [['method' => 'POST', 'path' => '/translatable-items', 'status' => 500]]);
+        $world = $this->world('writer', ['faults' => [['method' => 'POST', 'path' => '/translatable-items', 'status' => 500]]]);
 
-        $client = $this->client('k-write');
-        $client->setLocale('es-es');
+        $client = $this->writer($world, 'write');
         $client->translate('Refused');
 
         $this->assertSame('send_failed', $client->flushPendingRegistrations()['reason']);
@@ -370,17 +355,16 @@ class RegistrationContractTest extends ContractTestCase
 
     public function testAWriteEnabledRegistrationSucceedsAndReachesTheNextCatalogRead(): void
     {
-        $this->seedProject(['k-write' => ['type' => 'write']]);
+        $world = $this->world('writer');
 
-        $client = $this->client('k-write');
-        $client->setLocale('es-es');
+        $client = $this->writer($world, 'write');
         $client->translate('Arrives');
         $result = $client->flushPendingRegistrations();
 
         $this->assertTrue($result['success']);
         $this->assertNull($result['reason']);
 
-        $next = $this->client('k-write');
+        $next = $this->client($world->key('write'), $world->project());
         $this->assertArrayHasKey('Arrives', $next->translations()->getTranslationMap('es-es')['__uncategorized__']);
     }
 }

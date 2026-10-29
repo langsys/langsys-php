@@ -12,6 +12,8 @@ use Langsys\SDK\Exception\ValidationException;
  */
 class ImportContractTest extends ContractTestCase
 {
+    protected static $seed = 'import';
+
     /** @var string|null */
     private $dir;
 
@@ -43,18 +45,9 @@ class ImportContractTest extends ContractTestCase
         return $path;
     }
 
-    private function storedPhrases()
+    private function importing(World $world)
     {
-        $state = $this->fixture('GET', '/state');
-
-        return isset($state['projects'][self::PROJECT]['phrases']) ? $state['projects'][self::PROJECT]['phrases'] : [];
-    }
-
-    private function importing(array $project = [])
-    {
-        $this->seedProject(['k-write' => ['type' => 'write']], $project + ['target_locales' => ['es-es', 'fr-fr']]);
-
-        return $this->client('k-write', null, ['migration' => ['files' => [$this->file('en/checkout.php', ['submit' => 'Place order', 'cancel' => 'Cancel order'])]]]);
+        return $this->client($world->key('write'), $world->project(), null, ['migration' => ['files' => [$this->file('en/checkout.php', ['submit' => 'Place order', 'cancel' => 'Cancel order'])]]]);
     }
 
     /**
@@ -64,32 +57,39 @@ class ImportContractTest extends ContractTestCase
      */
     public function testAKeysTranslationIsStoredWithItsPhrase(): void
     {
-        $client = $this->importing();
+        $world = $this->world('importing');
+        $client = $this->importing($world);
 
         $result = $client->importLegacyTranslations(['es-es' => ['files' => [$this->file('es/checkout.php', ['submit' => 'Realizar pedido'])]]]);
 
         $this->assertTrue($result['success']);
         $this->assertSame([1, 0], [$result['human_translations_saved'], $result['human_translations_skipped']]);
 
-        $stored = [];
-        foreach ($this->storedPhrases() as $phrase) {
-            $stored[$phrase['phrase']] = [$phrase['category'], $phrase['translations']];
-        }
-        $this->assertSame(['checkout', ['es-es' => 'Realizar pedido']], $stored['Place order']);
-        $this->assertSame(['checkout', []], $stored['Cancel order'], 'a key with no translation registers alone');
+        $this->assertSame(['checkout' => ['Cancel order' => null, 'Place order' => 'Realizar pedido']], $this->sorted($this->catalog($world->key('write'), $world->project(), 'es-es')), 'a key with no translation registers alone');
 
-        $next = $this->client('k-write');
+        $next = $this->client($world->key('write'), $world->project());
         $this->assertSame('Realizar pedido', $next->translations()->getTranslationMap('es-es')['checkout']['Place order']);
+    }
+
+    private function sorted(array $catalog)
+    {
+        foreach ($catalog as $category => $entries) {
+            ksort($entries, SORT_STRING);
+            $catalog[$category] = $entries;
+        }
+
+        return $catalog;
     }
 
     /**
      * A locale the project does not target - the base locale included - is
-     * refused before anything is sent, and the server refuses one that is
-     * sent anyway before it writes anything.
+     * refused before anything is sent, and the API refuses one that is sent
+     * anyway before it writes anything, naming the entry.
      */
     public function testANonTargetLocaleIsRefusedBeforeAnythingIsWritten(): void
     {
-        $client = $this->importing();
+        $world = $this->world('importing');
+        $client = $this->importing($world);
 
         foreach (['it-it', 'en-us'] as $locale) {
             try {
@@ -99,23 +99,23 @@ class ImportContractTest extends ContractTestCase
                 $this->assertStringContainsString($locale, $e->getMessage());
             }
         }
-        $this->assertSame([], $this->storedPhrases(), 'nothing was sent');
+        $this->assertSame([], $this->held($world->key('write'), $world->project(), 'en-us')['phrases'], 'nothing was sent');
 
         try {
             $client->translations();
             $items = (new \ReflectionClass($client))->getProperty('translatableItems');
             $items->setAccessible(true);
             $items->getValue($client)->importPhrases([['phrase' => 'Sent anyway', 'category' => null, 'translations' => ['it-it' => 'Inviato']]]);
-            $this->fail('the server refuses a non-target locale');
+            $this->fail('the API refuses a non-target locale');
         } catch (ValidationException $e) {
             $this->assertSame(
-                [['translatable_items.0.translations', 'invalid_option']],
+                [['translatable_items.0.translations.0.locale', 'invalid_option']],
                 array_map(function ($entry) {
                     return [$entry['field'], $entry['code']];
                 }, $e->getErrors())
             );
         }
-        $this->assertSame([], $this->storedPhrases(), 'the server wrote nothing');
+        $this->assertSame([], $this->held($world->key('write'), $world->project(), 'en-us')['phrases'], 'the API wrote nothing');
     }
 
     /**
@@ -124,13 +124,15 @@ class ImportContractTest extends ContractTestCase
      */
     public function testTheQuotaSplitIsReported(): void
     {
-        $client = $this->importing(['human_translation_word_limit' => 2]);
+        $world = $this->world('capped');
+        $client = $this->importing($world);
 
         $result = $client->importLegacyTranslations(['es-es' => ['files' => [$this->file('es/checkout.php', ['submit' => 'Realizar pedido', 'cancel' => 'Cancelar pedido'])]]]);
 
         $this->assertTrue($result['success']);
         $this->assertSame([1, 1], [$result['human_translations_saved'], $result['human_translations_skipped']]);
-        $this->assertSame(2, $this->fixture('GET', '/state')['projects'][self::PROJECT]['human_translation_words_used']);
+        $served = $this->catalog($world->key('write'), $world->project(), 'es-es')['checkout'];
+        $this->assertSame(1, count(array_filter($served, 'is_string')), 'one translation is stored, the other left for machine translation');
     }
 
     /**
@@ -138,12 +140,12 @@ class ImportContractTest extends ContractTestCase
      */
     public function testAReadKeyImportsNothing(): void
     {
-        $this->seedProject(['k-read' => ['type' => 'read']], ['target_locales' => ['es-es']]);
-        $client = $this->client('k-read', null, ['migration' => ['files' => [$this->file('en/checkout.php', ['submit' => 'Place order'])]]]);
+        $world = $this->world('reader');
+        $client = $this->client($world->key('read'), $world->project(), null, ['migration' => ['files' => [$this->file('en/checkout.php', ['submit' => 'Place order'])]]]);
 
         $result = $client->importLegacyTranslations(['es-es' => ['files' => [$this->file('es/checkout.php', ['submit' => 'Realizar pedido'])]]]);
 
         $this->assertSame([false, 'not_write_enabled'], [$result['success'], $result['reason']]);
-        $this->assertSame([], $this->storedPhrases());
+        $this->assertSame([], $this->held($world->key('read'), $world->project(), 'en-us')['phrases']);
     }
 }

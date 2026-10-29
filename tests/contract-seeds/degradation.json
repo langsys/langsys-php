@@ -1,0 +1,708 @@
+{
+    "projects": [
+        {
+            "id": "77000500-0001-4000-8000-000000000000",
+            "title": "php degradation hello#1 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "122001|ee832ddc69aa96e4492be5393bf4f1456372c041",
+                "device_id": "php-degradation-1"
+            }
+        },
+        {
+            "id": "77000500-0002-4000-8000-000000000000",
+            "title": "php degradation hello#2 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "122002|ff94283614fb3c00f5567a15141e04775eb4f4db",
+                "device_id": "php-degradation-2"
+            }
+        },
+        {
+            "id": "77000500-0003-4000-8000-000000000000",
+            "title": "php degradation hello#3 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "122003|efd178911d07e1817c9e563f7a9321b9d573bc4c",
+                "device_id": "php-degradation-3"
+            }
+        },
+        {
+            "id": "77000500-0004-4000-8000-000000000000",
+            "title": "php degradation hello#4 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "122004|855b1e3c131f9ea58a9b9a41655306cfe7017a85",
+                "device_id": "php-degradation-4"
+            }
+        },
+        {
+            "id": "77000500-0005-4000-8000-000000000000",
+            "title": "php degradation hello#5 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "122005|58ca9ac088b2379176fcf75f08d4f9d35db06dac",
+                "device_id": "php-degradation-5"
+            }
+        },
+        {
+            "id": "77000500-0006-4000-8000-000000000000",
+            "title": "php degradation hello#6 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "122006|678f6739c832ecfafdb0f65626411b2a4aa0aa1f",
+                "device_id": "php-degradation-6"
+            }
+        },
+        {
+            "id": "77000500-0007-4000-8000-000000000000",
+            "title": "php degradation hello#7 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "122007|8f7ab56c31f8d085166f221d1438a7c213cbc9d8",
+                "device_id": "php-degradation-7"
+            }
+        },
+        {
+            "id": "77000500-0008-4000-8000-000000000000",
+            "title": "php degradation hello#8 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "122008|8ed7796352ab309c00340c8620c21172a2d4227a",
+                "device_id": "php-degradation-8"
+            }
+        },
+        {
+            "id": "77000500-0009-4000-8000-000000000000",
+            "title": "php degradation hello#9 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "122009|52dd3b40c7d85181178d541e4afc545f9054a19d",
+                "device_id": "php-degradation-9"
+            }
+        },
+        {
+            "id": "77000500-000a-4000-8000-000000000000",
+            "title": "php degradation hello#10 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "122010|e39d1a0e28e215064b4b1cc641e453a4a7184012",
+                "device_id": "php-degradation-10"
+            }
+        },
+        {
+            "id": "77000500-000b-4000-8000-000000000000",
+            "title": "php degradation hello#11 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "122011|c0a4ae67d85ca83b7e4f9f8eff9ab2b59097964e",
+                "device_id": "php-degradation-11"
+            }
+        },
+        {
+            "id": "77000500-000c-4000-8000-000000000000",
+            "title": "php degradation hello#12 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "122012|097f285e10d4eb9778c43f5c2e4f44271bf4f469",
+                "device_id": "php-degradation-12"
+            }
+        },
+        {
+            "id": "77000500-000d-4000-8000-000000000000",
+            "title": "php degradation hello#13 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "122013|8f6d55b01740619a5accb3f818fcbafd556a6ad0",
+                "device_id": "php-degradation-13"
+            }
+        },
+        {
+            "id": "77000500-000e-4000-8000-000000000000",
+            "title": "php degradation hello#14 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "122014|ffbaeb5bd8b6fc71672a49431106ff9489f395cd",
+                "device_id": "php-degradation-14"
+            }
+        },
+        {
+            "id": "77000500-000f-4000-8000-000000000000",
+            "title": "php degradation hello#15 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "122015|f551de25bebb0499332e0aa2ce2904cb9aec6492",
+                "device_id": "php-degradation-15"
+            }
+        },
+        {
+            "id": "77000500-0010-4000-8000-000000000000",
+            "title": "php degradation hello#16 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "122016|56e3b3383098838c0503ebb9e7ea0dfeadff0526",
+                "device_id": "php-degradation-16"
+            }
+        },
+        {
+            "id": "77000500-0011-4000-8000-000000000000",
+            "title": "php degradation hello#17 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "122017|0ea115cca4ab6f6e56e3ae16863ae35c043f59a8",
+                "device_id": "php-degradation-17"
+            }
+        },
+        {
+            "id": "77000500-0012-4000-8000-000000000000",
+            "title": "php degradation hello#18 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "122018|099453f34924b0d106daf34af1db529d0d97ec46",
+                "device_id": "php-degradation-18"
+            }
+        },
+        {
+            "id": "77000500-0013-4000-8000-000000000000",
+            "title": "php degradation hello#19 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "122019|8b75941c071ae0dcfd797d57b5747b75a2e39bed",
+                "device_id": "php-degradation-19"
+            }
+        },
+        {
+            "id": "77000500-0014-4000-8000-000000000000",
+            "title": "php degradation hello#20 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "122020|61b250a4a4129d3f47ea648288b25aa47497940d",
+                "device_id": "php-degradation-20"
+            }
+        },
+        {
+            "id": "77000500-0015-4000-8000-000000000000",
+            "title": "php degradation hello#21 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "122021|bd788704a1600dd3fef46b08b5db9ec995907435",
+                "device_id": "php-degradation-21"
+            }
+        },
+        {
+            "id": "77000500-0016-4000-8000-000000000000",
+            "title": "php degradation hello#22 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "122022|be05ec74ca62c6363116c60945e91446937607bd",
+                "device_id": "php-degradation-22"
+            }
+        },
+        {
+            "id": "77000500-0017-4000-8000-000000000000",
+            "title": "php degradation hello#23 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "122023|269edc3ff33ca44550989a3c89f6d4d785c9c412",
+                "device_id": "php-degradation-23"
+            }
+        },
+        {
+            "id": "77000500-0018-4000-8000-000000000000",
+            "title": "php degradation hello#24 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "122024|89132b6617cdff7791dcc65b99972af86857a813",
+                "device_id": "php-degradation-24"
+            }
+        },
+        {
+            "id": "77000500-0019-4000-8000-000000000000",
+            "title": "php degradation writer#1 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "122025|69d654779d4dd6688f2da404c28bbb90be45233d",
+                "device_id": "php-degradation-25"
+            }
+        },
+        {
+            "id": "77000500-001a-4000-8000-000000000000",
+            "title": "php degradation writer#2 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "122026|8d712f123d994385fab234a9694d902fe08cda7e",
+                "device_id": "php-degradation-26"
+            }
+        },
+        {
+            "id": "77000500-001b-4000-8000-000000000000",
+            "title": "php degradation writer#3 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "122027|528ac68b4119d11012f94d93a169886e20c3319f",
+                "device_id": "php-degradation-27"
+            }
+        },
+        {
+            "id": "77000500-001c-4000-8000-000000000000",
+            "title": "php degradation writer#4 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "122028|555762164a7a74613003dca77fd1543294daef71",
+                "device_id": "php-degradation-28"
+            }
+        },
+        {
+            "id": "77000500-001d-4000-8000-000000000000",
+            "title": "php degradation writer#5 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "122029|469a183a1fab203e5a94726c58cd49395af70e94",
+                "device_id": "php-degradation-29"
+            }
+        },
+        {
+            "id": "77000500-001e-4000-8000-000000000000",
+            "title": "php degradation writer#6 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "122030|a32cc45175ef7ad72164d01388baa624cdb2d915",
+                "device_id": "php-degradation-30"
+            }
+        }
+    ],
+    "keys": [
+        {
+            "id": "77000501-0001-4000-8000-000000000000",
+            "key": "php-degradation-1-write",
+            "type": "write",
+            "project": "77000500-0001-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-0002-4000-8000-000000000000",
+            "key": "php-degradation-2-write",
+            "type": "write",
+            "project": "77000500-0002-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-0003-4000-8000-000000000000",
+            "key": "php-degradation-3-write",
+            "type": "write",
+            "project": "77000500-0003-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-0004-4000-8000-000000000000",
+            "key": "php-degradation-4-write",
+            "type": "write",
+            "project": "77000500-0004-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-0005-4000-8000-000000000000",
+            "key": "php-degradation-5-write",
+            "type": "write",
+            "project": "77000500-0005-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-0006-4000-8000-000000000000",
+            "key": "php-degradation-6-write",
+            "type": "write",
+            "project": "77000500-0006-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-0007-4000-8000-000000000000",
+            "key": "php-degradation-7-write",
+            "type": "write",
+            "project": "77000500-0007-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-0008-4000-8000-000000000000",
+            "key": "php-degradation-8-write",
+            "type": "write",
+            "project": "77000500-0008-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-0009-4000-8000-000000000000",
+            "key": "php-degradation-9-write",
+            "type": "write",
+            "project": "77000500-0009-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-000a-4000-8000-000000000000",
+            "key": "php-degradation-10-write",
+            "type": "write",
+            "project": "77000500-000a-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-000b-4000-8000-000000000000",
+            "key": "php-degradation-11-write",
+            "type": "write",
+            "project": "77000500-000b-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-000c-4000-8000-000000000000",
+            "key": "php-degradation-12-write",
+            "type": "write",
+            "project": "77000500-000c-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-000d-4000-8000-000000000000",
+            "key": "php-degradation-13-write",
+            "type": "write",
+            "project": "77000500-000d-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-000e-4000-8000-000000000000",
+            "key": "php-degradation-14-write",
+            "type": "write",
+            "project": "77000500-000e-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-000f-4000-8000-000000000000",
+            "key": "php-degradation-15-write",
+            "type": "write",
+            "project": "77000500-000f-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-0010-4000-8000-000000000000",
+            "key": "php-degradation-16-write",
+            "type": "write",
+            "project": "77000500-0010-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-0011-4000-8000-000000000000",
+            "key": "php-degradation-17-write",
+            "type": "write",
+            "project": "77000500-0011-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-0012-4000-8000-000000000000",
+            "key": "php-degradation-18-write",
+            "type": "write",
+            "project": "77000500-0012-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-0013-4000-8000-000000000000",
+            "key": "php-degradation-19-write",
+            "type": "write",
+            "project": "77000500-0013-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-0014-4000-8000-000000000000",
+            "key": "php-degradation-20-write",
+            "type": "write",
+            "project": "77000500-0014-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-0015-4000-8000-000000000000",
+            "key": "php-degradation-21-write",
+            "type": "write",
+            "project": "77000500-0015-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-0016-4000-8000-000000000000",
+            "key": "php-degradation-22-write",
+            "type": "write",
+            "project": "77000500-0016-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-0017-4000-8000-000000000000",
+            "key": "php-degradation-23-write",
+            "type": "write",
+            "project": "77000500-0017-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-0018-4000-8000-000000000000",
+            "key": "php-degradation-24-write",
+            "type": "write",
+            "project": "77000500-0018-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-0019-4000-8000-000000000000",
+            "key": "php-degradation-25-write",
+            "type": "write",
+            "project": "77000500-0019-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-001a-4000-8000-000000000000",
+            "key": "php-degradation-26-write",
+            "type": "write",
+            "project": "77000500-001a-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-001b-4000-8000-000000000000",
+            "key": "php-degradation-27-write",
+            "type": "write",
+            "project": "77000500-001b-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-001c-4000-8000-000000000000",
+            "key": "php-degradation-28-write",
+            "type": "write",
+            "project": "77000500-001c-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-001d-4000-8000-000000000000",
+            "key": "php-degradation-29-write",
+            "type": "write",
+            "project": "77000500-001d-4000-8000-000000000000"
+        },
+        {
+            "id": "77000501-001e-4000-8000-000000000000",
+            "key": "php-degradation-30-write",
+            "type": "write",
+            "project": "77000500-001e-4000-8000-000000000000"
+        }
+    ]
+}

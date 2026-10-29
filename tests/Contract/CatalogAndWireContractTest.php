@@ -8,12 +8,14 @@ use Langsys\SDK\Html\HtmlParser;
 /**
  * Rows whose property turns on what the server answers - the catalog's shapes,
  * the write decision across requests, the wire - proven against the contract
- * fixture. Where the server's idempotence would hide a duplicate registration,
- * the test reads the SDK's own queue under the server's real answer, never a
- * record kept by the double.
+ * fixture. Where the API's idempotence would hide a duplicate registration,
+ * the test reads the SDK's own queue under the API's real answer, never a
+ * record kept by the fixture.
  */
 class CatalogAndWireContractTest extends ContractTestCase
 {
+    protected static $seed = 'catalog-and-wire';
+
     /** @var string[] */
     private $dirs = [];
 
@@ -37,24 +39,24 @@ class CatalogAndWireContractTest extends ContractTestCase
 
     /**
      * GATE-3: the write decision lives for one request. Two requests share a
-     * cache; between them the server stops allowing the key to write, and the
-     * second request follows the server rather than the first request's answer.
+     * cache; between them the case moves off the key's allow-list, and the
+     * second request follows the API rather than the first request's answer.
      */
     public function testTheWriteDecisionIsNotCarriedIntoTheNextRequest(): void
     {
         list($cache) = $this->sharedCache();
+        $world = $this->world('on-list');
 
-        $this->seedProject(['k-ip' => ['type' => 'ip_write', 'ip_allowlist' => ['127.0.0.1']]]);
-        $this->assertTrue($this->client('k-ip', $cache)->canWrite());
+        $this->assertTrue($this->client($world->key('ip'), $world->project(), $cache)->canWrite());
 
-        $this->seedProject(['k-ip' => ['type' => 'ip_write', 'ip_allowlist' => ['10.1.2.3']]]);
-        $second = $this->client('k-ip', $cache);
+        $this->update($world, ['caller' => $world->moved]);
+        $second = $this->client($world->key('ip'), $world->project(), $cache);
         $second->setLocale('es-es');
         $second->translate('Second request');
         $second->flushPendingRegistrations();
 
         $this->assertFalse($second->canWrite());
-        $this->assertSame([], $this->registeredPhrases());
+        $this->assertSame([], self::anyPhrase($this->held($world->key('ip'), $world->project(), 'en-us')));
     }
 
     /**
@@ -65,9 +67,9 @@ class CatalogAndWireContractTest extends ContractTestCase
     public function testNothingCachedCarriesTheWriteDecision(): void
     {
         list($cache, $dir) = $this->sharedCache();
-        $this->seedProject(['k-ip' => ['type' => 'ip_write', 'ip_allowlist' => ['127.0.0.1']]], ['phrases' => [['phrase' => 'Hello', 'translations' => ['es-es' => 'Hola']]]]);
+        $world = $this->world('on-list-hello');
 
-        $client = $this->client('k-ip', $cache);
+        $client = $this->client($world->key('ip'), $world->project(), $cache);
         $client->setLocale('es-es');
         $this->assertTrue($client->canWrite(), 'control: the decision came from the server flag');
         $this->assertSame('Hola', $client->translate('Hello'));
@@ -85,9 +87,9 @@ class CatalogAndWireContractTest extends ContractTestCase
      */
     public function testARegisteredButUntranslatedPhraseIsKnownAndRendersAsSource(): void
     {
-        $this->seedProject(['k-write' => ['type' => 'write']], ['phrases' => [['phrase' => 'Registered']]]);
+        $world = $this->world('registered');
 
-        $client = $this->client('k-write');
+        $client = $this->client($world->key('write'), $world->project());
         $client->setLocale('es-es');
 
         $this->assertSame('Registered', $client->translate('Registered'));
@@ -105,12 +107,9 @@ class CatalogAndWireContractTest extends ContractTestCase
      */
     public function testARegisteredButUntranslatedBlockIsKnownAndRendersAsSource(): void
     {
-        // Non-ASCII on purpose: for ASCII content a legacy id shape equals the
-        // current id, and the legacy fallback would find the block a second way.
-        $id = (new HtmlParser())->generateCustomId('UI', ['Café', 'Thé']);
-        $this->seedProject(['k-write' => ['type' => 'write']], ['blocks' => [['category' => 'UI', 'custom_id' => $id, 'phrases' => [['phrase' => 'Café'], ['phrase' => 'Thé']]]]]);
+        $world = $this->world('untranslated-block');
 
-        $client = $this->client('k-write');
+        $client = $this->client($world->key('write'), $world->project());
         $client->setLocale('es-es');
 
         $this->assertStringContainsString('<p>Café</p><p>Thé</p>', $client->translateContentBlock('<div><p>Café</p><p>Thé</p></div>', 'UI'));
@@ -124,9 +123,9 @@ class CatalogAndWireContractTest extends ContractTestCase
     public function testTextCollidingWithABlockIdIsNotRegisteredAsAPhrase(): void
     {
         $id = (new HtmlParser())->generateCustomId('UI', ['One', 'Two']);
-        $this->seedProject(['k-write' => ['type' => 'write']], ['phrases' => [['phrase' => 'placeholder']], 'blocks' => [['category' => 'UI', 'custom_id' => $id, 'phrases' => [['phrase' => 'One'], ['phrase' => 'Two']]]]]);
+        $world = $this->world('block-id-text');
 
-        $client = $this->client('k-write');
+        $client = $this->client($world->key('write'), $world->project());
         $client->setLocale('es-es');
         $client->translatePage("<html><body><p data-langsys-category=\"UI\">$id</p></body></html>");
 
@@ -134,41 +133,43 @@ class CatalogAndWireContractTest extends ContractTestCase
     }
 
     /**
-     * WIRE-1: the key travels in X-Authorization. The double answers a missing
+     * WIRE-1: the key travels in X-Authorization. The API answers a missing
      * header 401 and an unknown key 403, so a translation arriving proves the
      * header was read.
      */
     public function testTheKeyAuthenticatesInXAuthorization(): void
     {
-        $this->seedProject(['k-read' => ['type' => 'read']], ['phrases' => [['phrase' => 'Hello', 'translations' => ['es-es' => 'Hola']]]]);
+        $world = $this->world('hello');
 
-        $client = $this->client('k-read');
+        $client = $this->client($world->key('read'), $world->project());
         $client->setLocale('es-es');
         $this->assertSame('Hola', $client->translate('Hello'));
 
-        $stranger = $this->client('not-a-key');
+        $stranger = $this->client($world->key('stranger'), $world->project());
         $stranger->setLocale('es-es');
         $this->assertSame('Hello', $stranger->translate('Hello'), 'control: an unknown key is refused');
     }
 
     /**
-     * WIRE-3: no category travels as absent, never as the sentinel. The double
+     * WIRE-3: no category travels as absent, never as the sentinel. The API
      * skips a phrase sent with `__uncategorized__` and would store a block under
-     * it, so either mistake shows in the state.
+     * it as a category of that name, so either mistake shows in what it holds.
      */
     public function testNoCategoryTravelsAsAbsentOnEveryRegistrationPath(): void
     {
-        $this->seedProject(['k-write' => ['type' => 'write']]);
+        $world = $this->world('writer');
 
-        $client = $this->client('k-write');
+        $client = $this->client($world->key('write'), $world->project());
         $client->setLocale('es-es');
         $client->translate('Loose');
         $client->translatePage('<html><body><p>Page</p></body></html>');
         $client->translateContentBlock('<div><p>One</p><p>Two</p></div>');
         $client->flushPendingRegistrations();
 
-        $this->assertEqualsCanonicalizing([[null, 'Loose'], [null, 'Page']], $this->registeredPhrases());
-        $this->assertSame([[null, ['One', 'Two']]], $this->registeredBlocks());
+        $held = $this->held($world->key('write'), $world->project(), 'en-us');
+        $this->assertSame(['__uncategorized__' => ['Loose', 'Page']], $held['phrases']);
+        $this->assertSame([null], array_column($this->storedBlocks($world, $world->key('write'), 'en-us'), 'category'), 'the block is stored with no category');
+        $this->assertSame([['One', 'Two']], array_values($held['blocks']['__uncategorized__']));
     }
 
     /**
@@ -179,11 +180,10 @@ class CatalogAndWireContractTest extends ContractTestCase
      */
     public function testAnUncategorisedBlockIsReadFromTheUncategorisedKey(): void
     {
-        $id = (new HtmlParser())->generateCustomId(null, ['Café', 'Thé']);
-        $this->seedProject(['k-read' => ['type' => 'read']], ['blocks' => [['category' => null, 'custom_id' => $id, 'phrases' => [['phrase' => 'Café', 'translations' => ['es-es' => 'Cafe ES']], ['phrase' => 'Thé', 'translations' => ['es-es' => 'Te ES']]]]]]);
+        $world = $this->world('uncategorised-block');
 
         foreach ([null, ''] as $category) {
-            $client = $this->client('k-read');
+            $client = $this->client($world->key('read'), $world->project());
             $client->setLocale('es-es');
 
             $this->assertStringContainsString('<p>Cafe ES</p><p>Te ES</p>', $client->translateContentBlock('<div><p>Café</p><p>Thé</p></div>', $category), var_export($category, true));
@@ -197,10 +197,10 @@ class CatalogAndWireContractTest extends ContractTestCase
      */
     public function testALocaleInAnySpellingReadsTheLowercaseCatalog(): void
     {
-        $this->seedProject(['k-read' => ['type' => 'read']], ['phrases' => [['phrase' => 'Hello', 'translations' => ['es-es' => 'Hola']]]]);
+        $world = $this->world('hello');
 
         foreach (['es-ES', 'es_ES', 'ES-es'] as $spelling) {
-            $client = $this->client('k-read');
+            $client = $this->client($world->key('read'), $world->project());
             $this->assertSame('Hola', $client->translate('Hello', $spelling), $spelling);
         }
     }
@@ -217,22 +217,27 @@ class CatalogAndWireContractTest extends ContractTestCase
         $legacy = array_values(array_diff($parser->legacyCustomIds('UI', ['Café', 'Thé']), [$current]));
         $this->assertNotEmpty($legacy, 'control: this content has historical ids that differ from the current one');
 
-        $this->seedProject(['k-write' => ['type' => 'write']]);
-        $client = $this->client('k-write');
+        $world = $this->world('writer');
+        $client = $this->client($world->key('write'), $world->project());
         $client->setLocale('es-es');
         $client->translateContentBlock('<div><p>Café</p><p>Thé</p></div>', 'UI');
         $client->flushPendingRegistrations();
-        $this->assertSame([$current], $this->registeredBlockIds(), 'the render path, through the queue');
+        $this->assertSame([$current], $this->blockIds($world), 'the render path, through the queue');
 
-        $this->seedProject(['k-write' => ['type' => 'write']]);
-        $client = $this->client('k-write');
+        $world = $this->world('writer');
+        $client = $this->client($world->key('write'), $world->project());
         $client->registerContentBlock('<div><p>Café</p><p>Thé</p></div>', 'UI');
-        $this->assertSame([$current], $this->registeredBlockIds(), 'the public single-block creator');
+        $this->assertSame([$current], $this->blockIds($world), 'the public single-block creator');
 
-        $this->seedProject(['k-write' => ['type' => 'write']]);
-        $client = $this->client('k-write');
+        $world = $this->world('writer');
+        $client = $this->client($world->key('write'), $world->project());
         $client->translatableItems()->createContentBlocks([['html' => '<div><p>Café</p><p>Thé</p></div>', 'category' => 'UI']]);
-        $this->assertSame([$current], $this->registeredBlockIds(), 'the public batch creator');
+        $this->assertSame([$current], $this->blockIds($world), 'the public batch creator');
+    }
+
+    private function blockIds(World $world)
+    {
+        return self::anyBlock($this->held($world->key('write'), $world->project(), 'en-us'));
     }
 
     private function body($html)
