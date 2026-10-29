@@ -29,7 +29,7 @@ class PageRegistrationTest extends TestCase
     protected function makeClient($keyType = 'write')
     {
         $this->mock = new MockHttpClient();
-        $this->mock->setResponse('GET', 'authorize-project/p', ['data' => ['key_type' => $keyType]]);
+        $this->mock->setResponse('GET', 'authorize-project/p', ['data' => ['key_type' => $keyType, 'write_enabled' => $keyType === 'write']]);
         $this->mock->setResponse('GET', 'translations', ['data' => ['home' => []]]);
 
         $client = new Client('k', 'p', ['cache' => new NullCache()]);

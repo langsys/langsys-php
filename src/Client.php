@@ -702,23 +702,13 @@ class Client
         if (isset($response['data'])) {
             $data = $response['data'];
 
-            if (array_key_exists('write_enabled', $data)) {
-                // Present: authoritative, and it wins over key_type in both
-                // directions. This is the only path that can answer for an
-                // 'ip_write' key. Captured, then stripped so it can never reach
-                // $this->cache - a file/Redis store shared by every request on
-                // the host, and by the fleet on Redis.
-                $this->writeEnabled = (bool) $data['write_enabled'];
-                unset($data['write_enabled']);
-            } else {
-                // Absent means an API too old to compute the flag. That API also
-                // has no 'ip_write' keys and no write grants, so key_type is not
-                // a lossy proxy there - it is the complete answer. Failing closed
-                // here would silently disable registration for every deployment
-                // until the server ships the flag.
-                $keyTypeForFallback = isset($data['key_type']) ? $data['key_type'] : null;
-                $this->writeEnabled = ($keyTypeForFallback === self::KEY_TYPE_WRITE);
-            }
+            // GATE-8: the API's computed decision for this request, and only
+            // that. An answer without the field is not write-enabled, whatever
+            // the key's type. Captured, then stripped so it can never reach
+            // $this->cache - a file/Redis store shared by every request on the
+            // host, and by the fleet on Redis.
+            $this->writeEnabled = array_key_exists('write_enabled', $data) && (bool) $data['write_enabled'];
+            unset($data['write_enabled']);
 
             $this->projectData = $data;
             $this->reportUnusableCapability();
@@ -854,40 +844,20 @@ class Client
     }
 
     /**
-     * Work out whether this request may write, with the fewest possible calls.
+     * Work out whether this request may write.
      *
-     * A 'write' key always may and a 'read' key never may, so for those two the
-     * cached key_type is a complete answer and no network call is warranted -
-     * without this, a read-only deployment with unregistered content pays a
-     * blocking authorization round-trip on every single render, forever.
-     *
-     * The read-key shortcut holds only while this SDK sends no write grant: the
-     * server's gate is `type-allows-write OR valid-grant`, so a grant could make
-     * a read key write-enabled. If grant support is ever added, 'read' must stop
-     * short-circuiting and resolve per request like 'ip_write'. Pinned by
-     * tests/Http/HttpClientTest.php::testNoWriteGrantHeaderIsSent.
+     * Only the API's answer in this request decides (GATE-8). The decision
+     * depends on the key, the caller's address and any grant, so the key's type
+     * answers nothing, and a cached authorization holds no decision: its flag
+     * was stripped before it was cached (GATE-4). So when this request has not
+     * asked yet, it asks. Only a write needs the answer: the flush of what a
+     * request collected, which runs after the response, and the explicit
+     * registration and import calls.
      *
      * @return void
      */
     protected function resolveWriteDecision()
     {
-        // Memory or cache - deliberately not forced.
-        $data = $this->authorize();
-
-        if ($this->writeEnabled !== null) {
-            // authorize() went to the network and already answered.
-            return;
-        }
-
-        $keyType = isset($data['key_type']) ? $data['key_type'] : null;
-
-        if ($keyType === self::KEY_TYPE_WRITE || $keyType === self::KEY_TYPE_READ) {
-            $this->writeEnabled = ($keyType === self::KEY_TYPE_WRITE);
-            return;
-        }
-
-        // 'ip_write', or a type this SDK predates: the answer belongs to this
-        // request and only the server can give it.
         $this->authorize(true);
 
         if ($this->writeEnabled === null) {

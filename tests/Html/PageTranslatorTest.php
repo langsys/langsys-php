@@ -33,6 +33,7 @@ class PageTranslatorTest extends TestCase
                 'id' => 'test-project-id',
                 'title' => 'Test Project',
                 'key_type' => 'write',
+                'write_enabled' => true,
                 'base_locale' => 'en-us',
             ],
         ]);
@@ -663,6 +664,7 @@ class PageTranslatorTest extends TestCase
             'data' => [
                 'id' => 'test-project-id',
                 'key_type' => 'read', // Read-only
+                'write_enabled' => false,
             ],
         ]);
 

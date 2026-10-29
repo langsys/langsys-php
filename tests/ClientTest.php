@@ -475,7 +475,7 @@ class ClientTest extends TestCase
     {
         $mockHttp = new MockHttpClient();
         $mockHttp->setResponse('GET', 'authorize-project/project-id', [
-            'data' => ['key_type' => 'write'],
+            'data' => ['key_type' => 'write', 'write_enabled' => true],
         ]);
         $mockHttp->setResponse('GET', 'translations', [
             'data' => ['__uncategorized__' => []],
@@ -632,18 +632,26 @@ class ClientTest extends TestCase
     }
 
     /**
-     * Today's production API does not emit write_enabled at all. Failing closed
-     * on a missing flag would silently disable registration for every customer,
-     * so the SDK falls back to key_type - which on that API is not a lossy proxy
-     * but the complete answer, since it has no ip_write keys and no grants.
+     * GATE-8: an answer without write_enabled is not write-enabled, exactly as
+     * if it said false, whatever the key's type. For a plain write key nothing
+     * registers.
      */
-    public function testFallsBackToKeyTypeWhenTheApiOmitsWriteEnabled()
+    public function testAMissingFlagIsNotWriteEnabledEvenForAWriteKey()
     {
-        $client = $this->clientWithAuth(['key_type' => 'write']);
-        $this->assertTrue($client->canWrite(), 'A write key must keep working against an API that predates the flag');
+        $mockHttp = new MockHttpClient();
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', ['data' => ['key_type' => 'write']]);
+        $mockHttp->setResponse('GET', 'translations', ['data' => []]);
+        $client = $this->createClientWithMockHttp($mockHttp);
+        $client->setLocale('es-es');
+
+        $this->assertFalse($client->canWrite(), 'the key type supplies no decision');
+
+        $client->translate('New phrase');
+        $this->assertSame('not_write_enabled', $client->flushPendingRegistrations()['reason']);
+        $this->assertNotContains('POST translatable-items', $this->sentPosts($mockHttp, true), 'nothing registers');
     }
 
-    public function testFallsBackToKeyTypeForAReadKeyWhenTheApiOmitsWriteEnabled()
+    public function testAMissingFlagIsNotWriteEnabledForAReadKey()
     {
         $client = $this->clientWithAuth(['key_type' => 'read']);
         $this->assertFalse($client->canWrite());
@@ -675,27 +683,60 @@ class ClientTest extends TestCase
     }
 
     /**
-     * A read or write key's answer is fully determined by its type, so a warm
-     * cache needs no authorization call. Without this a read-only deployment
-     * with unregistered content pays a blocking round-trip on every render.
+     * GATE-8: a cached payload is not an answer. A session whose only
+     * authorization is the cached one asks the API before it decides, for a
+     * write key as for any other: it registers nothing until the API answers,
+     * and registers once it answers true.
      */
-    public function testWarmCacheCostsNoAuthorizationCallForAReadKey()
+    public function testACachedAuthorizationDecidesNothing()
     {
         $cache = new FileCache(sys_get_temp_dir() . '/langsys-test-' . uniqid());
 
         $mockHttp = new MockHttpClient();
         $mockHttp->setResponse('GET', 'authorize-project/project-id', [
-            'data' => ['key_type' => 'read', 'write_enabled' => false],
+            'data' => ['key_type' => 'write', 'write_enabled' => true],
         ]);
+        $mockHttp->setResponse('GET', 'translations', ['data' => []]);
+        $mockHttp->setResponse('POST', 'translatable-items', ['data' => []]);
         $this->createClientWithMockHttp($mockHttp, $cache)->canWrite();
 
+        // The next request holds only the cached authorization, and the API
+        // gives no answer.
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', []);
         $mockHttp->clearRequests();
         $client = $this->createClientWithMockHttp($mockHttp, $cache);
+        $client->setLocale('es-es');
+        $client->translate('New phrase');
 
-        $this->assertFalse($client->canWrite());
-        $this->assertSame([], $mockHttp->getRequests(), 'A warm cache must answer a read key with no HTTP call');
+        $this->assertFalse($client->flushPendingRegistrations()['success']);
+        $this->assertSame(['GET authorize-project/project-id'], $this->sentPosts($mockHttp, true), 'the cached write key type decided nothing: the API was asked, and nothing registered');
+
+        // In the next request the API answers true, and the miss registers.
+        $mockHttp->setResponse('GET', 'authorize-project/project-id', ['data' => ['key_type' => 'write', 'write_enabled' => true]]);
+        $client->resetRequestState();
+        $client->setLocale('es-es');
+        $client->translate('New phrase');
+        $this->assertTrue($client->flushPendingRegistrations()['success']);
+        $this->assertContains('POST translatable-items', $this->sentPosts($mockHttp, true));
 
         $cache->clear();
+    }
+
+    /**
+     * Every request a mock received, as METHOD endpoint, or only the
+     * authorizations and writes.
+     */
+    private function sentPosts(MockHttpClient $mockHttp, $decisionsAndWrites)
+    {
+        $sent = [];
+        foreach ($mockHttp->getRequests() as $request) {
+            $line = $request['method'] . ' ' . $request['endpoint'];
+            if (!$decisionsAndWrites || $request['method'] === 'POST' || strpos($request['endpoint'], 'authorize-project/') === 0) {
+                $sent[] = $line;
+            }
+        }
+
+        return $sent;
     }
 
     public function testWarmCacheStillResolvesPerRequestForAnIpWriteKey()

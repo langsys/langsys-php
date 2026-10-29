@@ -39,7 +39,7 @@ class PhraseAttributeTest extends TestCase
     {
         $mock = new MockHttpClient();
         $this->mock = $mock;
-        $mock->setResponse('GET', 'authorize-project/p', ['data' => ['key_type' => $keyType]]);
+        $mock->setResponse('GET', 'authorize-project/p', ['data' => ['key_type' => $keyType, 'write_enabled' => $keyType === 'write']]);
         $mock->setResponse('GET', 'translations', ['data' => $translations]);
 
         $client = new Client('k', 'p', ['cache' => new NullCache()]);
