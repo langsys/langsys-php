@@ -137,7 +137,7 @@ class SyncPlanTest extends TestCase
         $this->assertTrue($result['success']);
         $this->assertSame([
             ['type' => 'phrase', 'phrase' => 'Brand new', 'category' => null, 'translatable' => true],
-            ['type' => 'phrase', 'phrase' => 'Place order', 'category' => 'checkout', 'translatable' => true, 'translations' => ['es-es' => 'Realizar pedido']],
+            ['type' => 'phrase', 'phrase' => 'Place order', 'category' => 'checkout', 'translatable' => true, 'translations' => [['locale' => 'es-es', 'translation' => 'Realizar pedido']]],
         ], $this->sent());
         $this->assertSame([2, 1], [$result['registered'], $result['translations']]);
     }

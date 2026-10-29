@@ -187,8 +187,10 @@ class TranslatableItems
     /**
      * Register phrases with the translations already made for them (MIG-9).
      *
-     * Each item is ['phrase', 'category', 'translations' => [locale => text]].
-     * The API stores the translations as human translations, which the
+     * Each item is ['phrase', 'category', 'translations' => [locale => text]],
+     * sent as the API takes it: a list of {locale, translation} entries, since
+     * the API refuses a map keyed by locale. It stores them as human
+     * translations, which the
      * machine translation queue then skips for those locales; past the plan's
      * human-translated words for the period the rest are left for machine
      * translation, and the counts say so.
@@ -209,7 +211,10 @@ class TranslatableItems
             ];
 
             if (!empty($item['translations'])) {
-                $entry['translations'] = $item['translations'];
+                $entry['translations'] = [];
+                foreach ($item['translations'] as $locale => $translation) {
+                    $entry['translations'][] = ['locale' => $locale, 'translation' => $translation];
+                }
             }
 
             $wire[] = $entry;

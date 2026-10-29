@@ -104,8 +104,8 @@ class ImportTest extends TestCase
         ]);
 
         $this->assertSame([
-            ['type' => 'phrase', 'phrase' => 'Place order', 'category' => 'checkout', 'translatable' => true, 'translations' => ['es-es' => 'Realizar pedido']],
-            ['type' => 'phrase', 'phrase' => 'Hello {name}', 'category' => 'checkout', 'translatable' => true, 'translations' => ['es-es' => 'Hola {name}']],
+            ['type' => 'phrase', 'phrase' => 'Place order', 'category' => 'checkout', 'translatable' => true, 'translations' => [['locale' => 'es-es', 'translation' => 'Realizar pedido']]],
+            ['type' => 'phrase', 'phrase' => 'Hello {name}', 'category' => 'checkout', 'translatable' => true, 'translations' => [['locale' => 'es-es', 'translation' => 'Hola {name}']]],
         ], $this->sent());
         $this->assertTrue($result['success']);
         $this->assertSame([2, 2, 2, 0], [$result['phrases'], $result['translations'], $result['human_translations_saved'], $result['human_translations_skipped']]);
@@ -121,7 +121,7 @@ class ImportTest extends TestCase
         $client->importLegacyTranslations(['es-es' => ['files' => [['path' => $this->file('es.json', '{"apples": "una manzana | {count} manzanas"}'), 'format' => 'vue-i18n']]]]);
 
         $this->assertSame('{count, plural, =1 {one apple} other {# apples}}', $this->sent()[0]['phrase']);
-        $this->assertSame(['es-es' => '{count, plural, =1 {una manzana} other {# manzanas}}'], $this->sent()[0]['translations']);
+        $this->assertSame([['locale' => 'es-es', 'translation' => '{count, plural, =1 {una manzana} other {# manzanas}}']], $this->sent()[0]['translations']);
     }
 
     /**
@@ -176,7 +176,7 @@ class ImportTest extends TestCase
         $this->assertSame([
             ['type' => 'phrase', 'phrase' => 'Alpha', 'category' => null, 'translatable' => true],
             ['type' => 'phrase', 'phrase' => 'Beta', 'category' => null, 'translatable' => true],
-            ['type' => 'phrase', 'phrase' => 'Gamma', 'category' => null, 'translatable' => true, 'translations' => ['es-es' => 'Gama', 'fr-fr' => 'Gamma']],
+            ['type' => 'phrase', 'phrase' => 'Gamma', 'category' => null, 'translatable' => true, 'translations' => [['locale' => 'es-es', 'translation' => 'Gama'], ['locale' => 'fr-fr', 'translation' => 'Gamma']]],
         ], $this->sent());
         $this->assertSame([
             ['key' => 'a', 'locale' => 'es-es', 'reason' => 'missing'],
