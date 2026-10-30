@@ -834,6 +834,38 @@ class ClientTest extends TestCase
         $this->assertSame('Hola', $client->translate('Hello', 'es-es', null));
     }
 
+    /**
+     * @dataProvider emptyPageCategoryProvider
+     */
+    public function testAnEmptyCategoryOnAPageReadsTheUncategorizedCatalog(callable $render)
+    {
+        $client = $this->clientWithCatalog(['__uncategorized__' => ['Hi there' => 'Hola']]);
+
+        $this->assertStringContainsString('<p>Hola</p>', $render($client));
+        $this->assertFalse(
+            $client->hasPendingRegistrations(),
+            'An existing phrase must not re-register because the category was empty'
+        );
+    }
+
+    public function emptyPageCategoryProvider()
+    {
+        return [
+            'an empty data-langsys-category' => [function ($client) {
+                return $client->translatePage('<html><body><div data-langsys-category=""><p>Hi there</p></div></body></html>');
+            }],
+            'an empty default category' => [function ($client) {
+                return $client->translatePage('<html><body><p>Hi there</p></body></html>', '');
+            }],
+            'a selector mapping to an empty category' => [function ($client) {
+                return $client->translatePage('<html><body><p>Hi there</p></body></html>', null, ['p' => ['category' => '', 'override' => true]]);
+            }],
+            'an empty attribute inside a categorized parent' => [function ($client) {
+                return $client->translatePage('<html><body><main data-langsys-category="home"><div data-langsys-category=""><p>Hi there</p></div></main></body></html>');
+            }],
+        ];
+    }
+
     // =========================================================================
     // Flush must distinguish work that is gone from work that can be retried
     // =========================================================================

@@ -163,6 +163,11 @@ class PageTranslator
         // written from it (WIRE-3).
         $locale = LocaleDetector::normalize($locale);
 
+        // An empty category is no category, as in Client::normalizeCategory().
+        if ($defaultCategory === '') {
+            $defaultCategory = null;
+        }
+
         // Per-call state; reset every time since the instance is reused.
         $this->params = $params;
         $this->currentLocale = $locale;
@@ -927,13 +932,13 @@ class PageTranslator
         if ($this->selectorMatcher !== null) {
             $selectorMatch = $this->selectorMatcher->matchElement($element);
             if ($selectorMatch !== null && $selectorMatch['override']) {
-                return $selectorMatch['category'];
+                return $this->categoryOrUncategorized($selectorMatch['category']);
             }
         }
 
         // Check for data-langsys-category attribute
         if ($element->hasAttribute('data-langsys-category')) {
-            return $element->getAttribute('data-langsys-category');
+            return $this->categoryOrUncategorized($element->getAttribute('data-langsys-category'));
         }
 
         // Use inherited category if set
@@ -945,12 +950,24 @@ class PageTranslator
         if ($this->selectorMatcher !== null) {
             $selectorMatch = $this->selectorMatcher->matchElement($element);
             if ($selectorMatch !== null && !$selectorMatch['override']) {
-                return $selectorMatch['category'];
+                return $this->categoryOrUncategorized($selectorMatch['category']);
             }
         }
 
         // Return null to let caller use default
         return null;
+    }
+
+    /**
+     * An empty category an author wrote is the uncategorised one, so its text
+     * reads and registers under '__uncategorized__' like any other.
+     *
+     * @param string|null $category
+     * @return string|null
+     */
+    private function categoryOrUncategorized($category)
+    {
+        return $category === '' ? '__uncategorized__' : $category;
     }
 
     /**
