@@ -177,6 +177,22 @@ class UnconfiguredClientTest extends TestCase
         $this->assertStringNotContainsString('LANGSYS_API_KEY', $warnings[0]);
     }
 
+    public function testWithTheDefaultLoggerTheWarningReachesPhpsErrorLogOnce()
+    {
+        $log = tempnam(sys_get_temp_dir(), 'langsys-errlog-');
+        $original = ini_get('error_log');
+        ini_set('error_log', $log);
+        try {
+            $this->client(null, null, ['warn_runtime_requirements' => true]);
+            $written = (string) file_get_contents($log);
+        } finally {
+            ini_set('error_log', $original === false ? '' : $original);
+            @unlink($log);
+        }
+
+        $this->assertSame(1, substr_count($written, 'Langsys is not configured'), $written);
+    }
+
     public function testAConfiguredClientDoesNotWarn()
     {
         $logger = new SpyLogger();

@@ -354,11 +354,6 @@ class Client
         // Initialize logger
         $this->logger = $this->initializeLogger($options);
 
-        // Composer enforces the PHP version and ext-intl, but the documented
-        // manual autoload.php install bypasses Composer entirely - so check at
-        // runtime too, or those users hit an obscure failure inside the ICU code
-        // with nothing pointing at the cause. Host frameworks that surface the
-        // SDK logger themselves can silence the error_log leg.
         // MIG-7: a migration file in a format this SDK does not read is refused
         // here, when the configuration loads, not inside a render.
         if ($this->config->getMigration() !== null) {
@@ -385,6 +380,11 @@ class Client
             $this->warnRuntimeRequirements = (bool) $options['warn_runtime_requirements'];
         }
 
+        // Composer enforces the PHP version and ext-intl, but the documented
+        // manual autoload.php install bypasses Composer entirely - so check at
+        // runtime too, or those users hit an obscure failure inside the ICU code
+        // with nothing pointing at the cause. Host frameworks that surface the
+        // SDK logger themselves can silence the error_log leg.
         $this->checkRuntimeRequirements();
         $this->warnUnconfigured();
 
@@ -564,7 +564,8 @@ class Client
     }
 
     /**
-     * Emit an unmet-requirement warning through both channels.
+     * Emit an unmet-requirement warning to the SDK logger and to PHP's error
+     * log, once in each: the default logger writes to the error log itself.
      *
      * Uses error_log() rather than trigger_error(). trigger_error() goes through
      * the installed error handler, and frameworks routinely convert PHP errors
@@ -582,7 +583,8 @@ class Client
     {
         $this->logger->warning($message, $context);
 
-        if (!$this->warnRuntimeRequirements) {
+        // The default logger has already written it to the PHP error log.
+        if (!$this->warnRuntimeRequirements || $this->logger instanceof ErrorLogLogger) {
             return;
         }
 
