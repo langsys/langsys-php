@@ -51,6 +51,19 @@ class ClientMigrationTest extends TestCase
         return $client;
     }
 
+    /**
+     * WIRE-4 in the mode: a configured PHP file that fails to load leaves
+     * translate() rendering, never throwing.
+     */
+    public function testALangFileThatFailsToLoadLeavesTranslateRendering(): void
+    {
+        file_put_contents($this->dir . '/lang/en/greeting.php', '<?php return [;');
+        $client = $this->inMode(['__uncategorized__' => ['Some literal text' => 'Algo de texto']]);
+
+        $this->assertSame('Algo de texto', $client->translate('Some literal text'));
+        $this->assertSame('greeting.hello', $client->translate('greeting.hello'), 'a key in the broken file is not found');
+    }
+
     private function queued($client)
     {
         return array_map(function ($p) {

@@ -225,4 +225,34 @@ class LegacyKeysTest extends TestCase
         $this->assertSame([], $keys->loadedFiles());
         $this->assertStringContainsString('does-not-exist.json', $keys->problems()[0]['file']);
     }
+
+    /**
+     * A PHP file that fails as it loads - a syntax error, a framework helper
+     * called with no framework, a throw - is reported with its cause and
+     * resolves nothing, rather than failing every lookup after it.
+     *
+     * @dataProvider failingPhpFileProvider
+     */
+    public function testAPhpFileThatFailsToLoadIsReportedAndResolvesNothing($code, $cause): void
+    {
+        file_put_contents($this->dir . '/app/lang/en/broken.php', $code);
+        $json = $this->json('app/en.json', ['checkout' => ['submit' => 'Place order']]);
+        $keys = new LegacyKeys(['files' => [$this->dir . '/app/lang/en/broken.php', $json]]);
+
+        $this->assertNull($keys->resolve('broken.anything'));
+        $this->assertSame('Place order', $keys->resolve('checkout.submit')['phrase'], 'the other files still resolve');
+        $problems = $keys->problems();
+        $this->assertCount(1, $problems);
+        $this->assertSame($this->dir . '/app/lang/en/broken.php', $problems[0]['file']);
+        $this->assertStringContainsString($cause, $problems[0]['issue']);
+    }
+
+    public function failingPhpFileProvider(): array
+    {
+        return [
+            'a syntax error' => ['<?php return [;', 'syntax error'],
+            'a helper with no framework' => ['<?php return ["name" => langsys_no_such_helper("app.name")];', 'langsys_no_such_helper'],
+            'a throw' => ['<?php throw new \\RuntimeException("boom");', 'boom'],
+        ];
+    }
 }

@@ -34,7 +34,7 @@ final class LegacyKeys
     /** @var array<string, array|null> path => decoded data, null when unreadable */
     private $data = [];
 
-    /** @var array[] */
+    /** @var array<string, string|null> path => why it failed to load, null when it is not a JSON object or a PHP array */
     private $unreadable = [];
 
     /**
@@ -277,8 +277,10 @@ final class LegacyKeys
             }
         }
 
-        foreach ($this->unreadable as $path) {
-            $problems[] = ['file' => $path, 'key' => null, 'issue' => 'cannot be read as a JSON object or a PHP array', 'fix' => 'check the path in the migration configuration'];
+        foreach ($this->unreadable as $path => $cause) {
+            $problems[] = $cause === null
+                ? ['file' => $path, 'key' => null, 'issue' => 'cannot be read as a JSON object or a PHP array', 'fix' => 'check the path in the migration configuration']
+                : ['file' => $path, 'key' => null, 'issue' => 'failed to load: ' . $cause, 'fix' => 'make the file return its array without a framework or a request'];
         }
 
         return $problems;
@@ -585,12 +587,20 @@ final class LegacyKeys
         }
 
         $data = null;
+        $cause = null;
 
         if (is_file($path) && is_readable($path)) {
             if ($this->isPhp($path)) {
-                $data = (static function ($file) {
-                    return include $file;
-                })($path);
+                // An app's PHP file can fail as it loads - a syntax error, a
+                // framework helper called where there is no framework - and
+                // that fails this file, never the lookup that read it.
+                try {
+                    $data = (static function ($file) {
+                        return include $file;
+                    })($path);
+                } catch (\Throwable $e) {
+                    $cause = $e->getMessage();
+                }
             } else {
                 $data = json_decode((string) file_get_contents($path), true);
             }
@@ -598,7 +608,7 @@ final class LegacyKeys
 
         if (!is_array($data)) {
             $data = null;
-            $this->unreadable[] = $path;
+            $this->unreadable[$path] = $cause;
         }
 
         return $this->data[$path] = $data;
