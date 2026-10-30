@@ -1,8 +1,13 @@
-# Conformance — langsys/php-sdk
+# Conformance — langsys/langsys-php
 
-Spec version implemented: **spec blob `267ca913`** (`langsys2` @ `d3846d13`, spec 8.6.0,
-**committed and unpublished**; derived 2026-10-29T04:02:23Z via
-`git rev-parse d3846d13f82fc85c5b77bb9502fed3cb84774c66:docs/sdk-spec.mdx`)
+This file grades **langsys/langsys-php 2.0.0** against SDK specification **8.6.0**: blob `267ca913`
+of `docs/sdk-spec.mdx` at `langsys2` commit `d3846d13`. The blob is derived from the commit with
+`git rev-parse d3846d13f82fc85c5b77bb9502fed3cb84774c66:docs/sdk-spec.mdx`, not copied, because a
+file that cites a blob it did not derive is asserting rather than checking; and it names a commit
+rather than a branch, because a branch can move under a file that cites it.
+
+The Laravel binding, `langsys/langsys-php-laravel` 1.0.0, requires `langsys/langsys-php` `^1.3`, so
+it runs on the 1.x line and does not wrap this release.
 
 | Field | Value |
 |---|---|
@@ -12,33 +17,12 @@ Spec version implemented: **spec blob `267ca913`** (`langsys2` @ `d3846d13`, spe
 
 **Coverage: every one of the spec's rule ids is accounted for exactly once**, binding or not —
 rules that do not bind this SDK are rowed `n/a` with the profile named, rather than left out.
-The counts, the binding total and the grade tally live in the computed summary at the foot of
-this file and only there, because a number written twice is a number that disagrees with itself.
+The rule count and the grade tally live in *Computed summary* and only there, because a number
+written twice is a number that disagrees with itself.
 
 **Which blob a row cites.** Every row is graded against the rule's text at blob `267ca913`. A row
 that cites an earlier blob (`aff89a98`, `5c5c0723`, `f8ff6e1e`, `e2524fd6`, `af6532e4`, `9a003a37`, `24354e2d`, `754daa16`, `9e826c91`, `5fa32cb9`, `b786ea3e`, `286dcfe4`, `b9fd4b5b`, `5d7e6890`, `7eee2c10`, `379ee2bd`, `5f43b636`, `7c44877f`, `295974b4`, `68e3020a`, `f2be841f`) names the blob where its ruling
 first appears.
-
-**Rebased from blob `042dedb5` (spec v8) to `5c5c0723` (spec 8.0.1).** 8.0.1 is a correction to
-v8, not a new release: it pins the whitespace set to JavaScript's, translates SVG label text, and
-names the libxml2 version boundary with this SDK's 2.9.13 measurement. Earlier rebases:
-`45cdddf8` → `042dedb5` added TOK, MARK and SRV; `06ae105a` → `45cdddf8` re-profiled GRANT-1…4
-to `browser`.
-
-**The rulings once implemented ahead of the spec are now in the committed spec, which is not
-published — by design.** Three rows (TOK-1, TOK-2, TOK-5) were first implemented against rulings
-relayed before any blob carried them, and this file said so. They now cite blob `5c5c0723`. That
-blob is unpublished on purpose: the operator's plan is that nothing publishes until every SDK,
-bindings included, is green on the committed spec, and then everything publishes at once. So this
-file rows against a committed, unpublished blob, and names the commit rather than a branch.
-
-**The blob moved mid-lane, which is why it is re-derived here rather than copied from the
-brief.** This lane opened citing `b657b490`; by the time these rows were written the branch
-tip carried `042dedb5`. The difference is the publication marker alone — *(authored)* →
-*(published)* — and **no rule changed**, but a file that cites a blob it did not derive is
-asserting rather than checking. The blob and commit above are re-derived at each write of
-this file: a version line carried by hand is a version line that goes stale silently, which
-is how the "Known gaps" section below once came to understate coverage this file already had.
 
 Every rule maps to the test that proves it. A rule with no test is NOT IMPLEMENTED —
 that is a fact about this SDK, not a documentation gap. Do not write "yes" without a
@@ -80,7 +64,7 @@ recorded mutation, run in a git worktree. A row where one path's mutant stays gr
 naming the path proven and the path asserted. An answer-dependent row is `implemented` only on
 `contract` evidence; one whose tests used only the mock would be `provisional`.
 
-**Precondition, not a rule:** the suite must be exercising this tree, and asserts it. Both rendering paths: `tests/Html/PageTranslatorTest.php::testTranslatePageServesAContentBlockFoundUnderItsLegacyId`, `::testTranslatePageDoesNotQueueALegacyResolvedContentBlock`, `::testPageAndContentBlockPathsAgreeOnALegacyBlock`; and `tests/ClientTest.php::testContentBlockResolvesUnderItsLegacyPipeFormId`, `::testUncategorizedLegacyBlockResolvesUnderTheEmptyCategorySlot`, `::testUncategorizedLegacyBlockResolvesUnderTheSentinelCategorySlot`, `::testLegacyIdResolvingToDifferentContentIsRejected`, `::testLegacyIdIsNeverSentToTheApi`. Not yet a spec rule — the fallback is SDK-local remediation. If it becomes one, the load-bearing half is that a legacy-resolved block is **not** queued **Waits on:** a test against the contract fixture.
+**Historical ids on both rendering paths.** A content block the catalog holds under a historical id is served from it on the page path and the block path alike, an uncategorised one under either category slot; a historical id holding different content is rejected; a historical id is never sent; and a block served from a historical id is **not** queued, because registering it would put a second block under its current id and leave its translations on the old one. Both paths resolve a block through `Client::resolveContentBlockTranslations()`, so they cannot disagree about it. CID-3 grades the lookup and CID-4 the content check. Both rendering paths: `tests/Html/PageTranslatorTest.php::testTranslatePageServesAContentBlockFoundUnderItsLegacyId`, `::testTranslatePageDoesNotQueueALegacyResolvedContentBlock`, `::testPageAndContentBlockPathsAgreeOnALegacyBlock`; and `tests/ClientTest.php::testContentBlockResolvesUnderItsLegacyPipeFormId`, `::testUncategorizedLegacyBlockResolvesUnderTheEmptyCategorySlot`, `::testUncategorizedLegacyBlockResolvesUnderTheSentinelCategorySlot`, `::testLegacyIdResolvingToDifferentContentIsRejected`, `::testLegacyIdIsNeverSentToTheApi`.
 
 ## Status
 
@@ -136,8 +120,8 @@ naming the path proven and the path asserted. An answer-dependent row is `implem
 | CID-3 | implemented | contract | **Mutation, this regrade** (full suite per mutant, file restored byte-for-byte after each, on the `src/` of `5400248`): tolerance: a byte hash in place of the code-unit hash reddens `::testEveryLegacyVectorIsReachableThroughTheLookupPath`, `::testLegacyCustomIdsCoverBothToleratedShapes`, `::testNonAsciiLegacyBlockResolvesThroughTheClient`. Emission through `translateContentBlock`: registering a legacy id reddens `::testLegacyIdIsNeverSentToTheApi`, `::testARenderedBlockIsStampedWithItsResolvedId`, `::testLegacyIdResolvingToDifferentContentIsRejected`. **Emission, proven on the SDK test clone (fixture tree `f72fab59`)** on content whose historical ids differ from its current one: the render path through the queue, the public `registerContentBlock()` and the batch creator each store the block under its current id (`tests/Contract/CatalogAndWireContractTest.php::testEveryBlockPathRegistersUnderTheCurrentId`). **Mutation** (full suite per mutant, in a git worktree, each file restored byte for byte): the render path registering a legacy id reddens `::testEveryBlockPathRegistersUnderTheCurrentId`, `::testLegacyIdIsNeverSentToTheApi`; the single-block creator, `::testEveryBlockPathRegistersUnderTheCurrentId`; the batch creator, `::testEveryBlockPathRegistersUnderTheCurrentId`. *Earlier record:* Emits only the CID-1 form — `::testLegacyIdIsNeverSentToTheApi`, narrowed to legacy shapes that DIFFER from the current id, since for ASCII content the code-unit hash and a byte hash agree exactly and finding that value in a payload proves nothing. **Tolerance breadth per the reversed ruling:** the rule binds anything that READS catalogs, not only the implementation that produced the ids, so this SDK now also tolerates the JS SDKs' pre-fix **code-unit** hash — a PHP page rendering content a JS SDK registered must resolve it, or it re-registers under the current id and strands those translations. Asymmetric risk is the argument: failing to tolerate costs real translations, while tolerating costs a lookup that misses, and every attach is gated by the CID-4 content guard regardless. The code-unit hash is **reimplemented in PHP and verified against executed TS vectors** — not shared code, so it can drift and the fixture is what would catch it. `tests/fixtures/legacy-custom-id-reference.json`, adopted byte-identically from `langsys-python` (blob `dc5556466dc54fe82e81ac9fdbf4549b2b76e7ce`), whose 20 vectors were generated by executing the TS core: all 20 match. `tests/Html/HtmlParserTest.php::testLegacyCustomIdsCoverBothToleratedShapes` proves the HASH; `::testEveryLegacyVectorIsReachableThroughTheLookupPath` proves the LOOKUP; `tests/ClientTest.php::testNonAsciiLegacyBlockResolvesThroughTheClient` proves a client actually RESOLVES such a block (Cyrillic, Japanese, Greek, Hebrew, Arabic, astral-plane) — every other Client-level legacy test is ASCII, where the two hashes agree, so a byte-hash stub passed all of them; it now reddens 8 cases instead of 2 — it drives the public `legacyCustomIds()` with each row's own inputs, which the hash test cannot do and which is what found the gap below. **Gap found and closed:** the legacy JS generator did not coalesce `null`, so an untyped caller's block was filed under `[null,[...]]` — a string no slot in `legacyCustomIds()` could produce, stranding that content. **Deliberate exclusion, asserted as one:** `md5codeunit('["__uncategorized__",[...]]')` is NOT looked up; the sentinel is this SDK's own spelling and only ever went out on the pipe-join form, so it is an id nothing ever wrote **Clone mutation** (the row's contract file on fresh worlds of the SDK test clone, in a git worktree, each file restored byte for byte): the render path registers a block under a historical id reddens `::testARegisteredButUntranslatedBlockIsKnownAndRendersAsSource`, `::testAnUncategorisedBlockIsReadFromTheUncategorisedKey`, `::testEveryBlockPathRegistersUnderTheCurrentId`. |
 | CID-4 | implemented | n/a (pure) | **Mutation, this regrade** (full suite per mutant, file restored byte-for-byte after each, on the `src/` of `5400248`): the legacy guard returning a match unconditionally reddens `::testLegacyIdResolvingToDifferentContentIsRejected` (block path). The clause, verbatim at blob `5c5c0723`: *"Compare phrases in order where the representation preserves order; a set comparison is conforming where it does not."* The catalog returns a block as a phrase-keyed map, which preserves no order, so the set comparison is the conforming one. **Page path:** the page path reaches the same guard through `Client::resolveContentBlockTranslations()`, and a declared block whose legacy id holds different content is a miss there too - not rendered from, and registered under its own id (`tests/Html/PageTranslatorTest.php::testALegacyIdHoldingDifferentContentIsAMissOnThePagePath`). **Mutation** (full suite per mutant, in a git worktree, each file restored byte for byte): the guard accepting any content reddens `::testALegacyIdHoldingDifferentContentIsAMissOnThePagePath`, `::testLegacyIdResolvingToDifferentContentIsRejected`, on both paths. *Earlier record:* `Client::legacyBlockMatchesPhrases()` compares phrases before attaching, and the guard fails toward no-match: `::testLegacyIdResolvingToDifferentContentIsRejected`. **Conforming as written at spec 8.0.1 (blob `5c5c0723`)**, which allows a set comparison where the representation does not preserve order — (a) *category* is not compared explicitly because the lookup is already sliced to one category, so any hit is in the right one; (b) phrases are compared as a **set**, because the catalog returns a block as a phrase-keyed map and order is not recoverable from it at attach time. Previously graded `partial` against the pre-correction text; see *Findings raised against this revision* |
 | TOK-1 | implemented | n/a (pure) | **A script or style body comes back as written on every path.** libxml2 2.9.13 ends a raw-text body at any end tag and drops it, so `el.innerHTML = '<p>hi</p>'` lost `</p>` and an excluded `<script>` in a rich phrase was not restored as written; `Html\Document::load()`, the one loader all nine parse sites go through, parses in libxml's recovery mode, which reads a body on to its own end tag and parses everything else as plain parsing does - 30,000 random malformed documents compared shape for shape outside script and style, zero differences, against a control that finds 233 in 3,000. A page without an `<html>` is read inside one, as a browser reads it, so every top-level element is translated; a document (a doctype, a head, a body or a title) is written back with the `<html>` and the head a browser implies, so its title and `lang` are set, and a fragment comes back as it was; a page with no `<body>` never has its head read as body text (`::testAPageWithoutAnHtmlElementIsTranslatedWhole`; 10 mutants RED). Whether a page has an `<html>`, and is a document, is read from its tags as a browser's tokenizer reads them (`Html\Document::startTags()`): a tag written in a comment, a doctype, an attribute value or a text body is text, and an svg's `<title>`, like HTML inside its `<foreignObject>`, `<desc>` or `<title>` or MathML's text elements, is the drawing's (`::testAPageIsReadFromItsTagsNotFromTextThatMentionsThem`, `tests/Html/DocumentTest.php::testStartTagsAreTheElementsABrowserReads`; 13 mutants RED). A document that leads with no head content is given the empty head a browser implies, ahead of its body, so it declares UTF-8, and a fragment is given none (`::testADocumentWithoutAHeadIsGivenOneDeclaringUtf8`; 3 mutants RED). A page is decoded as a browser decodes it before anything reads it (`Html\Charset::toUtf8()`): a byte-order mark first, then the charset its first 1024 bytes declare as a browser's prescan reads their metas - a `charset` attribute, or a `content`'s `charset=` only beside `http-equiv="content-type"`, a label naming no encoding passed over for the next meta, comments (`<!-->` among them), other tags' attributes and `<!`/`<?` constructs skipped - read through the WHATWG label table (`Charset::ENCODINGS`; a label the table lacks, such as `utf-7`, declares nothing; a meta's UTF-16 means UTF-8 and x-user-defined windows-1252), else UTF-8 when its bytes are UTF-8 and windows-1252 when they are not; each encoding is decoded by the standard's decoder for it (`Html\Decoder`), over the standard's indexes as Firefox's decoder reads them (`src/Html/Encoding/`, written by `generate.mjs` from `TextDecoder` in Deno, encoding_rs) - GBK by gb18030's, the replacement labels as one U+FFFD - a byte sequence invalid in it as one U+FFFD and a byte an error did not consume read again, and libxml then reads it as UTF-8 whatever its metas say (`::testAPageIsDecodedAsABrowserDecodesIt`, `tests/Html/CharsetTest.php`; 51 mutants RED). A `<!-->` or `<!--->` comment is read as the empty comment a browser reads, where libxml 2.9 ran it to a later `-->` and lost the page after it (`::testAnEmptyCommentKeepsWhatFollowsIt`; 3 mutants RED). 2,040 byte strings across every encoding but UTF-8 and UTF-16, valid and not, decode as Firefox's decoder decodes them (`tests/Html/DecoderTest.php`, `tests/fixtures/encoding-vectors.json`); no encoding needs intl. A page is written out node by node in the UTF-8 it declares, so a body keeps its non-ASCII characters as written, where libxml 2.9's whole-document serializer wrote them as entities unless the page had an http-equiv charset meta (`::testAPageKeepsNonAsciiInItsBodiesAsWritten`, `::testALegacyDoctypeIsWrittenBack`; 4 mutants RED), and every charset the page declares, in a `<head>` or not, is rewritten to UTF-8 (`::testEveryCharsetThePageDeclaresIsUtf8`; 4 mutants RED), while a meta written where it declares nothing - text in a textarea, a title, an xmp, an iframe, a noembed or a noframes, or after a plaintext, a template, a noscript, an SVG or MathML - is left as written (`::testAMetaThatDeclaresNothingIsLeftAsWritten`; 12 mutants RED), and the first charset the output's head declares, as a browser's prescan reads it, is the UTF-8 one, ahead of a meta written in a title's text (`::testThePrescanOfTheOutputFindsUtf8First`; 4 mutants RED). Page, block and rich paths, an `innerHTML` string, a template literal, JSON-LD, a CSS comment, a `<style>` mentioned in a comment, an attribute or a custom element's name, a self-closed `<script/>` or `<style/>`, a comment closed by `--!>`, a stray quote, a `>` inside an attribute, and a Latin-1 page, with a comparison as the control (`tests/Html/RawTextBodyTest.php`, 17 cases). **Mutation**: recovery mode off reddens 7 of them, and each path parsing directly reddens its own. A fragment parses through `Document::loadFragment()`, whose wrapper is opened and never closed: the end of the input closes it, so a script, a comment, a start tag or an attribute value the fragment ends inside ends where the fragment does, as in a browser, with nothing of the SDK's in it - 20,000 random fragments parse to the same tree as with a closed wrapper, as do the shared fixture rows (`::testAFragmentThatLeavesABodyOpenEndsItAtTheFragmentsEnd`; the wrapper closed again reddens it) - and the wrapper is an element of its own, so a stray `</div>` in the fragment closes nothing and what follows it is kept (`::testAStrayEndTagInAFragmentKeepsWhatFollowsIt`; 1 mutant RED). One end tag libxml 2.9 still drops: one whose name begins with the element's, such as `</scripts>` inside a script. A `<` that starts no tag, comment or doctype is text on every path, as in a browser, where libxml 2.9 read it as a tag and lost the text to the next `>`; a `<title>` or `<textarea>` body is read as text, and the bodies of xmp, iframe, noembed and noframes, which a browser reads without decoding, come back as written, never closed by a translation written into one (`Html\Document::load()` and `Document::html()`, which every path writes HTML through; `::testALessThanABrowserReadsAsTextKeepsWhatFollowsIt`, `::testATranslationCannotCloseARawTextBody`, `tests/Html/DocumentTest.php::testHtmlWritesARawBodyAsItsText`, `::testNothingWritesHtmlButDocument`; 18 mutants RED). **Measured beside an excluded element at a block's edge:** `<p>Built with <span translate="no">Kangen</span></p>` and `<p><span translate="no">Kangen</span> is ours</p>` keep the space beside the element on the page and block paths, translated and not, as a `<b>` in the same place does: the text node is rewritten in place, so the edge whitespace the JS core lost on its block phrase-write path (langsys-js-typescript `145df09`) never leaves it. **An author's exclusion in a rich phrase (spec 8.5.9 clause), on the three routes that tokenize one** — `translateRich()`, a page's `data-ls-phrase` host and a block's: a `translate="no"` or `data-notrans` element is one empty pair whatever it holds (literal text, a marked value in either form, an unmarked value, text beside a value, nested in an ordinary element), its slot a deep copy whose marked values are sealed back to their markers (`ValueMarkers::sealedClone()`), so it renders from source and a translation's text inside the pair is dropped; a phrase of only excluded content registers nothing (`MarkupTokenizer::hasText()`), while its host's attributes, and its descendants', still register and are translated, once, on the page as in a block (`::testAHostOfOnlyExcludedContentStillTranslatesItsAttributes`; 4 mutants RED); on a miss, a host holding one renders the translation under its earlier key — the one PHP v1.0.1–v1.0.2 gave it by walking into the element, as the JS reader did — renumbered onto the current slots, from the live catalog and a seeded snapshot alike, and registers only the current key. `data-notrans="false"` keeps its text, and a `<script>`, author-excluded or not, has no earlier key. `tests/Html/ExcludedElementTest.php` (45 cases over the three routes). **Mutation** (full suite per mutant, in a git worktree, each file restored byte for byte): 36 mutants over `MarkupTokenizer`, `ValueMarkers`, `Client` and `PageTranslator`, all RED — among them a plain deep clone in place of the sealed one, each route's `hasText()` gate, each route's render without its kept slots, each route's encode without its markers, each lookup branch (a live miss, a registered but untranslated key, a seeded snapshot, the page path), the earlier walk's slot map, and an earlier-key hit that skips queueing the current key. In a `translateRich()` line, a framework call's, the source is a template: a placeholder the caller passes, `{name}` or its `%name%` spelling, is filled as plain text - a boolean as `true`/`false`, as the Interpolator writes it - inside an excluded element and its descendants, on a miss and on a hit, with the key unchanged, while one it does not pass, a null, and a script are left as written; a page or a block keeps excluded text exactly as written, `<code translate="no">{name}</code>` the case (`::testARichLineFillsTheCallersParamsInsideAnExcludedElement`, `::testAnExcludedOnlyRichLineFillsTheCallersParams`, `::testAPageOrBlockKeepsExcludedTextAsWritten`, `::testAFillRendersEachValueAsTheInterpolatorDoes`, a date left as written); 12 more mutants, all RED, among them the fill skipped on either kind of line, reaching a script, not descending, taking a null, missing `%name%`, and casting a boolean. The shared fixture's 13 `phrase_cases` rows (blob `926e8b55`) are executed through the reader `translateRich()` keys with - phrase by codepoint, values, whether it registers, and the brand row's earlier key, which this SDK's v1.0.1-v1.0.2 reader produced as the JS family's did; the script row carries none, as this SDK's history has none - and all 13 agree (`::testTheSharedRichPhraseRowsHold`). **Mutation, this regrade** (full suite per mutant, file restored byte-for-byte after each, on the `src/` of `5400248`): on the block path, no longer excluding `<template>` reddens `::testTemplateContentsAreNotHarvested`, `::testTok1ExcludesAllFourElementsInOneDocument`, and emptying `HtmlParser::NON_PROSE_ELEMENTS` reddens 7 including `::testScriptAndStyleTagsIgnored`, `::testTheBlockPathTokenizesSvgTextAndNotMath`. **Page path:** the page walk tokenizes every unit with the same walker, so the exclusion holds there as well, proven by the shared canonicalization fixture's style, script, noscript and math rows run through `translatePage()` (`tests/Html/PageTranslatorTest.php::testThePagePathMatchesTheCanonicalizationFixture`). **Mutation** (full suite per mutant, in a git worktree, each file restored byte for byte): emptying `HtmlParser::NON_PROSE_ELEMENTS` reddens `::testCanonicalizationMatchesTheCrossSdkVectors`, `::testScriptAndStyleTagsIgnored`, `::testSvgTextIsTranslatedAndMathIsNot`, `::testTemplateContentsAreNotHarvested`, `::testTheBlockPathTokenizesSvgTextAndNotMath`, `::testThePagePathMatchesTheCanonicalizationFixture`; dropping `math` from it reddens `::testCanonicalizationMatchesTheCrossSdkVectors`, `::testSvgTextIsTranslatedAndMathIsNot`, `::testTheBlockPathTokenizesSvgTextAndNotMath`, `::testThePagePathMatchesTheCanonicalizationFixture`. `PageTranslator::SKIP_ELEMENTS` keeps the page walker out of those subtrees; the exclusion is the tokenizer's, which is why emptying the walker's list changes nothing. *Earlier record:* `tests/Html/HtmlParserTest.php::testCanonicalizationMatchesTheCrossSdkVectors` (rows `script-subtree`, `style-subtree`, `noscript-subtree`) plus the corrected `tokenizer-reference.json` row. **The content-block path had no skip list at all** — `HtmlParser::walkNode()` harvested `<script>`, `<style>`, `<template>` and `<noscript>` text as phrases, so minified CSS was registered in the shared catalog and sent for machine translation; and because the id hashes the token list, an analytics payload carrying a nonce re-keyed its block on every render. The page path (`PageTranslator::SKIP_ELEMENTS`) had always skipped them, so this was the block path only. **Ruling (spec 8.0.1, blob `5c5c0723`):** the excluded set is script/style/template/**math** — `svg` is NOT excluded, because SVG `<text>` is visible copy a reader is expected to read, while MathML is notation. **Fleet state:** this SDK AGREES with the TS core on **both** — svg (`<p>Hello <svg><text>Label</text></svg></p>` is `c1878e2119418b1ed433babeb4a09297` in both) and now math, which the TS core excluded in `105943f`, five minutes after this row was written claiming a divergence. The row had gone stale within the hour; re-measured rather than carried forward. **Both paths now conform**, after one reverted attempt. `<svg>` is handled as a LEAF where it is found, not promoted to a block element: promoting it made `containsNestedBlocks()` true for an icon's parent, so the walker recursed past it and skipped the parent's own text — `<p>Click <svg/> to continue</p>` registered **nothing**. And any subtree containing an `<svg>` is kept out of the simple-phrase branch, which applies by assigning to `textContent` and so replaced every `<path>` with the translated string; `<p><svg><path/><text>Label</text></svg></p>` rendered as `<p>Etiqueta</p>`. Stated as three behaviours rather than as structure, across all THREE routes text can reach — the page walk, the content-block walk, and a tokenized `data-ls-phrase` run: SVG `<text>` is tokenized and translated; an inline `<svg>` never costs its parent's own text, and the block's tokens are its text plus the svg's in document order; translation replaces the text node in place and never touches the svg's elements. `tests/Html/PageTranslatorTest.php::testThePagePathTranslatesSvgTextButNotMath`, `::testAnInlineIconKeepsDocumentOrder` (4 vectors), `::testTranslatingSvgTextLeavesTheDrawingIntact` (3 vectors), `::testTheBlockPathTokenizesSvgTextAndNotMath`, `::testTextAroundAnInlineSvgIconIsStillRegistered`, `::testAStandaloneSvgSurvivesRendering`. Mutation: removing the standalone-svg branch reddens 2, removing the `containsGraphic` guard 1, restoring `svg` to `SKIP_ELEMENTS` 2, and **promoting `svg` back to a block element reddens 8** — the regression that shipped once is now caught. `::testSvgTextIsTranslatedAndMathIsNot`, `::testTok1ExcludesAllFourElementsInOneDocument`, `::testTemplateContentsAreNotHarvested`. **Each excluded element is now mutated individually** — dropping any one reddens a named case, where before `template` reddened nothing at all and `::testScriptAndStyleTagsIgnored` asserted only that ordinary text was PRESENT, so it passed while script source was being harvested |
-| TOK-2 | implemented | n/a (pure) | One canonicalization site, `Canonical::phrase()`, strips the 28 C0 controls (U+0001–U+0008, U+000B, U+000C, U+000E–U+001F), then collapses JavaScript's `\s` set, then trims, and every DOM path calls it on register and on lookup. Code-registered keys drop the same controls through `Canonical::codePhrase()`, which changes nothing else: a `translate()` key on lookup and on register, a queued or directly registered phrase, a server message template's lookup, `sync()`'s comparison and registration, the import's and the sync planner's phrases and carried translations (MIG-9, FRM-2), and the registration request itself. Proven on the function, a string in and a string out, since libxml2 2.9.13 already deletes these characters from DOM text: each of the 28 is deleted and not collapsed, TAB, LF and CR still collapse, NUL, DEL and the C1 range stay, the strip runs before the collapse, and malformed UTF-8 still strips (`tests/Html/ControlCharacterStripTest.php`); on the code-registered path (`::testATranslateKeyIsLookedUpWithoutItsControls`, `::testATranslateKeyRegistersWithoutItsControls`, `::testQueuedAndDirectlyRegisteredPhrasesAreStripped`, `::testAServerMessageTemplateIsLookedUpWithoutItsControls`, `::testSyncComparesLocalPhrasesWithoutTheirControls`); and on both DOM paths by all 32 rows of the shared canonicalization fixture (blob `fa32452d`), including the discriminating `fs-in-attr` row, a raw U+001C in an attribute that the parser keeps (`tests/Html/HtmlParserTest.php::testCanonicalizationMatchesTheCrossSdkVectors`, `tests/Html/PageTranslatorTest.php::testThePagePathMatchesTheCanonicalizationFixture`). **Mutation** (full suite per mutant, in a git worktree, each file restored byte for byte): the canonical form not stripping reddens `::testCanonicalizationMatchesTheCrossSdkVectors`, `::testEachStrippedControlIsDeletedNotCollapsed`, `::testTheStripRunsBeforeTheCollapse`; the strip running after the collapse reddens `::testEachStrippedControlIsDeletedNotCollapsed`, `::testTheStripRunsBeforeTheCollapse`; a control becoming a space reddens `::testAServerMessageTemplateIsLookedUpWithoutItsControls`, `::testATranslateKeyIsLookedUpWithoutItsControls`, `::testATranslateKeyRegistersWithoutItsControls`; VT and FF left unstripped reddens `::testATranslateKeyRegistersWithoutItsControls`, `::testEachStrippedControlIsDeletedNotCollapsed`, `::testQueuedAndDirectlyRegisteredPhrasesAreStripped`; TAB, LF and CR stripped too reddens `::testCanonicalizationMatchesTheCrossSdkVectors`, `::testNewlineNormalization`, `::testTabLineFeedAndCarriageReturnStillCollapse`; DEL stripped too reddens `::testCanonicalizationMatchesTheCrossSdkVectors`, `::testNulDelAndC1AreKept`, `::testThePagePathMatchesTheCanonicalizationFixture`; a `translate()` key, a queued phrase, a directly registered phrase, a message template lookup or `sync()` left unstripped redden, in turn, `::testATranslateKeyIsLookedUpWithoutItsControls`; `::testQueuedAndDirectlyRegisteredPhrasesAreStripped`; `::testQueuedAndDirectlyRegisteredPhrasesAreStripped`; `::testAServerMessageTemplateIsLookedUpWithoutItsControls`; `::testSyncComparesLocalPhrasesWithoutTheirControls`; collapsing with PCRE `\s` instead of `Whitespace::JS_WHITESPACE` reddens `::testCanonicalizationMatchesTheCrossSdkVectors`, `::testNulDelAndC1AreKept`, `::testTheCollapseSetIsJavascriptsWhitespace`, the page path included. *Earlier record:* `::testUnicodeWhitespaceCollapsesLikeAnyOtherWhitespace` (6 vectors — internal, edges, and the whitespace-only count case), `::testAWhitespaceOnlyNodeDoesNotChangeABlockId`, and the fixture's `nbsp-in-text`, `attr-nbsp` and `line-separators` rows. Fixed in `src/Html/Whitespace.php`, one shared helper, because **the SDK had seven copies of this normalisation and they disagreed** — six ASCII-only (`HtmlParser`, `Client`, `TranslatableItems`, `PageTranslator`×3) and one already `/u` (`MarkupTokenizer`), plus three sites in `HeadHandler` (the `<title>` and both `<meta content>` paths) that did no collapse at all. The brief named four sites; the sweep found ten. Several are registration/lookup pairs, so a phrase registered as `A long description` was looked up as `A\u{00A0}long description` and missed forever, re-registering on every render. **Ruling (spec 8.0.1, blob `5c5c0723`): the collapsed set is JavaScript's `\s`, exactly** — not PCRE's, which differs on three reachable codepoints and made each a silent id divergence: U+FEFF (PCRE no / JS yes — PHP kept it, TS dropped it), U+0085 and U+180E (PCRE yes / JS no — PHP collapsed them, TS kept them). Spelled out in `Whitespace::JS_WHITESPACE` rather than written as `\s`. `::testTheCollapseSetIsJavascriptsWhitespace` (8 vectors, controls on both sides). **Three more register/lookup pairs found in review, all of which made translation fail outright rather than merely move an id:** the page `<title>` (registered collapsed, looked up raw — so titles silently never translated, and were not re-registered either), page-path attribute values (collected trimmed, looked up raw — a miss on PLAIN SPACES, which is why attributes looked like they worked), and the edge checks that re-add padding after a translated run, which used ASCII `\s` and dropped non-breaking padding so words ran together. `tests/Html/HeadHandlerTest.php::testATitleIsRegisteredAndTranslatedOnTheSameRender` and `::testEveryHeadPhraseRegisteredIsFoundOnApply`, `tests/Html/PageTranslatorTest.php::testPageAttributesAreRegisteredAndTranslatedOnTheSameRender`, `tests/ClientTest.php::testNonBreakingPaddingSurvivesApply`. Mutation: dropping the JS set reddens 8 named cases; reverting the title lookup reddens 4 |
-| TOK-3 | implemented | n/a (pure) | The 27-entry list in `HtmlParser`, in the spec's order, is the one list both paths read, and the order is load-bearing: it decides the sequence tokens are produced in, and a content block's id is derived from them in order. **Block path:** `tests/Html/HtmlParserTest.php::testCanonicalizationMatchesTheCrossSdkVectors`, `::testDefaultTranslatableAttributesArePinned`. **Page path:** every row of the shared canonicalization fixture (blob `fa32452d`, 32 rows) run through `translatePage()` registers exactly the row's tokens, and a row that is one block registers the row's id (`tests/Html/PageTranslatorTest.php::testThePagePathMatchesTheCanonicalizationFixture`), so an element carrying several listed attributes produces them in list order and unlisted attributes produce nothing on both paths. **Mutation** (full suite per mutant, in a git worktree, each file restored byte for byte): a unit's own attributes produced in reverse list order on the page path reddens `::testThePagePathMatchesTheCanonicalizationFixture`. **Block path, earlier regrade on the `src/` of `5400248`:** swapping `data-confirm` and `data-tooltip` in the list reddens `::testCanonicalizationMatchesTheCrossSdkVectors`, `::testDefaultTranslatableAttributes`, `::testDefaultTranslatableAttributesArePinned`. |
+| TOK-2 | implemented | n/a (pure) | One canonicalization site, `Canonical::phrase()`, strips the 28 C0 controls (U+0001–U+0008, U+000B, U+000C, U+000E–U+001F), then collapses JavaScript's `\s` set, then trims, and every DOM path calls it on register and on lookup. Code-registered keys drop the same controls through `Canonical::codePhrase()`, which changes nothing else: a `translate()` key on lookup and on register, a queued or directly registered phrase, a server message template's lookup, `sync()`'s comparison and registration, the import's and the sync planner's phrases and carried translations (MIG-9, FRM-2), and the registration request itself. Proven on the function, a string in and a string out, since libxml2 2.9.13 already deletes these characters from DOM text: each of the 28 is deleted and not collapsed, TAB, LF and CR still collapse, NUL, DEL and the C1 range stay, the strip runs before the collapse, and malformed UTF-8 still strips (`tests/Html/ControlCharacterStripTest.php`); on the code-registered path (`::testATranslateKeyIsLookedUpWithoutItsControls`, `::testATranslateKeyRegistersWithoutItsControls`, `::testQueuedAndDirectlyRegisteredPhrasesAreStripped`, `::testAServerMessageTemplateIsLookedUpWithoutItsControls`, `::testSyncComparesLocalPhrasesWithoutTheirControls`); and on both DOM paths by all 45 rows of the shared canonicalization fixture (blob `926e8b55`), including the discriminating `fs-in-attr` row, a raw U+001C in an attribute that the parser keeps (`tests/Html/HtmlParserTest.php::testCanonicalizationMatchesTheCrossSdkVectors`, `tests/Html/PageTranslatorTest.php::testThePagePathMatchesTheCanonicalizationFixture`). **Mutation** (full suite per mutant, in a git worktree, each file restored byte for byte): the canonical form not stripping reddens `::testCanonicalizationMatchesTheCrossSdkVectors`, `::testEachStrippedControlIsDeletedNotCollapsed`, `::testTheStripRunsBeforeTheCollapse`; the strip running after the collapse reddens `::testEachStrippedControlIsDeletedNotCollapsed`, `::testTheStripRunsBeforeTheCollapse`; a control becoming a space reddens `::testAServerMessageTemplateIsLookedUpWithoutItsControls`, `::testATranslateKeyIsLookedUpWithoutItsControls`, `::testATranslateKeyRegistersWithoutItsControls`; VT and FF left unstripped reddens `::testATranslateKeyRegistersWithoutItsControls`, `::testEachStrippedControlIsDeletedNotCollapsed`, `::testQueuedAndDirectlyRegisteredPhrasesAreStripped`; TAB, LF and CR stripped too reddens `::testCanonicalizationMatchesTheCrossSdkVectors`, `::testNewlineNormalization`, `::testTabLineFeedAndCarriageReturnStillCollapse`; DEL stripped too reddens `::testCanonicalizationMatchesTheCrossSdkVectors`, `::testNulDelAndC1AreKept`, `::testThePagePathMatchesTheCanonicalizationFixture`; a `translate()` key, a queued phrase, a directly registered phrase, a message template lookup or `sync()` left unstripped redden, in turn, `::testATranslateKeyIsLookedUpWithoutItsControls`; `::testQueuedAndDirectlyRegisteredPhrasesAreStripped`; `::testQueuedAndDirectlyRegisteredPhrasesAreStripped`; `::testAServerMessageTemplateIsLookedUpWithoutItsControls`; `::testSyncComparesLocalPhrasesWithoutTheirControls`; collapsing with PCRE `\s` instead of `Whitespace::JS_WHITESPACE` reddens `::testCanonicalizationMatchesTheCrossSdkVectors`, `::testNulDelAndC1AreKept`, `::testTheCollapseSetIsJavascriptsWhitespace`, the page path included. *Earlier record:* `::testUnicodeWhitespaceCollapsesLikeAnyOtherWhitespace` (6 vectors — internal, edges, and the whitespace-only count case), `::testAWhitespaceOnlyNodeDoesNotChangeABlockId`, and the fixture's `nbsp-in-text`, `attr-nbsp` and `line-separators` rows. Fixed in `src/Html/Whitespace.php`, one shared helper, because **the SDK had seven copies of this normalisation and they disagreed** — six ASCII-only (`HtmlParser`, `Client`, `TranslatableItems`, `PageTranslator`×3) and one already `/u` (`MarkupTokenizer`), plus three sites in `HeadHandler` (the `<title>` and both `<meta content>` paths) that did no collapse at all. The brief named four sites; the sweep found ten. Several are registration/lookup pairs, so a phrase registered as `A long description` was looked up as `A\u{00A0}long description` and missed forever, re-registering on every render. **Ruling (spec 8.0.1, blob `5c5c0723`): the collapsed set is JavaScript's `\s`, exactly** — not PCRE's, which differs on three reachable codepoints and made each a silent id divergence: U+FEFF (PCRE no / JS yes — PHP kept it, TS dropped it), U+0085 and U+180E (PCRE yes / JS no — PHP collapsed them, TS kept them). Spelled out in `Whitespace::JS_WHITESPACE` rather than written as `\s`. `::testTheCollapseSetIsJavascriptsWhitespace` (8 vectors, controls on both sides). **Three more register/lookup pairs found in review, all of which made translation fail outright rather than merely move an id:** the page `<title>` (registered collapsed, looked up raw — so titles silently never translated, and were not re-registered either), page-path attribute values (collected trimmed, looked up raw — a miss on PLAIN SPACES, which is why attributes looked like they worked), and the edge checks that re-add padding after a translated run, which used ASCII `\s` and dropped non-breaking padding so words ran together. `tests/Html/HeadHandlerTest.php::testATitleIsRegisteredAndTranslatedOnTheSameRender` and `::testEveryHeadPhraseRegisteredIsFoundOnApply`, `tests/Html/PageTranslatorTest.php::testPageAttributesAreRegisteredAndTranslatedOnTheSameRender`, `tests/ClientTest.php::testNonBreakingPaddingSurvivesApply`. Mutation: dropping the JS set reddens 8 named cases; reverting the title lookup reddens 4 |
+| TOK-3 | implemented | n/a (pure) | The 27-entry list in `HtmlParser`, in the spec's order, is the one list both paths read, and the order is load-bearing: it decides the sequence tokens are produced in, and a content block's id is derived from them in order. **Block path:** `tests/Html/HtmlParserTest.php::testCanonicalizationMatchesTheCrossSdkVectors`, `::testDefaultTranslatableAttributesArePinned`. **Page path:** every row of the shared canonicalization fixture (blob `926e8b55`, 45 rows) run through `translatePage()` registers exactly the row's tokens, and a row that is one block registers the row's id (`tests/Html/PageTranslatorTest.php::testThePagePathMatchesTheCanonicalizationFixture`), so an element carrying several listed attributes produces them in list order and unlisted attributes produce nothing on both paths. **Mutation** (full suite per mutant, in a git worktree, each file restored byte for byte): a unit's own attributes produced in reverse list order on the page path reddens `::testThePagePathMatchesTheCanonicalizationFixture`. **Block path, earlier regrade on the `src/` of `5400248`:** swapping `data-confirm` and `data-tooltip` in the list reddens `::testCanonicalizationMatchesTheCrossSdkVectors`, `::testDefaultTranslatableAttributes`, `::testDefaultTranslatableAttributesArePinned`. |
 | TOK-4 | implemented | n/a (pure) | **Mutation, this regrade** (full suite per mutant, file restored byte-for-byte after each, on the `src/` of `5400248`): on the block path, trimming attribute values instead of collapsing them reddens `::testABlockAttributeWrappedAcrossLinesIsTranslated`, `::testCanonicalizationMatchesTheCrossSdkVectors`, `::testPlaceholdersAreCanonicalisedAtCapture`. **Page path:** the shared canonicalization fixture's `attr-multiline` and `attr-nbsp` rows register their collapsed values through `translatePage()` (`tests/Html/PageTranslatorTest.php::testThePagePathMatchesTheCanonicalizationFixture`), and a wrapped attribute is registered and found on the same render (`::testPageAttributesAreRegisteredAndTranslatedOnTheSameRender`). **Mutation** (full suite per mutant, in a git worktree, each file restored byte for byte): trimming attribute values instead of collapsing them, in the one tokenizer both paths use, reddens `::testABlockAttributeWrappedAcrossLinesIsTranslated`, `::testCanonicalizationMatchesTheCrossSdkVectors`, `::testPlaceholdersAreCanonicalisedAtCapture`, `::testTheBlockPathRegistersAndFindsTheCollapsedValue`, `::testThePagePathFindsTheCollapsedValueInsideABlock`. *Earlier record:* Satisfied by the same helper — `extractAttributePhrases()` routes every attribute value through `normalizeWhitespace()`. Proven by the fixture's `attr-nbsp` row, which is `nbsp-in-text`'s twin: the same content in an attribute must produce the same id **Lookup sites, pinned:** `tests/Html/AttributeLookupPinsTest.php` covers `alt` and `placeholder` holding a line break, a doubled space and U+00A0, registered collapsed and found collapsed, on both paths. **Mutation** (full suite per mutant, in a git worktree, each file restored byte for byte): trimming instead of collapsing at the page walk's attribute lookup reddens `::testThePagePathFindsTheCollapsedValueInsideABlock` and `tests/Html/PageTranslatorTest.php::testPageAttributesAreRegisteredAndTranslatedOnTheSameRender`; at a tokenized run's attribute lookup, `::testTokenizedDescendantAttributesAreTranslated`; at registration of a run's own and descendant attributes, `::testATokenizedRunsOwnAttributeIsCanonicalised` and `::testTokenizedDescendantAttributesAreCanonicalised`; at the block path's lookup, `::testTheBlockPathRegistersAndFindsTheCollapsedValue`. The page-path gap is reach, not canonicalisation: an attribute outside a multi-token block is neither registered nor looked up, so `<div><img alt="A long description"></div>` stays untranslated against a catalog holding the phrase, with plain spaces as well. |
 | TOK-5 | implemented | n/a (pure) | **Mutation, this regrade** (full suite per mutant, file restored byte-for-byte after each, on the `src/` of `5400248`): dropping the capture-side canonicalisation in `Canonical::phrase()` reddens 9 — on the page path `::testABlockTextNodeResolvesAPercentPlaceholder`, `::testASinglePhraseElementResolvesAPercentPlaceholder` (both through `translatePage`), on the block path `::testABlockAuthoredWithPercentPlaceholdersResolves` (through `translateContentBlock`), and in the parser `::testPlaceholdersAreCanonicalisedAtCapture`, `::testBothPlaceholderSpellingsProduceOneBlockId`, `::testCapturedPlaceholderPhrasesAreFoundOnLookup`, `::testCanonicalizationMatchesTheCrossSdkVectors`; dropping the render-side normalisation reddens `::testPercentPlaceholdersAreAccepted`. **Proven on:** page path, block path, parser, render. *Earlier record:* `tests/Format/InterpolatorTest.php::testPercentPlaceholdersAreAccepted` (8 vectors). **`%name%` previously reached the reader verbatim** — a placeholder rendered as literal text on the page. Normalised to `{name}` once, before ICU detection, so no downstream path learns a second spelling. Rewritten **only for keys the caller supplied**, which is the safety property: `Save 20% on 5% APR` and `width: 100%` have no matching parameter and are returned untouched. **Ruling (spec 8.0.1, blob `5c5c0723`): `%name%` normalises to `{name}` at CAPTURE too**, not only at render. The stored phrase previously carried whatever the author wrote, so `Hello %name%` and `Hello {name}` were two phrases with two ids and the JS core stored only the brace form — measured `bb74011a…` here against `1e4b462c…` there, which now agree. Both sides go through `Html\Canonical::phrase()`, one function, because applying this at capture and not at lookup would have recreated the exact register/lookup break the whitespace work had to be fixed for twice. At capture there is no parameter list to gate on, so the narrow pattern is the only guard: `Save 20% on 5% APR` and `width: 100%` are untouched; the knowingly-accepted residual is prose where two signs bracket a bare word. `tests/Html/HtmlParserTest.php::testPlaceholdersAreCanonicalisedAtCapture` (6 vectors), `::testBothPlaceholderSpellingsProduceOneBlockId`, `::testCapturedPlaceholderPhrasesAreFoundOnLookup`. Mutation: removing the render-side normalisation reddens 2 cases; removing the capture-side one reddens 5 |
 | TOK-6 | implemented | n/a (pure) | **Page path:** the walker descends through containers of blocks and registers every other element as a unit — block, inline or void alike, so an `<img alt>` or `<a title>` directly under `<body>` is a unit. A unit's tokens are its own translatable attributes in TOK-3 order, then its content, walked on the live node; it registers as a phrase only when it has one token and that token is its one non-whitespace text node, and anything else is a block. `<p>Hello</p>` is a phrase, `<p title="Tooltip">Hello</p>` the block `[Tooltip, Hello]`, a top-level `<img alt="Logo">` the block `[Logo]`, `<p><svg><text>Label</text><path/></svg></p>` the phrase `Label`, and the control `<p>Hello <b>bold</b></p>` a block (`tests/Html/PageTranslatorTest.php::testAUnitIsAPhraseOnlyWhenItsOneTokenIsItsOneTextNode`). The new units render translated, a host's own attribute included (`::testNewUnitsRenderTranslated`), and a phrase is written into its text node in place, so an svg drawing around it survives (`::testTranslatingSvgTextLeavesTheDrawingIntact`). A block whose host carries tokens registers its content with the host's tag, so the registered content re-tokenizes to the block's tokens. **Mutation** (full suite per mutant, in a git worktree, each file restored byte for byte): a single attribute token registering as a phrase reddens `::testAUnitIsAPhraseOnlyWhenItsOneTokenIsItsOneTextNode`, `::testNewUnitsRenderTranslated`, `::testTranslateAltAttribute`; a unit's own attributes dropped reddens `::testAUnitIsAPhraseOnlyWhenItsOneTokenIsItsOneTextNode`, `::testNewUnitsRenderTranslated`, `::testThePagePathMatchesTheCanonicalizationFixture`; only block elements being units reddens `::testAUnitIsAPhraseOnlyWhenItsOneTokenIsItsOneTextNode`, `::testNewUnitsRenderTranslated`, `::testThePagePathMatchesTheCanonicalizationFixture`; a block registering its inner html only reddens `::testAUnitIsAPhraseOnlyWhenItsOneTokenIsItsOneTextNode`, `::testNewUnitsRenderTranslated`, `::testThePagePathMatchesTheCanonicalizationFixture`; an svg-bearing unit forced into a block reddens `::testAUnitIsAPhraseOnlyWhenItsOneTokenIsItsOneTextNode`; text nodes left uncounted reddens `::testABaseRenderWalkedAgainStillRegisters`, `::testABreakInsideATranslatedElementSurvives`, `::testADeeplyNestedMissIsWalkedExactlyOnce`. **Content-block path:** a fragment passed to `translateContentBlock()`, `registerContentBlock()` or `createContentBlocks()` is one unit, read by the same predicate: one whose one token is its one text node is looked up, registered and rendered as a phrase, written back into that text node in place with its padding, and anything else is a block (`tests/Html/ContentBlockUnitTest.php::testAOnePhraseFragmentTranslatesAsAPhrase`, `::testAOnePhraseFragmentMissRegistersThePhrase`, `::testThePhraseIsWrittenBackInPlace`, `::testEveryOtherFragmentIsABlock`, `::testRegisterContentBlockRegistersAOnePhraseFragmentAsAPhrase`, `::testCreateContentBlocksSplitsPhrasesFromBlocks`). A caller-supplied custom id names a block and registers one (`::testANamedBlockStaysABlock`); the flush sends page-path blocks under their ids, so a marked block holding one phrase stays a block (`tests/Html/PageTranslatorTest.php::testAMarkedOnePhraseBlockFlushesAsABlock`). **Mutation** (full suite per mutant, in a git worktree, each file restored byte for byte): `translateContentBlock()` registering a one-phrase fragment as a block reddens `::testAOnePhraseFragmentMissRegistersThePhrase`, `::testAOnePhraseFragmentTranslatesAsAPhrase`, `::testParamsFillAOnePhraseFragmentAndTheQueueHoldsTheRawPhrase`; `createContentBlock()` or `createContentBlocks()` doing so reddens `::testRegisterContentBlockRegistersAOnePhraseFragmentAsAPhrase` and `::testCreateContentBlocksSplitsPhrasesFromBlocks`; a named block turned into a phrase reddens `::testANamedBlockStaysABlock` and `::testAMarkedOnePhraseBlockFlushesAsABlock`, `::testCreateContentBlocksSplitsPhrasesFromBlocks`; one attribute token counted a phrase reddens `::testABlockAttributeWrappedAcrossLinesIsTranslated`, `::testAUnitIsAPhraseOnlyWhenItsOneTokenIsItsOneTextNode`, `::testContentBlockInterpolatesTranslatableAttributes`; the phrase replacing the whole fragment reddens `::testAOnePhraseFragmentMissRegistersThePhrase`, `::testAOnePhraseFragmentTranslatesAsAPhrase`, `::testParamsFillAOnePhraseFragmentAndTheQueueHoldsTheRawPhrase`; the phrase losing its padding reddens `::testThePhraseIsWrittenBackInPlace`; the fragment rendered without the phrase lookup reddens `::testAOnePhraseFragmentMissRegistersThePhrase`, `::testAOnePhraseFragmentTranslatesAsAPhrase`, `::testParamsFillAOnePhraseFragmentAndTheQueueHoldsTheRawPhrase`. |
@@ -217,16 +201,9 @@ naming the path proven and the path asserted. An answer-dependent row is `implem
 | CONF-2 | implemented | n/a (pure) | The grade and the tier are recorded on every row, and the counting script in *Computed summary* is the check: it exits non-zero on a non-canonical status or tier, a tier that does not support its status, a row carrying more than one rule id, a missing or duplicated id, and `n/a (profile: …)` on a rule whose Profiles line binds this SDK. **Mutation:** planting `n/a (profile: server)` on GATE-1 makes the script exit 1 (run at this write). Tier `n/a (pure)`: a meta-rule about this record. The previous script checked only that a rule was present, never how it was graded, which is how five invalid profile rows passed it. |
 | CONF-3 | implemented | n/a (pure) | Every `implemented` row records the mutation performed and the tests it reddened, and the counting script in *Computed summary* exits non-zero on an `implemented` row that carries no mutation record. **Mutation:** deleting the record from one implemented row makes the script exit 1 (run at this write).  *Earlier record:* Behaviour changes verified red against the tip each was written against before landing (`origin/main` for the port, `5fa4d48` for the audit round, `c2a2118` for the audit-fix round), and each new guard mutated in place to confirm it reddens a named assertion. See the note under *Evidence grade* |
 
-Behaviour changes were each checked red before landing, by reverting `src/` and
-re-running. A regression test never seen red is a guess.
-
-The baseline is **the tip each change was written against**, not `origin/main`. This is
-a re-land branch, so `origin/main` does not contain the earlier work and reverting to it
-would redden rows for reasons unrelated to the change under test — which proves nothing.
-Concretely: the port was checked against `origin/main`, the full-spec audit round against
-`5fa4d48`, and the audit-fix round against `c2a2118`. Each new guard was additionally
-mutated in place and confirmed to redden a named assertion; a guard no test can turn red
-is not a proven guard.
+Every behaviour change graded here has been seen red: its tests fail with `src/` reverted, and
+each guard's recorded mutation reddens a named assertion. A regression test never seen red is a
+guess, and a guard no test can turn red is not a proven guard.
 
 ## Tokenizer canonicalization
 
@@ -236,10 +213,8 @@ cosmetic, it re-keys blocks and strands their translations.
 
 Measured against `tests/fixtures/canonicalization-reference.json`, authored by
 langsys-js-typescript and adopted byte-identically (`a418fe70:tests/fixtures/canonicalization-reference.json`,
-blob `926e8b55d231fae8208e28c42380aacee7a0c98e`, 45 block rows and 13 rich-phrase rows, with `spec_blob` naming its spec blob; first
-adopted at `6596faf`, blob `e4c1f185…`, 19 rows; each later version added rows without changing an
-existing row's expectation, and all of them pass). **This SDK was 13 of 19 when the file was
-written**; the six misses are the two causes below.
+blob `926e8b55d231fae8208e28c42380aacee7a0c98e`, 45 block rows and 13 rich-phrase rows, with `spec_blob` naming its spec blob).
+Every row passes.
 
 ## Computed summary
 
@@ -265,8 +240,8 @@ GREEN                              yes
 ```
 
 ```python
-# Re-derive the blob and the tally together. The target is a COMMIT, not a branch: it is committed
-# and deliberately unpublished, and a branch can move under a file that cites it.
+# Re-derive the blob and the tally together. The target is a COMMIT, not a branch, because a branch
+# can move under a file that cites it.
 #
 #   T=d3846d13f82fc85c5b77bb9502fed3cb84774c66
 #   cd ~/Documents/dev/langsys2 && git fetch -q origin \
@@ -338,33 +313,18 @@ sys.exit(1 if (missing or dup or errors) else 0)
 
 ## Findings raised against this revision
 
-**SRV-4 over-binds a page-translation server SDK — RESOLVED at spec 8.0.1 (blob `5c5c0723`).**
-Rowing it `not implemented` rather than the briefed `n/a` surfaced that the profile word `server`
-meant *the server side of a hydration hand-off*. The row is now `n/a` on architecture: this SDK
-emits terminal HTML and has no hydration hand-off.
+**`svg` and `math` are treated alike on every route.** SVG `<text>` is visible copy and is
+translated; MathML is notation and is not. All three routes that read markup list the same
+excluded elements, `script`, `style`, `noscript`, `template` and `math`, with `svg` on none: the
+content-block walk (`HtmlParser::NON_PROSE_ELEMENTS`), the page walk
+(`PageTranslator::SKIP_ELEMENTS`) and the tokenized-run route (`MarkupTokenizer::OPAQUE_ELEMENTS`).
+See the TOK-1 row.
 
-**`svg` and `math` diverged between this SDK's paths — RESOLVED.** The finding as raised said
-TOK-1 named four elements while `SKIP_ELEMENTS` carried six, and held both paths unchanged
-pending a ruling. The ruling came (SVG `<text>` is translated, MathML is not), and all THREE
-routes now agree: the content-block walk, the page walk, and the tokenized-run route
-(`MarkupTokenizer::OPAQUE_ELEMENTS`, which had been missed — its comment claimed it mirrored
-`SKIP_ELEMENTS`, which stopped being true the moment the page path changed, so "both paths" was
-two routes out of three). See the TOK-1 row.
-
-**A phrase wrapped in inline markup was flattened on the page path — FIXED, and it predates
-this branch.** `<li><a href="#">Label</a></li>` rendered as `<li>X:Label</li>`: the link gone
-from the served bytes, on `main` (224dc8b) as well as here. `replaceTextContent()` looked at
-direct child text nodes only and then replaced the element's whole content with a string. It now
-finds the carrying text node at any depth and replaces it in place. Nav items, card links,
-buttons and table cells are all this shape. `tests/Html/PageTranslatorTest.php::testAPhraseWrappedInInlineMarkupKeepsItsMarkup`
-(5 vectors), `::testABreakInsideATranslatedElementSurvives`. **Mutants, labelled by which one:** removing the CALL to `replaceDescendantText()` reddens 8 (`testAPhraseWrappedInInlineMarkupKeepsItsMarkup`, `::testABreakInsideATranslatedElementSurvives`, `::testASinglePhraseElementResolvesAPercentPlaceholder`, `::testPagePathPreservesNonBreakingPadding`); removing its RECURSION reddens 5, all `testAPhraseWrappedInInlineMarkupKeepsItsMarkup`. Both with zero crashes. An earlier report gave the 8 as the recursion mutant's figure — same conclusion, wrong label.
-
-**Bare text under a non-block ancestor is not registered — OPEN, pre-existing.** At body level
-`<a>Click to continue</a>` registers nothing, with or without an icon inside it, on `main` and
-here: the page walk only descends into elements and collects text from block elements, so text
-whose nearest block ancestor is `<body>` is never reached. Recorded rather than fixed — it is
-not a canonicalization defect and changing which elements the walk collects from is a wider
-behaviour change than this lane should make.
+**A phrase wrapped in inline markup keeps its markup on the page path.** In
+`<li><a href="#">Label</a></li>` the translation replaces the text node that carries the phrase,
+found at any depth, so the `<a>` stays in the served bytes. Nav items, card links, buttons and
+table cells are all this shape. `tests/Html/PageTranslatorTest.php::testAPhraseWrappedInInlineMarkupKeepsItsMarkup`
+(5 vectors), `::testABreakInsideATranslatedElementSurvives`. **Mutants, labelled by which one:** removing the CALL to `replaceDescendantText()` reddens 8 (`testAPhraseWrappedInInlineMarkupKeepsItsMarkup`, `::testABreakInsideATranslatedElementSurvives`, `::testASinglePhraseElementResolvesAPercentPlaceholder`, `::testPagePathPreservesNonBreakingPadding`); removing its RECURSION reddens 5, all `testAPhraseWrappedInInlineMarkupKeepsItsMarkup`. Both with zero crashes.
 
 **Blast radius measured on production 2026-09-12 — negligible, and no migration follows.** The figures below were **supplied by the operator from a production measurement**, not derived in this repo, which has no production access; the no-migration ruling is theirs too.
 TOK-1 and TOK-2 change which `custom_id` this SDK derives, so a live content block whose
@@ -380,13 +340,11 @@ live phrases affected               6  of 17,432   (all U+00A0)
 Every affected phrase is the `U+00A0` case; no block was affected by the script/style or
 line-separator changes. The operator has ruled that **no orphan handling and no id migration
 will be built** for this. Recorded here with denominators because the figure that decides a
-release should be checkable, and because the comparable measurement in August (pipe-form ids)
-was reported an order of magnitude apart by two sweeps until the live-versus-deleted split
-was stated — 32 live of 518, not 330 of 3,012.
+release should be checkable.
 
-**`U+FEFF` — CLOSED.** It was a live divergence (JS `\s` matches it, PCRE's does not);
-the collapse set is now JavaScript's `\s` exactly, so U+FEFF collapses and U+0085/U+180E no
-longer do. `src/Html/Whitespace.php` records the full comparison.
+**`U+FEFF`, `U+0085` and `U+180E`.** The collapse set is JavaScript's `\s` exactly, which PCRE's
+`\s` is not: U+FEFF collapses, and U+0085 and U+180E are kept. `src/Html/Whitespace.php` records
+the full comparison.
 
 **Parser-level splits against the JS family — MEASURED 2026-09-12, named, not papered
 over.** A tokenized phrase's key IS its encoded string, so a disagreement about how the DOM is
@@ -408,14 +366,7 @@ themselves — a tokenized phrase keys by string and never computes an id — an
 is in `tests/fixtures/parse-model-reference.json`, pinned by the test below. The
 content-block ids, where they move, are in the fixture too and pinned by the same test.
 
-An earlier revision of this paragraph cited eight hashes here instead. They were **synthetic**:
-`generateCustomId('UI', [encodedString])`, an invented category with the whole encoded string
-wrapped as a single token — reproducible only if you guessed that construction, and not a key
-any real input produces. Withdrawn rather than explained: citing an unreproducible identifier is
-the failure this file exists to prevent, and the encoded strings say the same thing checkably.
-
-Foster parenting is the same shape as the `<noscript>` reversal the fleet already knows, and the
-same shape as `U+000B`/`U+000C` below: **a parser-model split this SDK cannot close from its own side.**
+Foster parenting is **a parser-model split this SDK cannot close from its own side.**
 Recorded rather than worked around, and pinned by
 `tests/Html/MarkupTokenizerTest.php::testParseModelAgreementIsWhatWeMeasured` — the divergent
 rows assert the divergence, so if one ever starts agreeing the row is stale and must be
@@ -423,8 +374,7 @@ rewritten, and the agreeing rows assert agreement so losing it fails. Flipping a
 `agrees` reddens TWO tests, not one — the per-case assertion and the fixture-level count control. Fixture:
 `tests/fixtures/parse-model-reference.json`.
 
-**The two identity paths do not have the same exposure, and this file's first reading of which
-matters more was backwards.** A `<Phrase>` key is a MARKER STRING and encodes nesting, so any
+**The two identity paths do not have the same exposure.** A `<Phrase>` key is a MARKER STRING and encodes nesting, so any
 tree difference moves it. A content block's `custom_id` is a flat ORDERED TOKEN ARRAY and
 survives a tree difference that preserves document order. Measured:
 
@@ -436,12 +386,6 @@ survives a tree difference that preserves document order. Measured:
 A stray element in a table splits a phrase key silently and leaves block ids alone; a
 `<title>`/`<textarea>` carrying markup, which libxml2 alone splits in both identities, agrees
 through the loader.
-
-**`U+000B`/`U+000C` are a divergence this SDK cannot close — on libxml2 2.9.13.** libxml2 2.9.13
-DROPS them from DOM text entirely (`<p>a\x0Bb</p>` yields `ab`), where a JS DOM keeps them and
-collapses them to a space (`a b`). So a document carrying a vertical tab or form feed derives
-different ids in the two SDKs regardless of what this SDK's collapse does. **Any change to VT/FF
-handling is `held (strip ruling)`.**
 
 **The libxml2 answers in this section are 2.9.13's, not libxml2's.** Measured by the Reviewer:
 Nokogiri on libxml2 2.13.9 behaves like 2.9.13, while lxml on libxml2 2.14.6 — like parse5 7.3.0
@@ -469,113 +413,46 @@ TOK-2 at `aff89a98` specifies the strip, and this SDK performs it at its one can
 - A **raw NUL** in text becomes U+0020: `<p>a[U+0000]b</p>` yields `a b`.
 - `&#0;` in text is **dropped**: `<p>a&#0;b</p>` yields `ab`.
 
-Three places where an honest row could not simply be written, raised with the spec author
-rather than resolved locally.
+### CID-4's set comparison
 
-**1. ICU-1/2/3 were met by the interpolator and defeated by the public path — FIXED.** `Client::interpolate()`
-short-circuits on `empty($params)`, which bypasses ICU recovery entirely. Measured through
-`translate()` against a catalog value of `{count, plural, one {# item} other {# items}}`:
-
-```
-no params        -> '{count, plural, one {# item} other {# items}}'   raw ICU, shipped to the page
-unrelated param  -> '{count} items'                                    recovery works
-count supplied   -> '3 items'
-```
-
-The no-params call is the most common shape and got the worst output — a translator writing a
-plural into the catalog shipped ICU source to end users whenever the caller passed nothing. Same
-class as the 1.3.1 defect.
-
-*Resolved:* the short-circuit in `Client::interpolate()` is removed, and the interpolator's own
-fast path now skips only text with no ICU construct in it. Pinned by
-`::testIcuRecoversWhenTheCallerSuppliesNoParamsAtAll`, which was red against the previous tip.
-
-**2. CID-4 was unimplementable as written against a phrase-keyed catalog — ADOPTED, spec `a37b0288`.** The rule requires
-comparing `(category, ordered phrases)`. This SDK's catalog returns a content block as a map keyed
-by source phrase, so **order is not recoverable at attach time** — only the set is. The guard is
-therefore set-based, which still defeats every known collision mode (all are collisions over
-differing *content*), but it is strictly weaker than the rule: two blocks with identical phrases in
-different orders are distinct under CID-1 and indistinguishable here. Either the rule should say
-"ordered where the representation preserves order", or the catalog must carry order.
-
-*Resolved:* the rule now reads "ordered where the representation preserves order; a set
-comparison is conforming where it does not", and names the case where a set guard is
-strictly weaker. The revision this file is written against is now bumped (blob `5c5c0723`), so the row is
-re-graded `provisional` and the status and the cited revision agree.
-
-**3. HINT-10/11 were marked `browser, server` while HINT-2 forbids server SDKs from reporting — ADOPTED, spec `a37b0288`.** If a
-server SDK never reports, it can never transmit a credential-bearing URL, so the rules are
-vacuously satisfied and cannot be tested here. Either the profile line is over-broad or HINT-2's
-scope has changed; recorded as `n/a` on the HINT-2 reading rather than claimed as met.
-
-*Resolved:* all three rescoped to `browser`. The `n/a` rows above now match the spec
-rather than anticipating it.
+CID-4's content check compares phrases as a set, and that is conforming. This SDK's catalog returns a content
+block as a map keyed by source phrase, so when the guard runs only the set of phrases is
+recoverable, not their order. CID-4 at blob `267ca913` reads *"Compare phrases in order where the
+representation preserves order; a set comparison is conforming where it does not"*, so the CID-4
+row is graded `implemented` on that text. A set guard defeats every known collision mode, all of
+which are collisions over differing content; it is strictly weaker in one case, two blocks whose
+phrases match as a set and differ in order, which are distinct under CID-1 and indistinguishable
+to it.
 
 ## Known gaps
 
-The staleness note that stood here was itself stale: it named GATE-7, WIRE-5, BIND-1…6
-and HINT-9 as unassessed and the file as written against spec v6. Every rule id is rowed
-exactly once, BIND-1…6 and HINT-9 included as `n/a` on profile. Left in place, it would have understated this file's coverage to the next reader —
-the opposite of the failure it exists to prevent, and no less wrong.
+No rule is `provisional`, `partial`, `not implemented`, `held` or `waived` (*Computed summary*).
+Every rule that binds this SDK is `implemented` or `n/a` on architecture, and each architecture
+row names what would make it live.
 
-The counts and the blob live in the header, and **only** in the header: the sentence
-above used to carry "all 45 … against blob `06ae105a`" of its own, which survived the
-rebase to `45cdddf8` and contradicted the header two paragraphs after that header cited
-this very section as the example of a hand-carried line going stale. A number written
-twice is a number that will disagree with itself.
+A send that fails in the shutdown flush is logged and not retried: nothing runs after that flush
+to retry it, and the queue it keeps ends with the process (REG-3, REG-8). A failed send records
+nothing as registered, so the next request that misses the same content queues it again (GATE-5).
 
-One structural gap survives from it: the template's per-rule **Revision** column is not
-populated here. The hashes are a lookup rather than a derivation — `sectionRevisions` in
-`~/Documents/dev/langsys-docs/mcp-server/internal-docs.json` under `pages.sdk-spec`.
-
-Remaining behavioural gaps, ranked — a status table gives a 500-serving rule and a cosmetic one
-identical weight, so the ranking is the part that survives someone deciding what to fix
-next:
-
-1. **REG-3 / REG-8** — a transient failure during the shutdown flush is unrecoverable
-   and silent; there is no later context to retry into.
-2. **REG-11** — no ellipsis diagnostic.
-
-## What surfaced while writing this file
-
-**Four rules regressed in `PageTranslator` and the port never touched that file.** The
-legacy fallback covered `translateContentBlock()` but not `translatePage()` — the path a
-website most likely renders with — so the hazard stayed fully live where it was most
-likely to fire. GATE-5, REG-12 and CACHE-1 had all been fixed once and were reintroduced
-by `main`'s v1.3.0 queue rearchitecture. My rule-by-rule check ran against `Client`;
-`PageTranslator` duplicated those rules and was invisible to it. Both paths now share one
-resolution entry point, so the next drift has nowhere to hide.
-
-WIRE-2, WIRE-3 and WIRE-4 were all still live on `main` and were **absent from the
-re-land port list**, despite having been fixed on the branch that list was drawn from.
-They were found by checking rule-by-rule against running code rather than by reading the
-list — and WIRE-4, the only gap here that can turn a working page into a 500, would
-otherwise have shipped again.
-
-One of them nearly shipped broken from this very file's process: the WIRE-2 fix
-initially called a `raiseForStatus()` helper that did not exist. `php -l` passed, because
-lint does not resolve method calls. It was caught by exercising every status/body
-combination, which is the check that actually distinguishes "parses" from "works".
+The template's per-rule **Revision** column is not populated. The hashes are a lookup rather than
+a derivation: `sectionRevisions` under `pages.sdk-spec` in langsys-docs'
+`internal-docs/internal-docs.json`, which `npm run build:internal-docs` builds there.
 
 ## Stale-phrase check
 
 The summary script above proves the COUNTS are right. This proves the PROSE is — that no
-sentence still asserts something a later revision made false. Both failures this file has
-actually had were of that second kind: a "Known gaps" paragraph describing coverage the file
-already had, and a rule count written twice that disagreed with itself after a rebase.
+sentence still asserts something a later revision made false.
 
 Fixed strings with expected counts, not a regex sweep, and the expectation is asserted rather
 than eyeballed. The count is of matching LINES (`grep -c`), not of occurrences: a line that names a blob
-twice counts once. That distinction made this check fail the first time it ran after the 8.0.1
-rewrite, because the rewrite recomputed its expectations by occurrence while the check counts lines. The `sed` truncation matters: without it this section's own phrase list is
-counted as occurrences and every expectation fails - the check would be measuring itself. A count that is deliberately non-zero (a correction record, a blob named in
-several places) is written down as such, so that the NEXT person can tell a surviving
-correction from a missed one.
+twice counts once. The `sed` truncation matters: without it this section's own phrase list is
+counted as occurrences and every expectation fails - the check would be measuring itself. A retired
+phrase (a claim, a test or class name, a table shape, a hash) is expected at 0, so the check fails
+the moment it comes back; a phrase the file has to keep is listed at its count, so a reader can
+tell a kept occurrence from a missed one.
 
-The check covers **CONFORMANCE.md, CHANGELOG.md and tests/fixtures/README.md**. It was CONFORMANCE-only, and the gap
-showed: the release gate in CHANGELOG went on describing content blocks harvesting script
-source as a live hazard for a whole release after TOK-1 closed it, and nothing here could see
-that. A stale claim is as damaging in the file customers read as in the one reviewers do. The fixtures README was added after the same retired hazard turned up still described as live there too - a third file this check could not read.
+The check covers **CONFORMANCE.md, CHANGELOG.md and tests/fixtures/README.md**, because a stale
+claim is as damaging in the file customers read as in the one reviewers do.
 
 **Limit of the instrument, stated where it is used:** it matches FIXED STRINGS. A paraphrase of a retired claim - "has never had a skip list" in place of the sentence it retired - passes. It catches a sentence coming back, not an idea coming back.
 
@@ -601,9 +478,9 @@ done <<'EOF'
 0	CONFORMANCE.md	41 of 67
 0	CONFORMANCE.md	git show origin/main:docs/sdk-spec.mdx
 0	CONFORMANCE.md	53 of 79
-3	CONFORMANCE.md	042dedb5
-1	CONFORMANCE.md	b657b490
-2	CONFORMANCE.md	45cdddf8
+0	CONFORMANCE.md	042dedb5
+0	CONFORMANCE.md	b657b490
+0	CONFORMANCE.md	45cdddf8
 0	CONFORMANCE.md	7f978ecb
 0	CHANGELOG.md	has no skip
 0	CHANGELOG.md	never consults
@@ -663,20 +540,11 @@ EOF
 exit $fail
 ```
 
-**This block previously could not run at all**, and the line recording a passing run was
-written from a copy that differed from it. `IFS='\t'` in `sh` sets IFS to the two literal
-characters `\` and `t`, not a tab: every line lands in `$exp`, `$phrase` is empty, and
-`grep -Fc ''` matches all 344 lines of the file. It printed nine mismatches and exited 1,
-and had never done anything else. A check that cannot pass, recorded as passing, in the file
-whose whole argument is against exactly that — noted here rather than quietly corrected.
+The field separator is `"$(printf '\t')"`, not `IFS='\t'`: in `sh`, `'\t'` is the two characters
+`\` and `t`, not a tab, so every line would land in `$exp`, `$phrase` would be empty, and
+`grep -Fc ''` would match every line of the file.
 
-The non-zero expectations are deliberate: each is a blob this file used to cite, still named in a
-correction record or the rebase history, at its current count. Rather than restate those counts in
-prose — which is how this paragraph went stale once already — the expectations above are the record.
-
-**Run 2026-09-12 against this text**, extracted verbatim from this block, under `sh`, `bash`
-and `zsh`: every row matches, exit 0. (This line said "all nine match"; the block has grown since, and a row count written into the prose about the check drifts exactly the way the check exists to catch, so it is not written down here any more.) Positive control: with `All 45 binding` planted above, it
-reports the mismatch and exits 1. Re-run it by extracting this block rather than by
-retyping it — the previous failure was precisely a recorded run of text that differed from
-what was committed.
-
+**Run 2026-10-30 against this text**, extracted verbatim from this block, under `sh`, `bash`
+and `zsh`: every row matches, exit 0. Positive control: with `All 45 binding` planted above, it
+reports the mismatch and exits 1. Re-run it by extracting this block rather than by retyping it,
+so that what runs is the text the file holds.
