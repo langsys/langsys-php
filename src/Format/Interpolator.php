@@ -175,17 +175,23 @@ class Interpolator
                 //
                 // Recovering node-by-node keeps supplied arguments on the intl
                 // path, where their CLDR categories are correct.
-                $rewritten = $this->recoverMissingNodes($text, $missing, $params, $locale);
+                //
+                // Each recovered node becomes an argument of its own, its
+                // rendering the value: intl writes a value as it is, where the
+                // same text in the pattern would be read as ICU, a param value
+                // naming another param or holding a quote or a `#` included.
+                $recovered = [];
+                $rewritten = $this->recoverMissingNodes($text, $missing, $params, $locale, 0, $recovered, $this->recoveredArgumentPrefix($text, $params));
 
-                // Hand intl only the SUPPLIED arguments. A missing argument can
-                // be missing by being present-and-null (ICU-2), and passing that
-                // through would let intl substitute the recovered `{argName}`
-                // literal with an empty string - erasing the visible gap the
-                // recovery just created. Withholding them makes intl echo the
+                // Hand intl only the SUPPLIED arguments, and the recovered ones.
+                // A missing argument can be missing by being present-and-null
+                // (ICU-2), and passing that through would let intl fill a plain
+                // `{argName}` the phrase also holds with an empty string -
+                // erasing the visible gap. Withholding them makes intl echo the
                 // literal, which is the required output.
                 $suppliedParams = array_diff_key($params, array_flip($missing));
 
-                $formatted = $this->formatIcu($rewritten, $suppliedParams, $locale, $text);
+                $formatted = $this->formatIcu($rewritten, $recovered + $suppliedParams, $locale, $text);
 
                 if (is_string($formatted)) {
                     return $formatted;
@@ -259,9 +265,13 @@ class Interpolator
         $icuLocale = $this->resolveLocale($locale);
 
         // MessageFormatter wants scalars/timestamps; DateTime is not accepted.
+        // A date in a plain `{d}` is written as the simple path writes it: as
+        // a timestamp, intl would print the number.
         $icuParams = [];
         foreach ($params as $key => $value) {
-            $icuParams[$key] = $this->toIcuValue($value);
+            $icuParams[$key] = $value instanceof \DateTimeInterface && !$this->isTypedArgument($text, $key)
+                ? $this->formatDate($value, $locale)
+                : $this->toIcuValue($value);
         }
 
         // intl can THROW rather than return a falsy value: MessageFormatter
@@ -276,7 +286,7 @@ class Interpolator
             // create() returns null on some versions and false on others.
             if (!$formatter) {
                 $this->log('warning', 'ICU pattern could not be parsed; falling back to simple interpolation', [
-                    'phrase' => $text,
+                    'phrase' => $template !== null ? $template : $text,
                     'locale' => $icuLocale,
                     'intl_error' => intl_get_error_message(),
                 ]);
@@ -298,7 +308,7 @@ class Interpolator
             }
 
             $this->log('warning', 'ICU pattern could not be parsed; falling back to simple interpolation', [
-                'phrase' => $text,
+                'phrase' => $template !== null ? $template : $text,
                 'locale' => $icuLocale,
                 'exception' => $e->getMessage(),
             ]);
@@ -335,7 +345,9 @@ class Interpolator
 
     /**
      * Replace only the ICU nodes whose argument is missing, leaving the rest
-     * byte-identical so intl can apply full CLDR selection to them.
+     * byte-identical so intl can apply full CLDR selection to them. Each one
+     * becomes a plain argument named $prefix and a number, its rendering in
+     * $recovered under that name.
      *
      * Descends into supplied nodes as well, so a missing argument nested inside
      * a supplied `select` recovers while the `select` itself stays on the intl
@@ -346,9 +358,11 @@ class Interpolator
      * @param array $params
      * @param string|null $locale
      * @param int $depth
+     * @param array $recovered Argument name => recovered rendering, added to
+     * @param string $prefix
      * @return string
      */
-    protected function recoverMissingNodes($text, array $missing, array $params, $locale, $depth = 0)
+    protected function recoverMissingNodes($text, array $missing, array $params, $locale, $depth = 0, array &$recovered = [], $prefix = 'langsys_recovered_')
     {
         if ($depth > self::MAX_ICU_DEPTH) {
             return $text;
@@ -385,21 +399,55 @@ class Interpolator
             }
 
             if ($name !== null && isset($missingByName[$name])) {
-                // Missing: substitute this node's recovered rendering. Any `#`
-                // inside becomes a literal {argName}, which intl then echoes
-                // unchanged because the argument is still absent - which is the
-                // visible gap the rule asks for.
-                $out .= $this->renderIcuArgument($body, $params, $locale, $depth);
+                // Missing: this node's recovered rendering, as an argument's
+                // value. Any `#` inside a recovered plural is the literal
+                // {argName}, the visible gap the rule asks for.
+                $argument = $prefix . count($recovered);
+                $recovered[$argument] = $this->renderIcuArgument($body, $params, $locale, $depth);
+                $out .= '{' . $argument . '}';
             } else {
                 // Supplied, or not branch-typed: keep it verbatim for intl, but
                 // recover anything missing nested inside it.
-                $out .= '{' . $this->recoverMissingNodes($body, $missing, $params, $locale, $depth + 1) . '}';
+                $out .= '{' . $this->recoverMissingNodes($body, $missing, $params, $locale, $depth + 1, $recovered, $prefix) . '}';
             }
 
             $i = $end + 1;
         }
 
         return $out;
+    }
+
+    /**
+     * A prefix for recovered nodes' argument names that neither the phrase
+     * nor a param holds.
+     *
+     * @param string $text
+     * @param array $params
+     * @return string
+     */
+    protected function recoveredArgumentPrefix($text, array $params)
+    {
+        $prefix = 'langsys_recovered_';
+        $taken = $text . "\0" . implode("\0", array_map('strval', array_keys($params)));
+
+        while (strpos($taken, $prefix) !== false) {
+            $prefix = 'x' . $prefix;
+        }
+
+        return $prefix;
+    }
+
+    /**
+     * Whether the pattern gives an argument a type anywhere, as in
+     * `{d, date}`, rather than only naming it as a plain `{d}`.
+     *
+     * @param string $text
+     * @param string|int $name
+     * @return bool
+     */
+    protected function isTypedArgument($text, $name)
+    {
+        return preg_match('/\{\s*' . preg_quote((string) $name, '/') . '\s*,/', $text) === 1;
     }
 
     /**
@@ -482,7 +530,8 @@ class Interpolator
      *   3. `other`, the category every plural form is required to provide.
      *
      * For `select`, the branch matching the parameter value is used, else
-     * `other`. `#` inside the chosen branch becomes the formatted value.
+     * `other`. `#` inside a plural's chosen branch becomes the formatted value;
+     * inside a select's it is text.
      *
      * @param string $text
      * @param array $params
@@ -578,8 +627,14 @@ class Interpolator
 
         $missing = !array_key_exists($name, $params) || $params[$name] === null;
 
+        // A missing {v, number}, {d, date} or {t, time} is the visible {v}
+        // (ICU-3), never the construct.
+        if ($missing && in_array($type, ['number', 'date', 'time'], true)) {
+            return '{' . $name . '}';
+        }
+
         if ($missing && !in_array($type, ['plural', 'selectordinal', 'select'], true)) {
-            return $verbatim; // {v, number} etc: nothing sensible to render.
+            return $verbatim; // An unknown type: nothing sensible to render.
         }
 
         $value = $missing ? null : $params[$name];
@@ -619,17 +674,22 @@ class Interpolator
             return $verbatim;
         }
 
-        // The branch is walked with THIS argument's value as its '#'. A nested
-        // plural inside it supplies its own, so the outer value cannot clobber
-        // the inner one, and a value that happens to contain '#' or braces is
-        // never re-scanned.
-        $number = $missing ? '{' . $name . '}' : $this->formatValue($value, $locale);
+        // A plural's branch is walked with THIS argument's value as its '#'. A
+        // nested plural inside it supplies its own, so the outer value cannot
+        // clobber the inner one, and a value that happens to contain '#' or
+        // braces is never re-scanned. In a select's branch '#' is text, as ICU
+        // reads it, the select nested in a plural or not.
+        $hash = null;
+        if ($type !== 'select') {
+            $number = $missing ? '{' . $name . '}' : $this->formatValue($value, $locale);
+            $hash = $number === null ? '' : $number;
+        }
 
         return $this->renderIcuWithoutIntl(
             $chosen,
             $params,
             $locale,
-            $number === null ? '' : $number,
+            $hash,
             $depth + 1
         );
     }

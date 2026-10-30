@@ -1195,12 +1195,114 @@ class InterpolatorTest extends TestCase
             'absent date'            => ['{d, date} shipped', ['other' => 1], '{d} shipped'],
             'null plural'            => ['{n, plural, one {# item} other {# items}}', ['n' => null], '{n} items'],
             'absent plural'          => ['{n, plural, one {# item} other {# items}}', [], '{n} items'],
+            // {count} inside its own plural fails to format on ICU 76.1 (ICU-6).
+            'after a formatter failure' => ['{count, plural, one {{count} car} other {{count} cars}}, {amt, number} due', ['count' => 3], '3 cars, {amt} due'],
 
             // Controls: a supplied argument still formats through CLDR, so the
             // assertions above are about recovery rather than about the type
             // never formatting at all.
             'supplied number'        => ['{amt, number} due', ['amt' => 1234.5], '1,234.5 due'],
             'supplied plural'        => ['{n, plural, one {# item} other {# items}}', ['n' => 1], '1 item'],
+        ];
+    }
+
+    /**
+     * A recovered branch holds its values as written, as the same branch does
+     * with its argument supplied: a value is never read as ICU, so it never
+     * fills in another param, unescapes a quote or takes a plural's count.
+     *
+     * @dataProvider recoveredValueProvider
+     */
+    public function testARecoveredBranchKeepsItsValuesAsWritten($template, array $params, $expected)
+    {
+        $interpolator = new Interpolator();
+
+        $this->assertSame($expected, $interpolator->interpolate($template, $params, 'es-ES'));
+        $this->assertSame($expected, $interpolator->interpolate($template, $params + ['g' => 'other'], 'es-ES'), 'control: the argument supplied');
+    }
+
+    public function recoveredValueProvider()
+    {
+        $welcome = '{g, select, female {Bienvenida, {name}} other {Bienvenide, {name}}}';
+
+        return [
+            'another param named'   => [$welcome, ['name' => '{order}', 'order' => 'SECRET'], 'Bienvenide, {order}'],
+            'a doubled quote'       => [$welcome, ['name' => "It''s me"], "Bienvenide, It''s me"],
+            'a quoted brace'        => [$welcome, ['name' => "a'{b}'c"], "Bienvenide, a'{b}'c"],
+            'ICU syntax'            => [$welcome, ['name' => '{count, plural, other {#}}', 'count' => 7], 'Bienvenide, {count, plural, other {#}}'],
+            'a # inside a plural'   => ['{n, plural, other {# {g, select, other {fans de {team}}}}}', ['n' => 3, 'team' => '#1 Club'], '3 fans de #1 Club'],
+        ];
+    }
+
+    /**
+     * A recovering phrase that does not parse is named in the warning as
+     * written, never as the pattern its recovery handed intl.
+     */
+    public function testARecoveringPhraseThatDoesNotParseIsNamedAsWritten()
+    {
+        $logger = new RecordingLogger();
+        $template = '{g, select, other {Hola}} {broken';
+
+        (new Interpolator($logger))->interpolate($template, [], 'es-ES');
+
+        $warnings = array_values(array_filter($logger->records, function ($record) {
+            return $record[0] === 'warning';
+        }));
+        $this->assertNotEmpty($warnings);
+        $this->assertSame($template, $warnings[0][2]['phrase']);
+    }
+
+    /**
+     * `#` is a plural's count. In a select's branch it is text, as ICU and the
+     * JS formatter both read it, the select nested in a plural or not:
+     * recovered, rendered after a formatter failure, or formatted.
+     *
+     * @dataProvider hashInASelectProvider
+     */
+    public function testAHashInASelectBranchIsText($template, array $params, $expected)
+    {
+        $this->assertSame($expected, (new Interpolator())->interpolate($template, $params, 'es-ES'));
+    }
+
+    public function hashInASelectProvider()
+    {
+        $rank = '{g, select, female {Ella es la #1} other {Es el #1}}';
+        $friends = '{n, plural, one {{g, select, female {# amiga} other {# amigo}}} other {{g, select, female {# amigas} other {# amigos}}}}';
+        // {count} inside its own plural fails to format on ICU 76.1 (ICU-6).
+        $failing = 'Tienes {count, plural, one {{count} coche} other {{count} coches}}. ';
+
+        return [
+            'recovered'                    => [$rank, [], 'Es el #1'],
+            'recovered inside a plural'    => [$friends, ['n' => 3], '# amigos'],
+            'after a formatter failure'    => [$failing . $rank, ['count' => 3, 'g' => 'female'], 'Tienes 3 coches. Ella es la #1'],
+            'control: formatted'           => [$rank, ['g' => 'female'], 'Ella es la #1'],
+            'control: formatted in plural' => [$friends, ['n' => 3, 'g' => 'female'], '# amigas'],
+        ];
+    }
+
+    /**
+     * A date in a plain `{d}` renders as a date in a phrase with ICU in it, as
+     * it does in one without: recovered or formatted, never as a timestamp.
+     *
+     * @dataProvider dateInAnIcuPhraseProvider
+     */
+    public function testADateInAPlainPlaceholderOfAnIcuPhraseRendersAsADate($template, array $params, $expected)
+    {
+        $interpolator = new Interpolator();
+        $date = new \DateTimeImmutable('2026-03-05 10:00:00', new \DateTimeZone('UTC'));
+
+        $this->assertSame(
+            sprintf($expected, $interpolator->interpolate('{d}', ['d' => $date], 'es')),
+            $interpolator->interpolate($template, $params + ['d' => $date], 'es')
+        );
+    }
+
+    public function dateInAnIcuPhraseProvider()
+    {
+        return [
+            'formatted'       => ['{n, plural, one {# factura vence} other {# facturas vencen}} el {d}', ['n' => 3], '3 facturas vencen el %s'],
+            'recovered'       => ['{g, select, other {Vence}} el {d}', [], 'Vence el %s'],
+            'inside a branch' => ['{n, plural, one {# factura vence el {d}} other {# facturas vencen el {d}}}', ['n' => 3], '3 facturas vencen el %s'],
         ];
     }
 
