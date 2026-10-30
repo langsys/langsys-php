@@ -57,4 +57,42 @@ class PhpFloorTest extends TestCase
 
         $this->assertSame([], $newer);
     }
+
+    /**
+     * CI lints every PHP file in src and tests with a 7.4 `php -l`, which
+     * refuses syntax 7.4 cannot parse anywhere in a file, a test fixture's
+     * included. Code that needs a newer PHP is declared at run time, inside a
+     * string, where the lint does not read it.
+     */
+    public function testEveryLintedFileParsesOnPhp74(): void
+    {
+        $keywords = [];
+        foreach (['T_MATCH' => 'match', 'T_ENUM' => 'enum', 'T_READONLY' => 'readonly', 'T_NULLSAFE_OBJECT_OPERATOR' => '?->'] as $constant => $word) {
+            if (defined($constant)) {
+                $keywords[constant($constant)] = $word;
+            }
+        }
+        if ($keywords === []) {
+            $this->markTestSkipped('This PHP has none of the newer keywords to look for');
+        }
+
+        $root = dirname(__DIR__);
+        $newer = [];
+        foreach (['src', 'tests'] as $dir) {
+            foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root . '/' . $dir, \FilesystemIterator::SKIP_DOTS)) as $file) {
+                if ($file->getExtension() !== 'php') {
+                    continue;
+                }
+                // TOKEN_PARSE reads a keyword used as a name, such as a method
+                // called match(), as the name it is.
+                foreach (token_get_all(file_get_contents($file->getPathname()), TOKEN_PARSE) as $token) {
+                    if (is_array($token) && isset($keywords[$token[0]])) {
+                        $newer[] = substr($file->getPathname(), strlen($root) + 1) . ':' . $token[2] . ' ' . $keywords[$token[0]];
+                    }
+                }
+            }
+        }
+
+        $this->assertSame([], $newer);
+    }
 }

@@ -1,7 +1,9 @@
 <?php
 
-// PHP 8.1+ only: loaded by ValueSetsTest when enums exist.
+// PHP 8.1+ only: loaded by ValueSetsTest when enums exist. Declared at run
+// time, so the file still parses on PHP 7.4, where CI lints it.
 
+eval(<<<'PHP'
 namespace Langsys\SDK\Tests\Frm\Fixtures;
 
 use Langsys\SDK\Messages\TranslatesAs;
@@ -32,3 +34,5 @@ enum Undeclared: string
 {
     case Blue = 'Blue';
 }
+PHP
+);
