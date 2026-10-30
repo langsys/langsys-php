@@ -17,10 +17,13 @@ namespace Langsys\SDK\Locale;
  * (`es` or `es-mx` for a project serving `es-es`).
  *
  * The result names the `Vary` header this resolver's own choice requires:
- * `Accept-Language` when the header decided, `Cookie` when a cookie or a
- * cookie-backed session did, and none when the URL did, since the URL is
- * already the cache key. A locale the framework resolved is the framework's
- * and the app's to vary on, so it adds none.
+ * every request field it read to choose, present or not. None when the URL
+ * decided, since the URL is already the cache key; `Cookie` when a cookie or
+ * a cookie-backed session did, the header never read; and when the header
+ * or the base decided, `Accept-Language`, with `Cookie` too wherever a cookie
+ * or a session was read first, since the choice also depended on its
+ * absence. A locale the framework resolved is the framework's and the app's
+ * to vary on, so it adds none.
  *
  * Framework-agnostic: the request is plain data, so a binding passes its own.
  */
@@ -86,17 +89,19 @@ final class RequestLocale
             }
         }
 
+        // From here the choice depended on the header, sent or not, and on
+        // the absence of any cookie or session value read above; a resolver
+        // stands in for that step.
+        $cookieRead = is_callable($options['resolver']) || $options['cookie'] !== null || $options['session_key'] !== null;
+        $vary = $cookieRead ? 'Accept-Language, Cookie' : 'Accept-Language';
+
         $header = isset($request['accept_language']) ? $request['accept_language'] : null;
         foreach (self::acceptLanguageTags($header) as $tag) {
             $matched = self::match($tag, $served, $defaultLocales);
             if ($matched !== null) {
-                return ['locale' => $matched, 'source' => 'accept-language', 'vary' => 'Accept-Language'];
+                return ['locale' => $matched, 'source' => 'accept-language', 'vary' => $vary];
             }
         }
-
-        // The header was consulted and did not decide, but a different header
-        // could have, so the response still varies on it.
-        $vary = is_string($header) && trim($header) !== '' ? 'Accept-Language' : null;
 
         return ['locale' => $base, 'source' => 'base', 'vary' => $vary];
     }

@@ -41,12 +41,13 @@ class RequestLocaleTest extends TestCase
         );
 
         $this->assertSame(
-            ['locale' => 'es-es', 'source' => 'accept-language', 'vary' => 'Accept-Language'],
-            $this->resolve(['path' => '/pricing', 'accept_language' => 'es-ES,en;q=0.5'])
+            ['locale' => 'es-es', 'source' => 'accept-language', 'vary' => 'Accept-Language, Cookie'],
+            $this->resolve(['path' => '/pricing', 'accept_language' => 'es-ES,en;q=0.5']),
+            'the header decided, once no cookie did'
         );
 
         $this->assertSame(
-            ['locale' => 'es-es', 'source' => 'accept-language', 'vary' => 'Accept-Language'],
+            ['locale' => 'es-es', 'source' => 'accept-language', 'vary' => 'Accept-Language, Cookie'],
             $this->resolve(['path' => '/pricing', 'cookies' => ['locale' => 'de-de'], 'accept_language' => 'es-ES']),
             'an unsupported cookie falls through to the header'
         );
@@ -87,10 +88,27 @@ class RequestLocaleTest extends TestCase
         $this->assertSame('es-mx', RequestLocale::resolve($served, 'en-us', ['cookies' => ['locale' => 'es-MX']])['locale']);
     }
 
-    public function testTheBaseVariesOnTheHeaderOnlyWhenOneWasSent(): void
+    /**
+     * The base was chosen because no cookie and no header decided, so it
+     * varies on both, a request that sent neither included: a cache keyed on
+     * the URL alone would serve it to every visitor.
+     */
+    public function testTheBaseVariesOnEverythingItsChoiceRead(): void
     {
-        $this->assertSame('Accept-Language', $this->resolve(['accept_language' => 'de'])['vary']);
-        $this->assertNull($this->resolve([])['vary']);
+        $this->assertSame('Accept-Language, Cookie', $this->resolve(['accept_language' => 'de'])['vary']);
+        $this->assertSame('Accept-Language, Cookie', $this->resolve([])['vary'], 'no header and no cookie sent');
+        $this->assertSame('Accept-Language', $this->resolve([], ['cookie' => null, 'session_key' => null])['vary'], 'no cookie or session read');
+        $this->assertSame('Accept-Language, Cookie', $this->resolve([], ['cookie' => null])['vary'], 'a cookie-backed session read');
+    }
+
+    /**
+     * A header decision varies on the cookie only where a cookie or a
+     * cookie-backed session was read first.
+     */
+    public function testAHeaderDecisionVariesOnTheCookieWhenOneWasRead(): void
+    {
+        $this->assertSame('Accept-Language', $this->resolve(['accept_language' => 'es'], ['cookie' => null, 'session_key' => null])['vary']);
+        $this->assertSame('Accept-Language, Cookie', $this->resolve(['accept_language' => 'es'], ['session_key' => null])['vary']);
     }
 
     /**
@@ -117,11 +135,11 @@ class RequestLocaleTest extends TestCase
         }]));
 
         $this->assertSame(
-            ['locale' => 'es-es', 'source' => 'accept-language', 'vary' => 'Accept-Language'],
+            ['locale' => 'es-es', 'source' => 'accept-language', 'vary' => 'Accept-Language, Cookie'],
             $this->resolve($request, ['resolver' => function () {
                 return 'de-de';
             }]),
-            'an unsupported answer falls through to the header, and the URL and cookie are not read'
+            'an unsupported answer falls through to the header, and the URL and cookie are not read; the resolver stands in for the cookie'
         );
     }
 
@@ -168,7 +186,7 @@ class RequestLocaleTest extends TestCase
         $client->resetRequestState();
         $client->request = ['accept_language' => 'de, es;q=0.5'];
         $this->assertSame('es-es', $client->getLocale(), 'the next request resolves afresh');
-        $this->assertSame(['Cookie', 'Accept-Language'], $client->vary);
+        $this->assertSame(['Cookie', 'Accept-Language, Cookie'], $client->vary);
     }
 
     public function testAnUnsupportedHeaderLocaleIsNeverServed(): void
