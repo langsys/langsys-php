@@ -137,13 +137,14 @@ Whether a request may register is the API's decision for that request, `write_en
 which depends on the key, the caller's address and any write grant. The SDK never decides
 it from the key's type, and an answer without the field is read-only. A cached
 authorization holds no decision, so a request that writes asks the API once, when it
-first needs to:
+first needs to. `canWrite()` asks on its first call in a request and throws a
+`LangsysException` when the API cannot answer:
 
 ```php
-if ($client->canWrite()) {
-    // This request may register phrases
-} else {
-    // Read-only for this request
+try {
+    $writable = $client->canWrite(); // This request may register phrases, or is read-only
+} catch (\Langsys\SDK\Exception\LangsysException $e) {
+    $writable = false; // The API could not be asked
 }
 
 echo $client->getKeyType(); // "read", "write" or "ip_write": the key's type, not the decision
@@ -196,9 +197,10 @@ locale once per request, from the first usable source in this order:
 
 Every candidate is checked against the locales the project serves (its base and
 target locales); an unsupported one is skipped, never served. `fr` or `fr-be`
-matches a project serving `fr-fr`. The response gets the `Vary` header the choice
-depended on: `Cookie` or `Accept-Language`, and none when the URL decided, so a CDN
-never serves one visitor's language to the next. The SDK never writes a cookie.
+matches a project serving `fr-fr`. The response's `Vary` names every request field the
+choice read: none when the URL decided, `Cookie` when a cookie or session value did, and
+`Accept-Language, Cookie` when the header or the base locale did, so a CDN never serves
+one visitor's language to the next. The SDK never writes a cookie.
 
 ```php
 // Explicit locale
