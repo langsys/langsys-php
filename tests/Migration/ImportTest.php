@@ -112,6 +112,32 @@ class ImportTest extends TestCase
     }
 
     /**
+     * The import registers each phrase as translate() looks its key up: a
+     * line break, a double space and an edge space kept, in the phrase and in
+     * its translation. Shown as a round trip: a catalog holding exactly what
+     * the import sent answers translate() for each key, and nothing queues.
+     */
+    public function testAnImportedPhraseIsTheOneTranslateLooksUp(): void
+    {
+        $source = $this->file('en/greeting.php', ['intro' => "Welcome back.\nPlease sign in.", 'two' => 'Hello  world', 'ago' => ' ago']);
+        $client = $this->client(['files' => [$source]]);
+        $client->importLegacyTranslations(['es-es' => ['files' => [$this->file('es/greeting.php', ['intro' => "Hola de nuevo.\nInicia sesión.", 'two' => 'Hola  mundo', 'ago' => ' atrás'])]]]);
+
+        $catalog = [];
+        foreach ($this->sent() as $item) {
+            $catalog[$item['category']][$item['phrase']] = $item['translations'][0]['translation'];
+        }
+        $reader = $this->client(['files' => [$source]]);
+        $this->http->setResponse('GET', 'translations', ['data' => $catalog]);
+        $reader->setLocale('es-es');
+
+        $this->assertSame("Hola de nuevo.\nInicia sesión.", $reader->translate('greeting.intro'));
+        $this->assertSame('Hola  mundo', $reader->translate('greeting.two'));
+        $this->assertSame(' atrás', $reader->translate('greeting.ago'));
+        $this->assertSame([], $reader->getPendingPhrases(), 'every imported phrase was found');
+    }
+
+    /**
      * A plural converts to ICU on both sides, each by its own file's format.
      */
     public function testAPluralIsImportedAsIcu(): void

@@ -30,6 +30,23 @@ final class Canonical
     }
 
     /**
+     * The form a phrase passed in code takes - a translate() argument, a
+     * language-file line, an imported or synced key - for registration and
+     * for lookup: the C0 controls stripControls() deletes, and nothing else,
+     * so its whitespace and its placeholders stay as written (TOK-2). Not
+     * phrase(), whose collapse is the form text read from markup takes. The
+     * runtime lookup, the queue, the import and the sync all call this, so
+     * what one registers is what another looks up.
+     *
+     * @param string $text
+     * @return string
+     */
+    public static function codePhrase($text)
+    {
+        return self::stripControls($text);
+    }
+
+    /**
      * Delete the 28 C0 controls TOK-2 strips from every id input and catalog
      * key: U+0001-U+0008, U+000B, U+000C and U+000E-U+001F. Deleted, not mapped
      * to a space - libxml2 before 2.14 already deletes them from DOM text, and

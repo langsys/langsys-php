@@ -107,9 +107,12 @@ final class Planner
         $covered = [];
         $viaMessageListing = [];
 
+        // A plain line registers as translate() looks it up. A rich line
+        // arrives tokenized, already in the collapsed form translateRich()
+        // looks up, which codePhrase() leaves as it is.
         $add = function ($phrase, $category, array $translations, $origin) use (&$items, &$viaValidation) {
-            $phrase = Canonical::phrase($phrase);
-            if ($phrase === '') {
+            $phrase = Canonical::codePhrase($phrase);
+            if (Canonical::phrase($phrase) === '') {
                 return;
             }
 
@@ -524,7 +527,7 @@ final class Planner
                 continue;
             }
 
-            $translations[$locale] = Canonical::phrase($converted['text']);
+            $translations[$locale] = Canonical::codePhrase($converted['text']);
         }
 
         return $translations;

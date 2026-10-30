@@ -206,6 +206,25 @@ class PlannerTest extends TestCase
     }
 
     /**
+     * A plain line registers as translate() looks it up: a line break, a
+     * double space and an edge space kept, in the phrase and in the
+     * translation it carries, for a key and for a literal alike.
+     */
+    public function testAPlainLineRegistersAsTranslateLooksItUp(): void
+    {
+        list($source, $readers) = $this->files(['intro' => "Welcome back.\nPlease sign in.", 'two' => 'Hello  world', 'ago' => ' ago'], ['intro' => "Hola de nuevo.\nInicia sesión.", 'two' => 'Hola  mundo', 'ago' => ' atrás']);
+
+        $plan = (new Planner($source))->plan($this->hits("__('legal.intro');\n__('legal.two');\n__('legal.ago');\n__('Hello  there');"), $readers);
+
+        $this->assertSame([
+            ['legal', "Welcome back.\nPlease sign in.", ['es-es' => "Hola de nuevo.\nInicia sesión."]],
+            ['legal', 'Hello  world', ['es-es' => 'Hola  mundo']],
+            ['legal', ' ago', ['es-es' => ' atrás']],
+            [null, 'Hello  there', []],
+        ], self::items($plan));
+    }
+
+    /**
      * A key reached through a rich line registers its line tokenized under
      * its group, with no raw copy from the base-language lines, and carries
      * each translation whose elements line up with the source's, tokenized

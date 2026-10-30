@@ -1389,7 +1389,7 @@ class Client
         // TOK-2: a code-registered key drops the C0 controls on lookup and on
         // register alike, as every DOM path does.
         if (is_string($phrase)) {
-            $phrase = Canonical::stripControls($phrase);
+            $phrase = Canonical::codePhrase($phrase);
         }
 
         // Use set locale if not provided
@@ -1730,8 +1730,10 @@ class Client
                 continue;
             }
 
-            $phrase = Canonical::phrase($entry['phrase']);
-            if ($phrase === '') {
+            // Registered as translate() looks the key up; a blank line, by the
+            // collapsed form, registers nothing.
+            $phrase = Canonical::codePhrase($entry['phrase']);
+            if (Canonical::phrase($phrase) === '') {
                 continue;
             }
 
@@ -2081,7 +2083,7 @@ class Client
      */
     protected function lookupMessageTemplate($template, $category, $locale)
     {
-        $template = Canonical::stripControls($template);
+        $template = Canonical::codePhrase($template);
 
         $seed = $this->seedCatalog($locale);
         if ($seed !== null && isset($seed[$category]) && is_array($seed[$category]) && array_key_exists($template, $seed[$category])) {
@@ -2251,7 +2253,7 @@ class Client
         // Find new phrases
         $newPhrases = [];
         foreach ($localPhrases as $phraseData) {
-            $phrase = Canonical::stripControls(is_string($phraseData) ? $phraseData : $phraseData['phrase']);
+            $phrase = Canonical::codePhrase(is_string($phraseData) ? $phraseData : $phraseData['phrase']);
             $category = is_string($phraseData)
                 ? '__uncategorized__'
                 : (isset($phraseData['category']) ? $phraseData['category'] : '__uncategorized__');
@@ -3791,7 +3793,7 @@ class Client
             return;
         }
 
-        $phrase = Canonical::stripControls($phrase);
+        $phrase = Canonical::codePhrase($phrase);
         $key = $category . '::' . $phrase;
 
         // Skip if already queued
