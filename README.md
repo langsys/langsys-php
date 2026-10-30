@@ -32,8 +32,7 @@ Laravel app that uses it stays on langsys-php 1.x until the Laravel package rele
 version built on 2.0.0.
 
 Coming from 1.x? [UPGRADING.md](UPGRADING.md) lists what an existing app notices.
-To see each feature work locally, against an API double or a local Langsys, follow
-[TESTING.md](TESTING.md).
+[tests/README.md](tests/README.md) says how to run this SDK's tests.
 
 ### Manual Installation (Without Composer)
 
