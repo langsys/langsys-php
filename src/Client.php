@@ -2441,8 +2441,14 @@ class Client
             return $this->referenceLists[$key];
         }
 
+        // A cache that fails - a Redis connection dropped - is a miss here and
+        // nothing on the write below: no reference call throws.
         $cacheKey = 'reference_' . $this->config->getProjectId() . '_' . $list . '_' . $display;
-        $cached = $this->cache->get($cacheKey);
+        try {
+            $cached = $this->cache->get($cacheKey);
+        } catch (\Throwable $e) {
+            $cached = null;
+        }
         if (is_array($cached)) {
             return $this->referenceLists[$key] = $cached;
         }
@@ -2474,7 +2480,11 @@ class Client
         }
 
         unset($this->referenceFailures[$key]);
-        $this->cache->set($cacheKey, $data);
+        try {
+            $this->cache->set($cacheKey, $data);
+        } catch (\Throwable $e) {
+            $this->logger->debug('Reference list not cached', ['route' => $endpoint, 'error' => $e->getMessage()]);
+        }
 
         return $this->referenceLists[$key] = $data;
     }

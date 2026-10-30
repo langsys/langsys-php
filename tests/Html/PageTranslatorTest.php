@@ -1328,6 +1328,51 @@ class PageTranslatorTest extends TestCase
         $cache->clear();
     }
 
+    /**
+     * A cache read that fails after the catalog was read - a Redis connection
+     * dropping mid-render - leaves the page rendering, never throwing.
+     */
+    public function testACacheReadThatFailsMidRenderLeavesThePageRendering(): void
+    {
+        $cache = new class implements \Langsys\SDK\Cache\CacheInterface {
+            public function get($key)
+            {
+                if (strpos($key, 'registered_items_') === 0) {
+                    throw new \RuntimeException('Connection lost');
+                }
+
+                return null;
+            }
+
+            public function set($key, $value, $ttl = 3600)
+            {
+                return true;
+            }
+
+            public function has($key)
+            {
+                return false;
+            }
+
+            public function delete($key)
+            {
+                return true;
+            }
+
+            public function clear()
+            {
+                return true;
+            }
+        };
+        $this->setTranslations(['Marketing' => ['Hello' => 'Hola']]);
+        $client = $this->createMockClientWithCache($cache);
+
+        $html = (new PageTranslator($client))->translate('<!DOCTYPE html><html><head></head><body><p>Hello</p><p>New here</p></body></html>', 'es-es', 'Marketing');
+
+        $this->assertStringContainsString('<p>Hola</p>', $html);
+        $this->assertTrue($client->hasPendingRegistrations(), 'the new phrase is still found');
+    }
+
     // =========================================================================
     // R-3 — presence and structure checks must agree with Client::translate()
     // =========================================================================

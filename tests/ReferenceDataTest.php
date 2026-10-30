@@ -266,6 +266,48 @@ class ReferenceDataTest extends TestCase
     }
 
     /**
+     * A cache that fails - a Redis connection dropped - is a miss on the read
+     * and nothing on the write: each call still answers its list, and none
+     * throws.
+     */
+    public function testACacheThatFailsIsAMissAndNeverAThrow(): void
+    {
+        $cache = new class implements \Langsys\SDK\Cache\CacheInterface {
+            public function get($key)
+            {
+                throw new \RuntimeException('Connection lost');
+            }
+
+            public function set($key, $value, $ttl = 3600)
+            {
+                throw new \RuntimeException('Connection lost');
+            }
+
+            public function has($key)
+            {
+                throw new \RuntimeException('Connection lost');
+            }
+
+            public function delete($key)
+            {
+                throw new \RuntimeException('Connection lost');
+            }
+
+            public function clear()
+            {
+                throw new \RuntimeException('Connection lost');
+            }
+        };
+        $client = $this->client(['cache' => $cache]);
+        $client->setLocale('es-es');
+
+        $this->assertSame(self::CURRENCIES, $client->getCurrencies());
+        $this->assertSame(self::COUNTRIES, $client->getCountries());
+        $this->assertSame(self::DIAL_CODES, $client->getDialCodes());
+        $this->assertSame([['code' => 'es-cr', 'name' => 'Español (Costa Rica)']], $client->getLocalesFormat('flat'));
+    }
+
+    /**
      * WIRE-4: a client built without credentials sends nothing and answers
      * an empty list, with no error logged; with require_credentials the
      * first call throws, as every read does.

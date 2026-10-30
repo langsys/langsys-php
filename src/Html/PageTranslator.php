@@ -1564,7 +1564,12 @@ class PageTranslator
         $cacheKey = $this->getRegisteredItemsCacheKey($category);
         $cache = $this->client->getCache();
 
-        $cached = $cache->get($cacheKey);
+        // A cache that fails mid-render is a miss: the page still renders.
+        try {
+            $cached = $cache->get($cacheKey);
+        } catch (\Throwable $e) {
+            $cached = null;
+        }
         if ($cached !== null && is_array($cached)) {
             return $cached;
         }
