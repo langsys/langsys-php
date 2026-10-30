@@ -264,7 +264,7 @@ class HtmlParser
         // UTF-16 code units of the input, as the JS engine would see them.
         $units = [];
         foreach (preg_split('//u', $input, -1, PREG_SPLIT_NO_EMPTY) as $char) {
-            $cp = mb_ord($char, 'UTF-8');
+            $cp = self::codePoint($char);
             if ($cp > 0xFFFF) {
                 // Non-BMP becomes a surrogate pair, exactly as in JS.
                 $cp -= 0x10000;
@@ -287,6 +287,28 @@ class HtmlParser
         $blks[$nblk * 16 - 2] = $n * 8;
 
         return self::md5Rounds($blks);
+    }
+
+    /**
+     * The code point of one UTF-8 character, read from its bytes so no
+     * extension is needed.
+     *
+     * @param string $char One character of valid UTF-8
+     * @return int
+     */
+    private static function codePoint($char)
+    {
+        $bytes = array_values(unpack('C*', $char));
+        switch (count($bytes)) {
+            case 1:
+                return $bytes[0];
+            case 2:
+                return (($bytes[0] & 0x1F) << 6) | ($bytes[1] & 0x3F);
+            case 3:
+                return (($bytes[0] & 0x0F) << 12) | (($bytes[1] & 0x3F) << 6) | ($bytes[2] & 0x3F);
+            default:
+                return (($bytes[0] & 0x07) << 18) | (($bytes[1] & 0x3F) << 12) | (($bytes[2] & 0x3F) << 6) | ($bytes[3] & 0x3F);
+        }
     }
 
     /**

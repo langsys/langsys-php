@@ -2829,7 +2829,7 @@ class Client
             'host' => isset($_SERVER['HTTP_HOST']) ? (string) $_SERVER['HTTP_HOST'] : null,
             'query' => $_GET,
             'cookies' => $_COOKIE,
-            'session' => (session_status() === PHP_SESSION_ACTIVE && isset($_SESSION) && is_array($_SESSION)) ? $_SESSION : [],
+            'session' => (function_exists('session_status') && session_status() === PHP_SESSION_ACTIVE && isset($_SESSION) && is_array($_SESSION)) ? $_SESSION : [],
             'accept_language' => isset($_SERVER['HTTP_ACCEPT_LANGUAGE']) ? (string) $_SERVER['HTTP_ACCEPT_LANGUAGE'] : null,
         ];
     }

@@ -9,7 +9,11 @@
         "php": ">=7.4",
         "ext-curl": "*",
         "ext-json": "*",
-        "ext-intl": "*"
+        "ext-intl": "*",
+        "ext-dom": "*",
+        "ext-libxml": "*",
+        "ext-filter": "*",
+        "ext-tokenizer": "*"
     },
     "bin": [
         "bin/langsys-messages",
