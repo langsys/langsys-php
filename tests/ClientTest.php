@@ -857,8 +857,11 @@ class ClientTest extends TestCase
             'an empty default category' => [function ($client) {
                 return $client->translatePage('<html><body><p>Hi there</p></body></html>', '');
             }],
+            'an overriding selector mapping to an empty category' => [function ($client) {
+                return $client->translatePage('<html><body><p>Hi there</p></body></html>', null, ['p' => ['category' => '', 'overrideParentElementCategory' => true]]);
+            }],
             'a selector mapping to an empty category' => [function ($client) {
-                return $client->translatePage('<html><body><p>Hi there</p></body></html>', null, ['p' => ['category' => '', 'override' => true]]);
+                return $client->translatePage('<html><body><p>Hi there</p></body></html>', null, ['p' => '']);
             }],
             'an empty attribute inside a categorized parent' => [function ($client) {
                 return $client->translatePage('<html><body><main data-langsys-category="home"><div data-langsys-category=""><p>Hi there</p></div></main></body></html>');
