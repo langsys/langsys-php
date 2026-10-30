@@ -31,7 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - a `data-langsys-contentblock` whose value is not `true`, `1`, `yes`, `false` or
     `0`, which is the block's id;
   - a `data-langsys-phrase` run made only of `translate="no"` or `data-notrans`
-    elements, which registers nothing.
+    elements, which registers nothing;
+  - a `<title>` or a translated `<meta>` `content` holding a line break, a run of
+    spaces or a non-breaking space, or a `<meta>` `content` with an edge space, now
+    collapsed and trimmed as page text is.
 
   Each such item registers once under its new id and is machine translated again; the
   page shows the source until then. Translations stay under the old entry, so re-apply
@@ -42,7 +45,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the key's type. An answer without the field is read-only. An `ip_write` key used from
   an address off its allow-list registers nothing. A request that writes asks the API
   once for its decision, when it flushes after the response, since a cached
-  authorization holds none.
+  authorization holds none. `canWrite()` asks on its first call in a request and throws
+  when the API cannot answer.
 - **`flushPendingRegistrations()` reports `success: false` for work it did not do**,
   and names a `reason`: `not_write_enabled`, `catalog_unavailable`, `backing_off`,
   `decision_unavailable` or `send_failed`. A read key reports `not_write_enabled` on
@@ -56,10 +60,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Rendered HTML carries more.** `translatePage()` and `translateContentBlock()` mark
   each rendered block with `data-ls-contentblock="<id>"`, and a page rendered in a
   locale other than the base carries `data-ls-resolved="<locale>"` on `<html>`. A
-  response whose locale a cookie or `Accept-Language` decided carries a `Vary` header,
-  unless `send_vary` is `false`.
+  response whose locale the SDK chose carries a `Vary` naming every request field the
+  choice read, unless `send_vary` is `false`.
 - **Warnings and errors go to PHP's error log** when no `log_path` is set.
 - **Subclasses**: several protected methods take new optional parameters,
+  `Interpolator::formatIcu()` returns `false` when the formatter fails on a pattern,
   `PageTranslator::markItemsAsRegistered()` and `markItemsAsRegisteredWithCategory()`
   are gone, and `Client` has a destructor.
 
@@ -82,33 +87,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   locale list answers the display locale's own entry, every code written `es-cr`. A
   display locale not shaped as a locale is refused and nothing is sent. A list the API
   cannot give is empty, with the cause logged, never an exception, and is not asked for
-  again for a window of 3 seconds, doubling to 5 minutes.
+  again for a window of 3 seconds, doubling to 5 minutes. A cache that fails is a miss.
 - **Values marked as variables.** `<!--ls:NAME-->VALUE<!--/ls-->` and
   `<span data-ls-param="NAME">VALUE</span>` read as `{NAME}`, so a sentence registers
-  once for every user, and render back inside their marker. A plural or select chooses
-  on the value. Each unit takes only the values of the text it registered from.
+  once for every user, and render back inside their marker, with every attribute it
+  was written with. A plural or select chooses on the value. Each unit takes only the
+  values of the text it registered from. A line rendered as a string, such as a
+  language file's, writes a value back escaped, and inside an attribute as the value
+  alone, so a value never opens an attribute.
 - **Enum params.** A backed enum renders as its value and a plain enum as its name, in
   a placeholder and as an ICU argument.
 - **Migrating from key-based translation files.** The `migration` option resolves a
   `translate()` argument as a key in your source-language files (`laravel`,
-  `vue-i18n`, `i18next` or `plain`), converting placeholders and plurals.
-  `importLegacyTranslations()` registers every key with the translations you already
-  have, stored as human translations.
+  `vue-i18n`, `i18next` or `plain`), converting placeholders and plurals. A key reads
+  as Laravel reads it: a group file's key with a dot in it as written, and text as a
+  package key only when shaped `namespace::group.item`. A file in a format this SDK
+  does not read is refused when the configuration loads, however it is given, and a
+  PHP file that fails to load is reported by `problems()` and resolves nothing.
+  `importLegacyTranslations()` registers every key as `translate()` looks it up, with
+  the translations you already have, stored as human translations.
 - **Behind a framework's translate function**: `planSync()`/`applySync()` register
   from your source and language files, `runtime_registration => false` turns off
   registering at runtime, `useMissFallback()` answers a miss from your language files,
-  `resolve()` says where text came from, `translateRich()` renders a line with links
-  and emphasis without letting a translation add markup, declared value sets register
-  a sentence once per value, and `markResolved()` marks a server-rendered page.
+  given the line as the caller wrote it, `resolve()` says where text came from,
+  `translateRich()` renders a line with links and emphasis without letting a
+  translation add markup, declared value sets (string- or int-backed enums included)
+  register a sentence once per value, and `markResolved()` marks a server-rendered
+  page.
 - **Server messages.** Validation errors and system messages register and translate
   ahead of time: `translateMessage()`, `emitMessage()`, `vendor/bin/langsys-messages`,
   and rule and app-message classes that state their own sentence.
 - **Catalog snapshots.** `vendor/bin/langsys-snapshot` exports a catalog every Langsys
   SDK loads, and `'snapshot' => $snapshot` or `useSnapshot()` renders from it without
-  calling the API.
+  calling the API. A snapshot made for another project is not used, and says so.
 - **Excluded elements inside a phrase** (`translate="no"`, `data-notrans`) render as
   you wrote them, a value inside them included.
-- **A marked element inside other content** is translated as its own unit.
+- **A marked element inside other content** is translated as its own unit, its marker
+  written in any case.
 - **Text inside `<svg>`** is translated; the drawing is left alone.
 - **Stamped block ids are honoured**, and both the `data-ls-*` and `data-langsys-*`
   spellings are read.
@@ -126,8 +141,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A plural Langsys generates for a target locale renders its singular** at a count
   of 1. Every request asks the API for ICU.
 - **ICU renders on every path.** A page translated without params, and a translation
-  that fails to format, render their branch for the value, not the raw pattern.
-- **One catalog per locale, whatever its spelling** (`es-ES`, `es_ES`, `es-es`).
+  that fails to format, render their branch for the value, not the raw pattern; a
+  missing `{v, number}`, `{d, date}` or `{t, time}` shows as `{v}`.
+- **`#` in a select's branch is text**, as ICU reads it, where the SDK's own renderer
+  wrote the select's value.
+- **A date in a plain `{d}` of a phrase with ICU in it renders as a date**, not as a
+  Unix timestamp.
+- **One catalog per locale, whatever its spelling** (`es-ES`, `es_ES`, `es-es`), and
+  `sync()` clears it in any spelling.
 - **An empty or null category is one category**, so an uncategorised phrase stops
   re-registering on every request.
 - **A registered but untranslated phrase is known**, renders its source and is not
@@ -147,6 +168,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `getServerMessages()`, instead of a `TypeError`.
 - **A key whose type writes but that the API answers not write-enabled** is reported
   once, as a warning.
+- **A cache that throws never takes a page down**: the page renders, in its source
+  where the catalog cannot be read.
 - **A worker that builds a `Client` per request no longer grows** with every request.
   A `Client` its framework lets go is freed at once and sends what it still has
   queued.

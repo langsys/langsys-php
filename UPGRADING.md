@@ -14,7 +14,9 @@ machine translated, and billed, again.
 
 | Content | What changes |
 |---|---|
-| Text with a non-breaking space, a line or paragraph separator, or a control character | Read as ordinary whitespace, or dropped (control characters) |
+| Page or block text with a non-breaking space or a line or paragraph separator | Read as ordinary whitespace |
+| Any text with a control character, a `translate()`, `sync()` or language-file line included | The control character is dropped; a line's other whitespace is kept as written |
+| A `<title>` or a translated `<meta>` `content` (description, keywords, `og:*`, `twitter:*`) holding a line break, a run of spaces or a non-breaking space, or a `<meta>` `content` with an edge space | Its whitespace is collapsed to single spaces and trimmed, as page text is |
 | A phrase written with `%name%` | Stored as `{name}` |
 | A content block containing `<script>`, `<style>`, `<template>`, `<noscript>` or `<math>` | Their contents are no longer part of the block |
 | Text inside `<svg>` | Translated now, so a block containing it has new text |
@@ -63,6 +65,9 @@ and it is never registered again.
   An answer without the field is read-only, for a `write` key too. An `ip_write` key used
   from an address off its allow-list registers nothing; it registered before.
   `getKeyType()` still reports the key's type.
+- **`canWrite()` asks the API** the first time it is called in a request, even with the
+  authorization cached, and throws the `LangsysException` of a request that fails, where
+  it answered from the cached authorization. Code that calls it directly wraps it in `try`.
 - **A request that writes asks the API for its decision.** A cached authorization holds
   no decision, so the first write of a request - usually the flush after the response -
   asks the API once, whatever the key's type. If the API cannot be reached then, the
@@ -87,9 +92,12 @@ worker that serves one fixed locale calls `setLocale()` again after each reset.
   browser SDK, a second middleware — registers none of it.
 - **A `Vary` header.** With no locale set, the request locale comes from the URL, then a
   `locale` cookie or session value, then `Accept-Language`, and is always one the project
-  serves. When the cookie or `Accept-Language` decided it, the response carries
-  `Vary: Cookie` or `Vary: Accept-Language`. A framework that sets the header on its own
-  response passes `'send_vary' => false` in the `request_locale` option.
+  serves, else the base locale. The response's `Vary` names every request field that
+  choice read: none when the URL decided, `Cookie` when a cookie or session value did,
+  and `Accept-Language, Cookie` when the header or the base locale did (`Accept-Language`
+  alone when the cookie and session lookups are off and no resolver is set). A framework
+  that sets the header on its own response passes `'send_vary' => false` in the
+  `request_locale` option.
 
 Selectors, snapshot tests or string comparisons on rendered HTML may need updating.
 
@@ -116,6 +124,10 @@ parameters to its signature, or PHP refuses it as incompatible:
 | `MarkupTokenizer::encodeChildren()` | `array &$opaque = [], ?ValueMarkers $markers = null, &$excluded = false` |
 
 `MarkupTokenizer::encode()` returns two more keys, `opaque` and `earlier`.
+
+`Interpolator::formatIcu()` returns `false` when the pattern parses and the formatter fails
+on it, and `null`, as before, when intl is absent or the pattern does not parse. A subclass
+that calls it and tests for `null` treats `false` as a failure too.
 
 `PageTranslator::markItemsAsRegistered()` and `markItemsAsRegisteredWithCategory()` no
 longer exist.
