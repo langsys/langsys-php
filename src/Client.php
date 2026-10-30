@@ -1163,7 +1163,8 @@ class Client
 
         // The line's own values: never one read inside an element the
         // author excluded.
-        $rendered = $this->translateCall($encoded['text'], $locale, $category, null, array_merge($markers->sentinels($wrapper), $params, $tokenizer->tokenParams(count($slots))), $from, $this->earlierLookup($tokenizer, $encoded['earlier']));
+        // The miss fallback is told the line as the caller wrote it.
+        $rendered = $this->translateCall($encoded['text'], $locale, $category, null, array_merge($markers->sentinels($wrapper), $params, $tokenizer->tokenParams(count($slots))), $from, $this->earlierLookup($tokenizer, $encoded['earlier']), (string) $sourceHtml);
 
         if ($from === 'fallback') {
             return ['html' => \Langsys\SDK\Html\ValueMarkers::expandHtml($rendered), 'from' => $from];
@@ -1300,13 +1301,16 @@ class Client
      * @param array $params
      * @param string|null $from Set to catalog, fallback or source
      * @param callable|null $earlier A miss's lookup under the phrase's earlier key (TOK-1)
+     * @param string|null $argument What the caller wrote, for the miss fallback, when it is not $phrase
      * @return string
      */
-    protected function translateCall($phrase, $locale, $category, $contentBlockId, array $params, &$from, ?callable $earlier = null)
+    protected function translateCall($phrase, $locale, $category, $contentBlockId, array $params, &$from, ?callable $earlier = null, $argument = null)
     {
         $this->requireCredentialsAtUse();
 
-        $argument = $phrase;
+        if ($argument === null) {
+            $argument = $phrase;
+        }
 
         // Legacy-key mode (MIG-2): the argument is a key first. A hit makes the
         // key's source value the phrase - never the key - and its namespace the

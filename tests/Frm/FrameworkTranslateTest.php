@@ -248,6 +248,24 @@ class FrameworkTranslateTest extends TestCase
     }
 
     /**
+     * A rich line's fallback is told the line as the caller wrote it, markup
+     * and all, beside the Langsys phrase, so a language file keyed by its
+     * source text is found.
+     */
+    public function testARichLinesFallbackSeesTheLineAsWritten(): void
+    {
+        $seen = [];
+        $client = $this->client()->useMissFallback(function ($phrase, $locale, $category, $argument) use (&$seen) {
+            $seen[] = [$phrase, $argument];
+
+            return $argument === 'Read our <a href="/terms">terms</a>' ? 'Lee <a href="/es/terminos">los términos</a>' : null;
+        });
+
+        $this->assertSame(['html' => 'Lee <a href="/es/terminos">los términos</a>', 'from' => 'fallback'], $client->translateRich('Read our <a href="/terms">terms</a>'));
+        $this->assertSame([['Read our {m0o}terms{m0c}', 'Read our <a href="/terms">terms</a>']], $seen);
+    }
+
+    /**
      * A line from the language files is the app's own, and comes back as the
      * framework prints it, markup and all.
      */
