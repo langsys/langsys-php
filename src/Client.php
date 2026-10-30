@@ -2276,9 +2276,9 @@ class Client
             $this->registerPhrases($newPhrases);
             $result['synced'] = true;
 
-            // Invalidate cache and fetch fresh translations
-            $cacheKey = 'translations_' . $this->config->getProjectId() . '_' . $locale;
-            $this->cache->delete($cacheKey);
+            // Invalidate cache and fetch fresh translations. clearCache()
+            // normalises the locale, so es-ES clears the es-es entry.
+            $this->clearCache($locale);
             $result['translations'] = $this->getTranslations($locale, false);
         }
 
