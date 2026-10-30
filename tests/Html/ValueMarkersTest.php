@@ -81,6 +81,49 @@ class ValueMarkersTest extends TestCase
         return ['page path' => ['page'], 'content-block path' => ['block']];
     }
 
+    public function translatedPathProvider(): array
+    {
+        $rows = [];
+        foreach (['page', 'block'] as $path) {
+            foreach (['translated' => ['Hello {n}, welcome' => 'Hola {n}, bienvenido'], 'untranslated' => []] as $state => $catalog) {
+                $rows["$path path, $state"] = [$path, $catalog];
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * A span marker carrying an attribute the HTML parser reads and the DOM's
+     * setAttribute() refuses - a framework's `.prop` - is rebuilt as it was
+     * read, attribute included, and the render never throws.
+     *
+     * @dataProvider translatedPathProvider
+     */
+    public function testASpanMarkerKeepsAnAttributeTheDomCannotSet($path, array $catalog): void
+    {
+        $out = $this->render($this->client(['UI' => $catalog]), $path, '<p>Hello <span data-ls-param="n" .foo="go">Bob</span>, welcome</p>');
+
+        $this->assertMatchesRegularExpression('#<span data-ls-param="n" \.foo="go">Bob</span>#', $out);
+    }
+
+    /**
+     * The same marker in a rich line, translated and not.
+     *
+     * @dataProvider richCatalogProvider
+     */
+    public function testARichLineKeepsAnAttributeTheDomCannotSet(array $catalog): void
+    {
+        $out = $this->client(['UI' => $catalog])->translateRich('Hello <span data-ls-param="n" .foo="go">Bob</span>, welcome', 'es-es', 'UI')['html'];
+
+        $this->assertMatchesRegularExpression('#<span data-ls-param="n" \.foo="go">Bob</span>#', $out);
+    }
+
+    public function richCatalogProvider(): array
+    {
+        return ['translated' => [['Hello {n}, welcome' => 'Hola {n}, bienvenido']], 'untranslated' => [[]]];
+    }
+
     public function formProvider(): array
     {
         $rows = [];

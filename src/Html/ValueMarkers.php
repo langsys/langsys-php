@@ -462,10 +462,7 @@ final class ValueMarkers
                 }
 
                 if (is_array($form)) {
-                    $span = $doc->createElement('span');
-                    foreach ($form as $attribute => $attributeValue) {
-                        $span->setAttribute($attribute, $attributeValue);
-                    }
+                    $span = self::spanWith($doc, $form);
                     $span->appendChild($doc->createTextNode($value));
                     $parent->insertBefore($span, $node);
                     continue;
@@ -481,6 +478,49 @@ final class ValueMarkers
             }
             $parent->removeChild($node);
         }
+    }
+
+    /**
+     * A span with a marker's attributes. An attribute name the HTML parser
+     * reads and the DOM's setAttribute() refuses - a framework's `.prop` -
+     * makes the span be built as it was read, by the parser, so the
+     * attribute stays and the render never throws.
+     *
+     * @param \DOMDocument $doc
+     * @param array<string, string> $form
+     * @return DOMElement
+     */
+    private static function spanWith(\DOMDocument $doc, array $form)
+    {
+        $span = $doc->createElement('span');
+        try {
+            foreach ($form as $attribute => $attributeValue) {
+                $span->setAttribute($attribute, $attributeValue);
+            }
+
+            return $span;
+        } catch (\DOMException $e) {
+        }
+
+        $html = '<span';
+        foreach ($form as $attribute => $attributeValue) {
+            // A name read from markup holds none of these; one that did could
+            // not be written back as the same attribute.
+            if (preg_match('#[\s"\'>/=]#', (string) $attribute)) {
+                continue;
+            }
+            $html .= ' ' . $attribute . '="' . htmlspecialchars((string) $attributeValue, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '"';
+        }
+        $internalErrors = libxml_use_internal_errors(true);
+        $parsed = new \DOMDocument();
+        $parsed->encoding = 'UTF-8';
+        Document::loadFragment($parsed, $html . '></span>');
+        libxml_clear_errors();
+        libxml_use_internal_errors($internalErrors);
+        $root = Document::fragmentRoot($parsed);
+        $read = $root === null ? null : $root->firstChild;
+
+        return $read instanceof DOMElement ? $doc->importNode($read, false) : $span;
     }
 
     /**
