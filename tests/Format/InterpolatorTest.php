@@ -985,6 +985,8 @@ class InterpolatorTest extends TestCase
      */
     public function testRecoveryEmitsADebugNoticeNamingEveryDefaultedArgument()
     {
+        $this->requireIntl();
+
         $logger = new RecordingLogger();
         $interpolator = new Interpolator($logger);
 
@@ -1012,6 +1014,8 @@ class InterpolatorTest extends TestCase
      */
     public function testRecoveryNoticeIsDedupedPerLocaleAndTemplate()
     {
+        $this->requireIntl();
+
         $logger = new RecordingLogger();
         $interpolator = new Interpolator($logger);
         $template = '{gender, select, male {M} other {O}}';
@@ -1039,6 +1043,8 @@ class InterpolatorTest extends TestCase
      */
     public function testRecoveryNoticeFiresForPluralAndNumberArgumentsToo()
     {
+        $this->requireIntl();
+
         $logger = new RecordingLogger();
 
         (new Interpolator($logger))->interpolate(
@@ -1058,6 +1064,8 @@ class InterpolatorTest extends TestCase
 
     public function testNoNoticeWhenNothingWasDefaulted()
     {
+        $this->requireIntl();
+
         $logger = new RecordingLogger();
 
         (new Interpolator($logger))->interpolate(
@@ -1085,6 +1093,8 @@ class InterpolatorTest extends TestCase
      */
     public function testSuppliedPluralKeepsCldrSelectionWhileAnotherArgumentRecovers($locale, $expected)
     {
+        $this->requireIntl();
+
         $out = (new Interpolator())->interpolate(
             '{gender, select, male {M} female {F} other {O}} — {n, plural, one {# item} few {# items-few} many {# items-many} other {# items-other}}',
             ['n' => 3],
@@ -1125,6 +1135,8 @@ class InterpolatorTest extends TestCase
      */
     public function testRecoveryDescendsIntoASuppliedNode()
     {
+        $this->requireIntl();
+
         $template = '{g, select, female {F: {n, plural, one {# item} few {# few} other {# other}}} other {O}}';
 
         // g supplied and selected by CLDR; n missing and recovered in place.
@@ -1201,7 +1213,8 @@ class InterpolatorTest extends TestCase
             // Controls: a supplied argument still formats through CLDR, so the
             // assertions above are about recovery rather than about the type
             // never formatting at all.
-            'supplied number'        => ['{amt, number} due', ['amt' => 1234.5], '1,234.5 due'],
+            // Without intl a number prints as given.
+            'supplied number'        => ['{amt, number} due', ['amt' => 1234.5], extension_loaded('intl') ? '1,234.5 due' : '1234.5 due'],
             'supplied plural'        => ['{n, plural, one {# item} other {# items}}', ['n' => 1], '1 item'],
         ];
     }

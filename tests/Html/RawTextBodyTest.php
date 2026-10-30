@@ -525,7 +525,16 @@ class RawTextBodyTest extends TestCase
             $this->assertSame(1, preg_match('//u', $page), 'valid UTF-8: ' . $label);
         }
 
-        $utf16 = "\xFF\xFE" . \UConverter::transcode('<html><head></head><body><p>Müller</p></body></html>', 'UTF-16LE', 'UTF-8');
+        // Encoded by hand, since \UConverter is ext-intl and this test runs
+        // without it. Every character here is below U+0800.
+        $source = '<html><head></head><body><p>Müller</p></body></html>';
+        $utf16 = "\xFF\xFE";
+        foreach (preg_split('//u', $source, -1, PREG_SPLIT_NO_EMPTY) as $char) {
+            $utf16 .= pack('v', strlen($char) === 1 ? ord($char) : ((ord($char[0]) & 0x1F) << 6) | (ord($char[1]) & 0x3F));
+        }
+        if (class_exists('UConverter')) {
+            $this->assertSame("\xFF\xFE" . \UConverter::transcode($source, 'UTF-16LE', 'UTF-8'), $utf16, 'the hand encoding is UTF-16LE');
+        }
         $this->assertStringContainsString('<p>Müller</p>', $this->client()->translatePage($utf16, 'UI'), 'UTF-16, by its byte-order mark');
 
         $block = $this->client()->translateContentBlock("<p>caf\xE9</p><p>M\xC3\xBCller</p>", 'UI');
