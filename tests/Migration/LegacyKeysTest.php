@@ -217,6 +217,34 @@ class LegacyKeysTest extends TestCase
         $this->assertSame([$json], $keys->loadedFiles(), 'the first lookup reads the file');
     }
 
+    /**
+     * A package key is shaped as Laravel parses one: a namespace and a group
+     * with no whitespace, the group a path under the language directory, and
+     * an item that is any array key path.
+     *
+     * @dataProvider packageKeyShapeProvider
+     */
+    public function testAPackageKeyIsShapedAsLaravelParsesOne($text, $isKey): void
+    {
+        $this->assertSame($isKey, LegacyKeys::isPackageKey($text));
+    }
+
+    public function packageKeyShapeProvider(): array
+    {
+        return [
+            'namespace, group and item' => ['courier::messages.welcome', true],
+            'a whole group' => ['courier::messages', true],
+            'a group in a subdirectory' => ['filament-panels::pages/auth/login.title', true],
+            'an item holding spaces' => ['courier::messages.Welcome back', true],
+            'a sentence around a static call' => ['Call {cls}::create() to start', false],
+            'a call in a sentence' => ['Use Foo::bar() here', false],
+            'whitespace after the separator' => ['courier:: messages.welcome', false],
+            'whitespace in the namespace' => ['the courier::messages', false],
+            'no namespace' => ['::messages.welcome', false],
+            'no double colon' => ['messages.welcome', false],
+        ];
+    }
+
     public function testAnUnreadableFileIsReportedAndResolvesNothing(): void
     {
         $keys = new LegacyKeys(['files' => [$this->dir . '/does-not-exist.json']]);

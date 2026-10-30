@@ -133,12 +133,19 @@ final class LegacyKeys
     }
 
     /**
+     * Whether text is shaped as a package key, `namespace::group.item`, as
+     * Laravel's NamespacedItemResolver parses one: the namespace before the
+     * first `::`, then a group - a file path under the language directory, so
+     * it may hold `/` - and an item, any array key path after the first dot.
+     * The namespace and the group hold no whitespace, so a sentence that
+     * happens to hold `::` is text, not a key.
+     *
      * @param string $key
      * @return bool
      */
     public static function isPackageKey($key)
     {
-        return is_string($key) && strpos($key, '::') !== false;
+        return is_string($key) && preg_match('/^[^\s:]+::[^\s.:]+(?:\..*)?\z/u', $key) === 1;
     }
 
     /**

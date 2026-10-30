@@ -190,6 +190,20 @@ class ClientMigrationTest extends TestCase
     }
 
     /**
+     * Only key-shaped text is a package key: a sentence that holds `::` is
+     * looked up, filled and registered like any other.
+     */
+    public function testASentenceHoldingADoubleColonIsLiteralText(): void
+    {
+        $client = $this->inMode(['__uncategorized__' => ['Call {cls}::create() to start' => 'Llama a {cls}::create() para empezar']]);
+
+        $this->assertSame('Llama a Order::create() para empezar', $client->translate('Call {cls}::create() to start', null, null, null, ['cls' => 'Order']));
+
+        $client->translate('Use Foo::bar() here');
+        $this->assertSame([['__uncategorized__', 'Use Foo::bar() here']], $this->queued($client));
+    }
+
+    /**
      * MIG-6: a value changed in the file is simply a new phrase.
      */
     public function testAChangedValueRegistersAsANewPhrase(): void
