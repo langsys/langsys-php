@@ -2865,8 +2865,14 @@ class Client
      *         'category' => 'UI Elements',
      *         'overrideParentElementCategory' => true,
      *     ],
-     *     'nav a' => ['category' => 'Navigation'],
+     *     'nav a' => ['category' => 'Navigation', 'overrideParentElementCategory' => true],
      * ]);
+     * ```
+     *
+     * A selector without `overrideParentElementCategory` applies only where no
+     * category reaches the element: none passed here and none on an ancestor.
+     * ```php
+     * $client->translatePage($html, null, ['.promo' => ['category' => 'Promotions']]);
      * ```
      *
      * @param string $html Full HTML document

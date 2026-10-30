@@ -349,17 +349,21 @@ For more flexible category assignment, use CSS selectors to map elements to cate
 ```php
 $client->setLocale('es-es');
 echo $client->translatePage($html, 'homepage', [
-    // Navigation links get their own category
-    'nav li' => ['category' => 'Navigation'],
-
-    // Multiple selectors for the same category
-    '.action, .btn' => ['category' => 'UI Elements'],
-
-    // Override even parent's data-langsys-category
-    'section.contact' => [
-        'category' => 'Contact Form',
+    // Navigation links get their own category, under the page's
+    'nav li' => [
+        'category' => 'Navigation',
         'overrideParentElementCategory' => true,
     ],
+
+    // Multiple selectors for the same category
+    '.action, .btn' => [
+        'category' => 'UI Elements',
+        'overrideParentElementCategory' => true,
+    ],
+
+    // Without the override, a rule applies only where no category reaches
+    // the element, so under 'homepage' this one never does
+    '.promo' => ['category' => 'Promotions'],
 ]);
 ```
 
@@ -376,13 +380,13 @@ echo $client->translatePage($html, 'homepage', [
 **Priority order (highest to lowest):**
 1. Selector with `overrideParentElementCategory: true`
 2. Element's `data-langsys-category` attribute
-3. Inherited category from parent
+3. The category inherited from a parent element; at the top of the page, the category
+   passed to `translatePage()`
 4. Selector with `overrideParentElementCategory: false`
-5. Default category parameter
-6. `__uncategorized__`
+5. `__uncategorized__`
 
 **About `overrideParentElementCategory`:**
-This option is most often desired to be `true`, ensuring selector-matched elements always use their assigned category. The default is `false` to require an explicit decision for each selector, since enabling it overrides any `data-langsys-category` attributes set in the HTML. When `false`, the HTML attribute takes precedence over the selector rule.
+This option is most often desired to be `true`, ensuring selector-matched elements always use their assigned category. The default is `false` to require an explicit decision for each selector, since enabling it overrides any `data-langsys-category` attributes set in the HTML. When `false`, the HTML attribute and the inherited category both take precedence over the selector rule, and every element inherits the category passed to `translatePage()`: a selector without the override applies only when `translatePage()` is given no category and no ancestor carries one.
 
 **Recommended starting configuration:**
 

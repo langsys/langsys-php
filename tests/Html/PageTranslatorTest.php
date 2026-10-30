@@ -981,6 +981,24 @@ class PageTranslatorTest extends TestCase
         $this->assertStringContainsString('Sobrescritura gana', $result);
     }
 
+    public function testANonOverrideSelectorAppliesOnlyWhereNoCategoryReachesTheElement(): void
+    {
+        $this->setTranslations([
+            'Navigation' => ['Home' => 'Inicio'],
+            'homepage' => ['Home' => 'Casa'],
+        ]);
+        $html = '<!DOCTYPE html><html><head></head><body><nav><ul><li>Home</li></ul></nav></body></html>';
+        $rule = ['category' => 'Navigation'];
+        $translator = new PageTranslator($this->client);
+
+        $this->assertStringContainsString('<li>Inicio</li>', $translator->translate($html, 'es-es', null, ['nav li' => $rule]));
+        $this->assertStringContainsString('<li>Casa</li>', $translator->translate($html, 'es-es', 'homepage', ['nav li' => $rule]));
+        $this->assertStringContainsString(
+            '<li>Inicio</li>',
+            $translator->translate($html, 'es-es', 'homepage', ['nav li' => $rule + ['overrideParentElementCategory' => true]])
+        );
+    }
+
     // =========================================================================
     // data-langsys-contentblock Tests
     // =========================================================================
