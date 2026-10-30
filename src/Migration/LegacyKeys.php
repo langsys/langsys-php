@@ -61,14 +61,15 @@ final class LegacyKeys
      */
     public static function refuseUnreadFormats(array $config)
     {
+        // Each tier as the reader takes it: a single path is a list of one.
         $entries = [];
         foreach (['files', 'fallback_files'] as $tier) {
-            $entries = array_merge($entries, isset($config[$tier]) && is_array($config[$tier]) ? array_values($config[$tier]) : []);
+            $entries = array_merge($entries, isset($config[$tier]) ? array_values((array) $config[$tier]) : []);
         }
         foreach (isset($config['namespaces']) && is_array($config['namespaces']) ? $config['namespaces'] : [] as $namespace) {
             $tiers = is_array($namespace) && (isset($namespace['files']) || isset($namespace['fallback_files'])) ? $namespace : ['files' => $namespace];
             foreach (['files', 'fallback_files'] as $tier) {
-                $entries = array_merge($entries, isset($tiers[$tier]) && is_array($tiers[$tier]) ? array_values($tiers[$tier]) : []);
+                $entries = array_merge($entries, isset($tiers[$tier]) ? array_values((array) $tiers[$tier]) : []);
             }
         }
 
@@ -559,9 +560,10 @@ final class LegacyKeys
     }
 
     /**
-     * File entries as ['path', 'format', 'invalid']: a bare path takes its type's
-     * default format - laravel for a PHP array, plain for JSON - and an unknown
-     * declared format reads as plain and is reported.
+     * File entries as ['path', 'format', 'namespace']: a bare path takes its
+     * type's default format - laravel for a PHP array, plain for JSON. A format
+     * this SDK does not read never gets here: the configuration is refused
+     * when it loads (MIG-7).
      *
      * @param array $entries
      * @return array[]

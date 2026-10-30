@@ -193,6 +193,32 @@ class LegacyKeysTest extends TestCase
         new LegacyKeys(['namespaces' => ['courier' => ['files' => ['vendor/courier/en.yml']]]]);
     }
 
+    /**
+     * A tier given as one path rather than a list is read as that one file,
+     * so it is refused the same way.
+     *
+     * @dataProvider onePathConfigProvider
+     */
+    public function testAFileGivenAsOnePathIsRefusedToo(array $config): void
+    {
+        try {
+            new LegacyKeys($config);
+            $this->fail('the file is refused');
+        } catch (\Langsys\SDK\Exception\LangsysException $e) {
+            $this->assertStringContainsString('config/locales/en.yml', $e->getMessage());
+        }
+    }
+
+    public function onePathConfigProvider(): array
+    {
+        return [
+            'files' => [['files' => 'config/locales/en.yml']],
+            'fallback files' => [['fallback_files' => 'config/locales/en.yml']],
+            'a namespace\'s files' => [['namespaces' => ['courier' => ['files' => 'config/locales/en.yml']]]],
+            'a namespace given as its path' => [['namespaces' => ['courier' => 'config/locales/en.yml']]],
+        ];
+    }
+
     public function testAnUnrecognisedValueResolvesAsWrittenAndIsReported(): void
     {
         $php = $this->php('app/lang/en/greeting.php', ['hello' => 'Hello, :Name']);
