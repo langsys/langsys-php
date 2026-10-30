@@ -1161,7 +1161,9 @@ class Client
             return ['html' => $this->renderRichLine($wrapper, $doc, $tokenizer, $rendered, $encoded, $markers), 'from' => 'source'];
         }
 
-        $rendered = $this->translateCall($encoded['text'], $locale, $category, null, array_merge($markers->sentinels(), $params, $tokenizer->tokenParams(count($slots))), $from, $this->earlierLookup($tokenizer, $encoded['earlier']));
+        // The line's own values: never one read inside an element the
+        // author excluded.
+        $rendered = $this->translateCall($encoded['text'], $locale, $category, null, array_merge($markers->sentinels($wrapper), $params, $tokenizer->tokenParams(count($slots))), $from, $this->earlierLookup($tokenizer, $encoded['earlier']));
 
         if ($from === 'fallback') {
             return ['html' => \Langsys\SDK\Html\ValueMarkers::expandHtml($rendered), 'from' => $from];
@@ -3416,7 +3418,7 @@ class Client
 
         if ($tokenizer->hasText($encoded['text']) && !$markers->markerOnly([$encoded['text']]) && !$markers->unnamedWithin()) {
             $slots = $encoded['slots'];
-            $rendered = $this->translateSource($encoded['text'], null, $category, null, array_merge($markers->sentinels(), $params, $tokenizer->tokenParams(count($slots))), false, $from, null, $this->earlierLookup($tokenizer, $encoded['earlier']));
+            $rendered = $this->translateSource($encoded['text'], null, $category, null, array_merge($markers->sentinels($host), $params, $tokenizer->tokenParams(count($slots))), false, $from, null, $this->earlierLookup($tokenizer, $encoded['earlier']));
 
             if ($tokenizer->hasTokens($rendered)) {
                 $rendered = (string) preg_replace('/\{m\d+[oc]\}/', '', $rendered);

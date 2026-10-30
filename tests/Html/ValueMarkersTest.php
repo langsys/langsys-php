@@ -669,6 +669,22 @@ class ValueMarkersTest extends TestCase
     }
 
     /**
+     * translateRich() and a content block's nested phrase host render the
+     * values of their own text too, never one read inside an element the
+     * author excluded; the page path is the control.
+     */
+    public function testARichLineAndANestedHostTakeOnlyTheirOwnValues(): void
+    {
+        $catalog = ['UI' => ['{m0o}{m0c} Outer {m1o}{name}{m1c}' => '{m0o}{m0c} Fuera {m1o}{name}{m1c}']];
+        $line = '<span translate="no">by ' . self::comment('name', 'Q') . '</span> Outer <b>' . self::comment('name', 'Ana') . '</b>';
+        $own = 'Fuera <b>' . self::comment('name', 'Ana') . '</b>';
+
+        $this->assertStringContainsString($own, $this->client($catalog)->translateRich($line, 'es-es', 'UI')['html'], 'translateRich()');
+        $this->assertStringContainsString($own, $this->client($catalog)->translateContentBlock('<div><p data-ls-phrase>' . $line . '</p></div>', 'UI'), 'a nested phrase host');
+        $this->assertStringContainsString($own, $this->render($this->client($catalog), 'page', '<p data-ls-phrase>' . $line . '</p>'), 'control: the page path');
+    }
+
+    /**
      * A `{name}` that a param or a translation writes is text: only text
      * nothing rewrote has its marked values put back.
      *
