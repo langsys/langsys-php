@@ -80,8 +80,9 @@ and it is never registered again.
   1.x decided by type alone, so it registered with every `write` key and never with an
   `ip_write` key. Now an `ip_write` key registers from an address on its allow-list and
   nothing from anywhere else, and a `write` key registers nothing when the API answers
-  `write_enabled: false` or leaves the field out. A `write` or `ip_write` key answered
-  `write_enabled: false` is reported once, as a warning. `getKeyType()` still reports the
+  `write_enabled: false` or leaves the field out. A `write` or `ip_write` key the API
+  answers without write permission (`write_enabled` false or absent) is reported once, as a
+  warning. `getKeyType()` still reports the
   key's type.
 - **`canWrite()` asks the API** the first time it is called in a request, even with the
   authorization cached, and throws the `LangsysException` of a request that fails, where

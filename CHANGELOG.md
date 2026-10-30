@@ -51,8 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the key's type alone. An `ip_write` key registers from an address on its allow-list,
   where 1.x never registered with one, and registers nothing from any other address. A
   `write` key registers nothing when the API answers `write_enabled: false` or leaves
-  the field out, where 1.x registered with it. A `write` or `ip_write` key answered
-  `write_enabled: false` is reported once, as a warning. A request that writes asks the
+  the field out, where 1.x registered with it. A `write` or `ip_write` key the API answers
+  without write permission (`write_enabled` false or absent) is reported once, as a warning. A request that writes asks the
   API once for its decision, when it flushes after the response, since a cached
   authorization holds none. `canWrite()` asks on its first call in a request and throws
   when the API cannot answer.

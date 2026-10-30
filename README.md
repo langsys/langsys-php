@@ -205,7 +205,8 @@ Every candidate is checked against the locales the project serves (its base and
 target locales); an unsupported one is skipped, never served. `fr` or `fr-be`
 matches a project serving `fr-fr`. The response's `Vary` names every request field the
 choice read: none when the URL decided, `Cookie` when a cookie or session value did, and
-`Accept-Language, Cookie` when the header or the base locale did, so a CDN never serves
+`Accept-Language, Cookie` when the header or the base locale did (`Accept-Language` alone
+when the cookie and session lookups are off and no resolver is set), so a CDN never serves
 one visitor's language to the next. The SDK never writes a cookie.
 
 ```php
