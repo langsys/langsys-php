@@ -7,6 +7,7 @@ use Langsys\SDK\Cache\NullCache;
 use Langsys\SDK\Client;
 use Langsys\SDK\Exception\ConfigurationException;
 use Langsys\SDK\Html\HtmlParser;
+use Langsys\SDK\Log\ErrorLogLogger;
 use Langsys\SDK\Messages\ServerMessage;
 use Langsys\SDK\Snapshot\Snapshot;
 use Langsys\SDK\Sync\SyncPlan;
@@ -179,18 +180,48 @@ class UnconfiguredClientTest extends TestCase
 
     public function testWithTheDefaultLoggerTheWarningReachesPhpsErrorLogOnce()
     {
+        $written = $this->errorLogWhile(function () {
+            $this->client(null, null, ['warn_runtime_requirements' => true]);
+        });
+
+        $this->assertSame(1, substr_count($written, 'Langsys is not configured'), $written);
+    }
+
+    public function testALoggerExtendingTheDefaultOneStillLeavesTheWarningInPhpsErrorLog()
+    {
+        $logger = new class extends ErrorLogLogger {
+            public $messages = [];
+
+            public function log($level, $message, array $context = [])
+            {
+                $this->messages[] = $message;
+            }
+        };
+
+        $written = $this->errorLogWhile(function () use ($logger) {
+            $this->client(null, null, ['logger' => $logger, 'warn_runtime_requirements' => true]);
+        });
+
+        $this->assertSame(1, substr_count($written, 'Langsys is not configured'), $written);
+        $this->assertCount(1, $logger->messages);
+    }
+
+    /**
+     * What PHP's error log received while $run ran.
+     */
+    private function errorLogWhile(callable $run)
+    {
         $log = tempnam(sys_get_temp_dir(), 'langsys-errlog-');
         $original = ini_get('error_log');
         ini_set('error_log', $log);
         try {
-            $this->client(null, null, ['warn_runtime_requirements' => true]);
-            $written = (string) file_get_contents($log);
+            $run();
+
+            return (string) file_get_contents($log);
         } finally {
             ini_set('error_log', $original === false ? '' : $original);
             @unlink($log);
         }
-
-        $this->assertSame(1, substr_count($written, 'Langsys is not configured'), $written);
     }
 
     public function testAConfiguredClientDoesNotWarn()

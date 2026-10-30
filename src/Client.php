@@ -583,8 +583,9 @@ class Client
     {
         $this->logger->warning($message, $context);
 
-        // The default logger has already written it to the PHP error log.
-        if (!$this->warnRuntimeRequirements || $this->logger instanceof ErrorLogLogger) {
+        // The default logger has already written it to the PHP error log. A
+        // subclass may write elsewhere, so only the class itself counts.
+        if (!$this->warnRuntimeRequirements || get_class($this->logger) === ErrorLogLogger::class) {
             return;
         }
 
