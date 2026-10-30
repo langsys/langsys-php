@@ -1,0 +1,11 @@
+# Kept out of the Composer download: tests, examples, development docs and tools.
+/.github                       export-ignore
+/.gitattributes                export-ignore
+/.gitignore                    export-ignore
+/CONFORMANCE.md                export-ignore
+/TESTING.md                    export-ignore
+/docs                          export-ignore
+/examples                      export-ignore
+/phpunit.xml                   export-ignore
+/tests                         export-ignore
+/src/Html/Encoding/generate.mjs export-ignore
