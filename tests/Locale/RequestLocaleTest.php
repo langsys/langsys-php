@@ -112,6 +112,21 @@ class RequestLocaleTest extends TestCase
     }
 
     /**
+     * A resolver stands in for the cookie step and may have read one, so a
+     * header or base decision after it varies on the cookie too, with the
+     * SDK's own cookie and session lookups off.
+     */
+    public function testAResolverCountsAsACookieReadForVary(): void
+    {
+        $options = ['cookie' => null, 'session_key' => null, 'resolver' => function () {
+            return null;
+        }];
+
+        $this->assertSame('Accept-Language, Cookie', $this->resolve(['accept_language' => 'es'], $options)['vary'], 'the header decided');
+        $this->assertSame('Accept-Language, Cookie', $this->resolve([], $options)['vary'], 'the base');
+    }
+
+    /**
      * Framework knobs choose where the values live, not the order.
      */
     public function testTheQueryAndCookieNamesAreWiring(): void
