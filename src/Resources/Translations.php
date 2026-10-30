@@ -100,20 +100,13 @@ class Translations
 
         $response = $this->getFlat($locale);
 
-        // A 2xx with no `data` key is FOREIGN, not an empty catalog.
-        //
-        // This was carved out as "a project with no translations legitimately
-        // has an empty catalog" and that is false: every translations response
-        // goes through ApiResponse::resourceResponse(), which assigns
-        // simpleResponse['data'] unconditionally, so an empty catalog arrives
-        // WITH the key. Nothing in the backend omits it.
-        //
-        // And the carve-out was reachable without anything exotic:
-        // HttpClient::handleResponse() turns any empty-bodied 2xx into [] - it
-        // has to, for 204 - so an empty 200 from a proxy or load balancer read
-        // as "no data", cached [], and blanked translations for the whole TTL.
-        // That is the very mode the validation below exists to prevent, let
-        // back in through the one door left open for it.
+        // A 2xx with no `data` key is FOREIGN, not an empty catalog: every
+        // translations response goes through ApiResponse::resourceResponse(),
+        // which assigns simpleResponse['data'] unconditionally, so an empty
+        // catalog arrives WITH the key. HttpClient::handleResponse() turns any
+        // empty-bodied 2xx into [] - it has to, for 204 - so an empty 200 from a
+        // proxy or load balancer lands here, and must not be cached as a blank
+        // catalog for the whole TTL.
         //
         // array_key_exists, not isset: `{"data":null}` is also not a catalog,
         // and isset() cannot tell it from an absent key.
@@ -126,25 +119,18 @@ class Translations
 
         $data = $response['data'];
 
-        // Validate BEFORE this can reach a cache. Returning the payload
-        // unchecked meant a malformed server response was written into the
-        // shared cache and then re-read for the rest of its TTL - the SDK
-        // manufacturing the poison it guards against on the next request.
+        // Validate BEFORE this can reach a cache, or a malformed response is
+        // written into the shared cache and re-read for the rest of its TTL.
         // Depth 2, because a top-level array of scalar slices breaks every
         // lookup just as thoroughly as a scalar does.
         //
-        // THROWS rather than returning []. Returning an empty catalog was the
-        // first attempt and it was worse than the defect: [] is a perfectly
-        // valid shape, so the caller cached it and every later request read a
-        // blank catalog for the rest of the TTL - an hour by default, fleet-wide
-        // on a shared Redis, and unable to self-heal at all under a read key,
-        // which never refetches. One bad response silently un-translated every
-        // page. Failing loudly puts this on the same footing as an unreachable
+        // THROWS rather than returning []: [] is a valid catalog, so a caller
+        // would cache it and every later request would read a blank catalog for
+        // the rest of the TTL - an hour by default, fleet-wide on a shared
+        // Redis, and unable to self-heal under a read key, which never
+        // refetches. Failing puts this on the same footing as an unreachable
         // API: the entry points degrade to source text, nothing is cached, and
         // the next request tries again.
-        //
-        // A MISSING data key is not this case - a project with no translations
-        // legitimately has an empty catalog, and caching that is correct.
         if (!is_array($data)) {
             throw new LangsysException(sprintf(
                 'Translations response for %s is not a catalog map (got %s)',

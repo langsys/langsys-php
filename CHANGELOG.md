@@ -5,12 +5,18 @@ All notable changes to the Langsys PHP SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.0.0] - Unreleased
+## [2.0.0] - 2026-10-30
 
 ### Upgrading from 1.x
 
 [UPGRADING.md](UPGRADING.md) says what to do about each of these.
 
+- **Laravel apps stay on 1.x for now.** `langsys/langsys-php-laravel` 1.0.0 requires
+  `langsys/langsys-php` `^1.3`, so an app that uses it stays on langsys-php 1.x until
+  the Laravel package releases a version built on 2.0.0.
+- **More extensions are declared.** `composer.json` requires `ext-dom`, `ext-libxml`,
+  `ext-filter` and `ext-tokenizer` beside `ext-curl`, `ext-json` and `ext-intl`, so a
+  host without one is refused at install rather than failing inside a render.
 - **Some content registers under a new id.** The SDK now reads text the way the other
   Langsys SDKs do, so the same content gets the same id on every SDK. Content whose id
   moves:
@@ -41,10 +47,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   human translations in the Translation Manager. Content filed under the older
   pipe-form ids is still found and is never registered again.
 - **Whether a request registers is the API's decision.** `canWrite()` and every
-  registration follow the `write_enabled` the API answers for that request, whatever
-  the key's type. An answer without the field is read-only. An `ip_write` key used from
-  an address off its allow-list registers nothing. A request that writes asks the API
-  once for its decision, when it flushes after the response, since a cached
+  registration follow the `write_enabled` the API answers for that request; 1.x went by
+  the key's type alone. An `ip_write` key registers from an address on its allow-list,
+  where 1.x never registered with one, and registers nothing from any other address. A
+  `write` key registers nothing when the API answers `write_enabled: false` or leaves
+  the field out, where 1.x registered with it. A `write` or `ip_write` key answered
+  `write_enabled: false` is reported once, as a warning. A request that writes asks the
+  API once for its decision, when it flushes after the response, since a cached
   authorization holds none. `canWrite()` asks on its first call in a request and throws
   when the API cannot answer.
 - **`flushPendingRegistrations()` reports `success: false` for work it did not do**,
@@ -52,8 +61,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `decision_unavailable` or `send_failed`. A read key reports `not_write_enabled` on
   every request by design.
 - **`getTranslations()` and `Translations::getTranslationMap()` throw** a
-  `LangsysException` for a response that is not a catalog and while a failed fetch's
-  window is open, where they returned `[]`. They return a plural Langsys generated for
+  `LangsysException` for a response that is not a catalog, where they returned `[]`;
+  `getTranslations()` also throws while a failed fetch's backoff window is open. They return a plural Langsys generated for
   a target locale as ICU MessageFormat, where they returned its `other` branch.
 - **`new Client()` without an API key or project ID no longer throws**: it builds an
   unconfigured client. Pass `'require_credentials' => true` to throw at first use.
@@ -62,7 +71,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   locale other than the base carries `data-ls-resolved="<locale>"` on `<html>`. A
   response whose locale the SDK chose carries a `Vary` naming every request field the
   choice read, unless `send_vary` is `false`.
-- **Warnings and errors go to PHP's error log** when no `log_path` is set.
+- **Warnings and errors go to PHP's error log** when no `log_path` is set;
+  `'error_log' => false` turns that off.
 - **Subclasses**: several protected methods take new optional parameters,
   `Interpolator::formatIcu()` returns `false` when the formatter fails on a pattern,
   `PageTranslator::markItemsAsRegistered()` and `markItemsAsRegisteredWithCategory()`
@@ -149,8 +159,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Unix timestamp.
 - **One catalog per locale, whatever its spelling** (`es-ES`, `es_ES`, `es-es`), and
   `sync()` clears it in any spelling.
-- **An empty or null category is one category**, so an uncategorised phrase stops
-  re-registering on every request.
+- **An empty or null category is one category**, in a call, a page's
+  `data-langsys-category`, a default category or a selector, so an uncategorised phrase
+  stops re-registering on every request.
 - **A registered but untranslated phrase is known**, renders its source and is not
   registered again.
 - **An outage costs one failed request, not one per phrase.** A failed catalog fetch
@@ -158,16 +169,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A malformed or empty response is never cached.
 - **A failing registration endpoint is backed off**, its items kept queued, and a
   refused send records nothing that stops the next request registering.
-- **The write decision is never cached**, so one request's or one key's answer never
-  reaches another.
+- **One key's authorization never answers for another.** The cached authorization is
+  kept per API key as well as per project, so a read key's answer never stops a write
+  key registering, nor the other way round.
 - **Every cache key is namespaced by project**, so two projects sharing a cache no
   longer suppress each other's registrations.
 - **Registrations are chunked to the batch limit the API advertises**, and a bad limit
   cannot take the request down.
 - **An API error in the error envelope** raises its message, with `getErrorCode()` and
   `getServerMessages()`, instead of a `TypeError`.
-- **A key whose type writes but that the API answers not write-enabled** is reported
-  once, as a warning.
 - **A cache that throws never takes a page down**: the page renders, in its source
   where the catalog cannot be read.
 - **A worker that builds a `Client` per request no longer grows** with every request.
@@ -176,7 +186,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A display locale cannot steer a request.** The `utilities()` resource throws
   `InvalidArgumentException` for one that names no path segment (empty, `.` or `..`).
 - **A truncated phrase ending in `…` is not registered beside its full text.**
-- **No deprecation notices on PHP 8.4.**
 
 ## [1.3.1] - 2026-08-16
 
@@ -546,3 +555,12 @@ First tagged release.
   $name))` — registers a new catalog phrase for every distinct runtime value and
   pollutes the catalog shared with every other Langsys SDK. Use `$params`
   instead. This cannot be detected at runtime; see README.
+
+[2.0.0]: https://github.com/langsys/langsys-php/compare/v1.3.1...v2.0.0
+[1.3.1]: https://github.com/langsys/langsys-php/compare/v1.3.0...v1.3.1
+[1.3.0]: https://github.com/langsys/langsys-php/compare/v1.2.0...v1.3.0
+[1.2.0]: https://github.com/langsys/langsys-php/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/langsys/langsys-php/compare/v1.0.2...v1.1.0
+[1.0.2]: https://github.com/langsys/langsys-php/compare/v1.0.1...v1.0.2
+[1.0.1]: https://github.com/langsys/langsys-php/compare/v1.0.0...v1.0.1
+[1.0.0]: https://github.com/langsys/langsys-php/releases/tag/v1.0.0

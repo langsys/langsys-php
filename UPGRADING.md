@@ -4,6 +4,20 @@
 1.x notices, and what to do about each. New features that change nothing until you use them
 are not listed.
 
+## Laravel apps
+
+`langsys/langsys-php-laravel` 1.0.0 requires `langsys/langsys-php` `^1.3`. A Laravel app
+that uses it stays on langsys-php 1.x until the Laravel package releases a version built on
+2.0.0, and then upgrades the two together.
+
+## Installing
+
+Raise the constraint with `composer require "langsys/langsys-php:^2.0"`; an app whose
+`composer.json` holds `^1.x` stays on 1.x through `composer update`. 2.0.0 also requires the
+`dom`, `libxml`, `filter` and `tokenizer` extensions, beside `curl`, `json` and `intl`.
+Most PHP builds include them; on a host that lacks one, Composer refuses the install and
+names it.
+
 ## Content that registers under a new identity
 
 A phrase's or block's identity is derived from its text. Where the SDK now reads text the
@@ -42,8 +56,9 @@ and it is never registered again.
   `send_failed`. Code that alerts on `!$result['success']` should check `reason` first: a
   read key returns `not_write_enabled` on every request by design.
 - **`Translations::getTranslationMap()` and `Client::getTranslations()`** throw
-  `LangsysException` when the response is not a catalog (no `data` key, a malformed body)
-  and while a failed fetch's backoff window is open, where they returned `[]`.
+  `LangsysException` when the response is not a catalog (no `data` key, a malformed body),
+  where they returned `[]`; `getTranslations()` also throws while a failed fetch's backoff
+  window is open.
   `translate()`, `translatePage()` and `translateContentBlock()` catch this and render the
   source; wrap direct calls in `try`.
 - **`Client::getTranslations()` and `Translations::getTranslationMap()`** return a plural
@@ -62,9 +77,12 @@ and it is never registered again.
 - **Registration is decided by the API, per request.** `canWrite()` returns, and every
   registration follows, the `write_enabled` the API answers for the request, never the
   key's type: the answer depends on the key, the caller's address and any write grant.
-  An answer without the field is read-only, for a `write` key too. An `ip_write` key used
-  from an address off its allow-list registers nothing; it registered before.
-  `getKeyType()` still reports the key's type.
+  1.x decided by type alone, so it registered with every `write` key and never with an
+  `ip_write` key. Now an `ip_write` key registers from an address on its allow-list and
+  nothing from anywhere else, and a `write` key registers nothing when the API answers
+  `write_enabled: false` or leaves the field out. A `write` or `ip_write` key answered
+  `write_enabled: false` is reported once, as a warning. `getKeyType()` still reports the
+  key's type.
 - **`canWrite()` asks the API** the first time it is called in a request, even with the
   authorization cached, and throws the `LangsysException` of a request that fails, where
   it answered from the cached authorization. Code that calls it directly wraps it in `try`.
@@ -104,7 +122,10 @@ Selectors, snapshot tests or string comparisons on rendered HTML may need updati
 ## Logging
 
 With no `log_path`, warnings and errors are written to PHP's error log with a `[langsys]`
-prefix. Pass `'error_log' => false` to turn that off.
+prefix. Pass `'error_log' => false` to turn that off. The one-time warnings about the setup
+itself (a client without credentials, a missing `intl`, a PHP below 7.4) are written to
+PHP's error log even then; pass `'warn_runtime_requirements' => false` to turn those off
+too.
 
 ## Subclasses
 

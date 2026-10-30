@@ -932,7 +932,8 @@ class Client
     }
 
     /**
-     * Get the key type (read or write).
+     * Get the key type (`read`, `write` or `ip_write`). Whether a request may
+     * write is canWrite(), the API's decision, not this.
      *
      * @return string|null
      */

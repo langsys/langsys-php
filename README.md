@@ -16,6 +16,7 @@ Official PHP SDK for the [Langsys](https://langsys.dev) Translation API. Manage 
 - cURL extension
 - JSON extension
 - intl extension (for ICU plurals and locale-aware number/date formatting)
+- DOM, libxml, filter and tokenizer extensions (included in most PHP builds)
 - Redis extension (optional, for Redis caching)
 
 ## Installation
@@ -23,8 +24,12 @@ Official PHP SDK for the [Langsys](https://langsys.dev) Translation API. Manage 
 ### Via Composer (Recommended)
 
 ```bash
-composer require langsys/langsys-php
+composer require "langsys/langsys-php:^2.0"
 ```
+
+**Laravel:** `langsys/langsys-php-laravel` 1.0.0 requires `langsys/langsys-php` `^1.3`, so a
+Laravel app that uses it stays on langsys-php 1.x until the Laravel package releases a
+version built on 2.0.0.
 
 Coming from 1.x? [UPGRADING.md](UPGRADING.md) lists what an existing app notices.
 To see each feature work locally, against an API double or a local Langsys, follow
@@ -74,7 +79,7 @@ Set these environment variables to configure the SDK:
 | `LANGSYS_PROJECT_ID` | Yes | - | Your project UUID. Without it the client is unconfigured |
 | `LANGSYS_API_URL` | No | `https://api.langsys.dev/api` | API base URL |
 | `LANGSYS_CACHE_DRIVER` | No | `file` | Cache driver: `file`, `redis`, or `none` |
-| `LANGSYS_CACHE_PATH` | No | System temp dir | Directory for file cache |
+| `LANGSYS_CACHE_PATH` | No | `langsys-cache` in the system temp dir | Directory for file cache |
 | `LANGSYS_CACHE_TTL` | No | `3600` | Cache TTL in seconds |
 | `LANGSYS_BASE_URL` | No | Auto-detect | Base URL for resolving relative URLs in content blocks |
 | `LANGSYS_LOG_PATH` | No | - | Path to log file (without it, warnings and errors go to PHP's error log) |
@@ -100,6 +105,8 @@ $client = new Client(
         'log_level' => 'info',                // Minimum level to log
         'messages_category' => 'Errors',      // Category for server message templates
         'require_credentials' => false,       // Throw at first use when the key or project ID is missing
+        // 'logger' => $logger,               // A Langsys\SDK\Log\LoggerInterface, used instead of log_path
+        'warn_runtime_requirements' => true,  // Write setup warnings straight to PHP's error log too
     ]
 );
 ```
@@ -158,7 +165,7 @@ The `translatePage()` method translates an entire HTML document in one pass. It 
   document has none (a fragment is given no head)
 - Translates `<title>`, meta description, OpenGraph tags, Twitter cards
 - Extracts and translates body content (phrases and content blocks)
-- Registers new phrases automatically (if write key)
+- Registers new phrases automatically (when the API lets the request write)
 - Falls back to original content when translations are missing
 
 ### Basic Usage
@@ -213,7 +220,10 @@ $locale = $client->getLocale();
 // for the URL and cookie steps (its answer is checked like any other)
 $client = new Client($key, $project, ['request_locale' => [
     'query_param' => 'lang',
-    'cookie' => 'site_lang',
+    'cookie' => 'site_lang',      // null turns the cookie lookup off
+    'session_key' => 'site_lang', // null turns the session lookup off
+    // 'path' => false,           // don't read the first path segment
+    // 'subdomain' => false,      // don't read the first label of a host with three or more
     // 'resolver' => fn (array $request) => ['locale' => $request['query']['l'] ?? null, 'from' => 'url'],
     // A framework that sets Vary on its own response: take it from the result instead
     // 'send_vary' => false,
@@ -271,7 +281,7 @@ echo $client->translatePage($html, 'homepage');
 
 // Output (with translations available):
 // <!DOCTYPE html>
-// <html lang="es-es">
+// <html lang="es-es" data-ls-resolved="es-es">
 // <head>
 //     <meta charset="utf-8">
 //     <title>Bienvenido</title>
@@ -495,7 +505,7 @@ $text = $client->translate('Hello, {name}!', null, 'UI', null, ['name' => 'Sarah
 ```
 
 If the phrase doesn't exist in translations, it will be:
-1. Queued for registration (if write key)
+1. Queued for registration (when the API lets the request write)
 2. Returned as-is (fallback to original)
 3. Added to in-memory cache to prevent re-queueing in same request
 
@@ -670,8 +680,7 @@ The nearest marked ancestor decides, and only `false` or `0` opt out.
 
 A sentence that shows a value — a user's name, a count — is one phrase however many
 values it is shown with. Rendered text alone can't say which part was a variable, so a
-template integration (such as the Laravel binding's Blade support) marks each value it
-prints:
+template integration marks each value it prints:
 
 ```html
 <p>Hello <!--ls:name-->Ana<!--/ls-->, welcome back</p>
@@ -693,8 +702,8 @@ itself:
 | `<p>Hello <!--ls:Name-->Ana<!--/ls--></p>` | nothing: a name must match `[a-z][a-z0-9_]*`, and a value that can't be named is never registered (one debug notice) |
 
 A param you pass yourself under the same name wins over the marked value. A pair with an
-element inside it, an unclosed pair and any other comment are ordinary markup, read as
-they always were. Text without markers registers what it renders, as before.
+element inside it, an unclosed pair and any other comment are ordinary markup. Text
+without markers registers what it renders.
 
 #### Plurals (ICU MessageFormat)
 
@@ -715,8 +724,10 @@ The client asks the API for that ICU form (`X-Langsys-Capabilities: icu`) on eve
 request, so a call that passes `count` renders the right form with no change.
 
 Requires the `intl` extension. If `intl` is disabled at runtime the SDK logs a
-warning naming the phrase and falls back to simple `{name}` substitution rather
-than failing the render. Malformed ICU also falls back rather than throwing.
+warning naming the phrase and renders without it rather than failing the render: a
+`select` still picks its branch, a plural picks an exact `=N` branch, else `one` at 1,
+else `other`, a number is written as given and a date as `Y-m-d`. Malformed ICU also falls back rather
+than throwing.
 
 ### Translate a Content Block
 
@@ -834,7 +845,8 @@ $response = $resource->getFlat('es-es');
 
 ## Registering Phrases
 
-> **Note**: Requires a write-type API key.
+> **Note**: Registers only when the API lets this request write (`canWrite()`); otherwise
+> `registerPhrases()` and `registerContentBlock()` throw a `LangsysException`.
 
 ### Register Simple Phrases
 
@@ -1090,7 +1102,7 @@ $client = new Client('key', 'project', ['cache_clear' => true]);
 
 ## Logging
 
-The SDK logs to a file in JSON Lines format when a writable file path is configured. Without one, warnings and errors still go to PHP's error log, prefixed `[langsys]`, so a failed registration or an unreachable API is never recorded nowhere; nothing below warning is written there. Pass `'error_log' => false` to turn that off.
+The SDK logs to a file in JSON Lines format when a writable file path is configured. Without one, warnings and errors still go to PHP's error log, prefixed `[langsys]`, so a failed registration or an unreachable API is never recorded nowhere; nothing below warning is written there. Pass `'error_log' => false` to turn that off. The one-time warnings about the setup itself (a client without credentials, a missing `intl`, a PHP below 7.4) are written to PHP's error log even then; pass `'warn_runtime_requirements' => false` to turn those off too.
 
 ### Enable Logging
 
@@ -1145,20 +1157,21 @@ Each log entry includes a `context` object with relevant data. Here are the cont
 
 | Message | Level | Context Variables |
 |---------|-------|-------------------|
-| `Cache hit` | debug | `key`, `source` (`memory`, `file`, or `redis`) |
-| `Cache miss` | debug | `key`, `reason` (`not_found`, `expired`, `invalid`) |
-| `Translations cache hit` | debug | `locale`, `source` |
+| `Cache hit` | debug | `key` |
+| `Cache miss` | debug | `key`, `reason` (`not_found`; for the file cache also `expired`, `read_error`, `invalid_data`) |
+| `Translations cache hit` | debug | `locale`, `source` (`memory` or `persistent`) |
 | `Translations cache miss` | debug | `locale` |
 | `Cache set` | debug | `key`, `ttl` |
-| `Cache delete` | debug | `key` |
-| `Cache cleared` | debug | `keys_removed` |
+| `Cache delete` | debug | `key`, `success` |
+| `Cache cleared` | debug | `files_removed` (file cache) or `keys_removed` (Redis) |
 | `Cache cleared on initialization` | info | (none) |
 
 **Authorization:**
 
 | Message | Level | Context Variables |
 |---------|-------|-------------------|
-| `Project authorized` | info | `project_id`, `key_type` |
+| `Project authorized` | info | `project_id`, `key_type`, `write_enabled` |
+| `This key cannot register new text: …` | warning | `project_id`, `key_type` |
 
 **Translations:**
 
@@ -1173,7 +1186,7 @@ Each log entry includes a `context` object with relevant data. Here are the cont
 | `Phrase queued for registration` | debug | `phrase`, `category` |
 | `Content block queued for registration` | debug | `custom_id`, `category`, `phrase_count` |
 | `Pending registrations flushed` | info | `phrases`, `content_blocks`, `success` |
-| `Cannot flush registrations: read-only key` | warning | (none) |
+| `Flush skipped - this request may not write` | debug | `pending_phrases`, `pending_content_blocks` |
 
 ### Log Entry Format
 
@@ -1301,9 +1314,11 @@ return [
 ```
 
 ```bash
-vendor/bin/langsys-messages             # lists templates, and reports each one it can't list
+vendor/bin/langsys-messages             # counts the templates, and reports each one it can't list
+vendor/bin/langsys-messages -v          # lists each template and where it comes from
 vendor/bin/langsys-messages --register  # registers the ones the catalog doesn't have yet
 vendor/bin/langsys-messages --strict    # exits 1 when any message can't be listed
+vendor/bin/langsys-messages --config=path/to/langsys-messages.php  # default: ./langsys-messages.php
 ```
 
 A message the command can't list still registers the first time your server sends it,
@@ -1428,8 +1443,9 @@ human translations and does not machine translate them.
   key, the locale and why.
 - Past your plan's human-translated words for the period, the rest are machine
   translated; `human_translations_skipped` counts them.
-- The import needs a write key; with any other it returns `success: false` and
-  `reason: 'not_write_enabled'`, and a refused request returns `reason: 'send_failed'`.
+- The import needs a request the API lets write; otherwise it returns `success: false`
+  and `reason: 'not_write_enabled'`, and a refused request returns
+  `reason: 'send_failed'`.
 
 List what can't be migrated as it stands by adding
 `new Langsys\SDK\Migration\LegacyKeysSource($client->getLegacyKeys())` to the sources
@@ -1483,8 +1499,8 @@ placeholder in the text, as the running call would. A phrase the catalog lacks
 but your other languages' files translate registers with those translations, stored as
 human translations.
 
-A line a binding prints raw — `@lang` and `@t` compile to `app('translator')->getHtml(...)`, `@choice` to
-`->choiceHtml(...)` — registers with its inline markup as tokens, `Read our {m0o}terms{m0c}`, the phrase
+A line a template prints raw — a `getHtml(...)` or `choiceHtml(...)` call on the translator,
+which the Laravel package's next release compiles `@lang`, `@t` and `@choice` to — registers with its inline markup as tokens, `Read our {m0o}terms{m0c}`, the phrase
 `translateRich()` looks up, and its translations from your other languages' files are
 tokenized the same way, each run on your source element it belongs to: a tag your line
 holds once is that element, and of a tag it holds more than once, each is the element with

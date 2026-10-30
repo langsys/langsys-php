@@ -134,7 +134,7 @@ echo "Welcome in Spanish: $translated\n"; // "Bienvenido"
 $translated = $client->translate('Content block phrase 1', 'es-es', 'UI', 'my-content-block-id');
 
 // ============================================================
-// Example 6: Registering new phrases (requires write key)
+// Example 6: Registering new phrases (when the API lets this request write)
 // ============================================================
 
 if ($client->canWrite()) {
@@ -154,16 +154,15 @@ if ($client->canWrite()) {
 
     // Register a content block
     $client->registerContentBlock(
-        'main-menu-001',                    // custom_id
         '<nav><a>Home</a><a>About</a></nav>', // HTML content
-        ['Home', 'About'],                   // phrases
-        'Navigation',                        // category
-        'Main Navigation Menu'               // label
+        'Navigation',                         // category
+        'Main Navigation Menu',               // label
+        'main-menu-001'                       // custom_id
     );
 
     echo "Phrases registered successfully!\n";
 } else {
-    echo "API key is read-only, cannot register phrases\n";
+    echo "This request may not write, so nothing was registered\n";
 }
 
 // ============================================================

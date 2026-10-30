@@ -6,9 +6,9 @@ use Langsys\SDK\Client;
 use Langsys\SDK\Exception\LangsysException;
 
 /**
- * The build-time command (MSG-7): list every template an app can send, fail the
- * build naming each message it cannot list, and register the templates the
- * catalog lacks under the messages category.
+ * The build-time command (MSG-7): list every template an app can send, report
+ * each message it cannot list (failing the build only under `strict`), and
+ * register the templates the catalog lacks under the messages category.
  *
  * collect() and register() carry the behaviour so a framework binding can
  * render them through its own console; run() is the stream wrapper
