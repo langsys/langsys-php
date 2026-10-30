@@ -61,7 +61,13 @@ final class ValueSets
             }
 
             if (is_string($value) || is_int($value)) {
-                $case = $enum::tryFrom($value);
+                // An int-backed enum's tryFrom() throws on a string that is not
+                // an integer, such as its own display word: no case holds it.
+                try {
+                    $case = $enum::tryFrom($value);
+                } catch (\TypeError $e) {
+                    $case = null;
+                }
                 if ($case !== null) {
                     return self::wordOf($case);
                 }

@@ -116,6 +116,51 @@ class ValueSetsTest extends TestCase
     }
 
     /**
+     * An int-backed set takes its case, its backing value or its display
+     * word, a word given as a string included.
+     *
+     * @dataProvider intBackedValueProvider
+     */
+    public function testAnIntBackedSetRendersItsSentence($value): void
+    {
+        $this->enums();
+        $value = is_callable($value) ? $value() : $value;
+        $client = $this->client(['__uncategorized__' => ['Priority is High.' => 'La prioridad es alta.']], [\Langsys\SDK\Tests\Frm\Fixtures\Priority::class]);
+
+        $this->assertSame(['text' => 'La prioridad es alta.', 'from' => 'catalog'], $client->resolve('Priority is {priority}.', null, null, ['priority' => $value]));
+    }
+
+    public function intBackedValueProvider(): array
+    {
+        return [
+            'the case' => [function () {
+                return \Langsys\SDK\Tests\Frm\Fixtures\Priority::High;
+            }],
+            'its backing value' => [3],
+            'its display word' => ['High'],
+        ];
+    }
+
+    /**
+     * A string no int-backed case holds is outside the set, and the call
+     * renders its template like any other value.
+     *
+     * @dataProvider notInTheIntBackedSetProvider
+     */
+    public function testAStringOutsideAnIntBackedSetRendersTheTemplate($value): void
+    {
+        $this->enums();
+        $client = $this->client(['__uncategorized__' => ['Priority is {priority}.' => 'La prioridad es {priority}.']], [\Langsys\SDK\Tests\Frm\Fixtures\Priority::class]);
+
+        $this->assertSame(['text' => "La prioridad es $value.", 'from' => 'catalog'], $client->resolve('Priority is {priority}.', null, null, ['priority' => $value]));
+    }
+
+    public function notInTheIntBackedSetProvider(): array
+    {
+        return ['a word' => ['urgent'], 'empty' => ['']];
+    }
+
+    /**
      * The spec's runtime test: a value added after the sync registers its
      * sentence after the first response that shows it, even with runtime
      * registration off, and not before - it is queued, not sent.

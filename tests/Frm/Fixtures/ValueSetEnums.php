@@ -30,6 +30,21 @@ enum Size: string
     case Large = 'Large';
 }
 
+#[TranslatesAs('priority')]
+enum Priority: int
+{
+    case High = 3;
+    case Low = 1;
+
+    public function label(): string
+    {
+        return match ($this) {
+            self::High => 'High',
+            self::Low => 'Low',
+        };
+    }
+}
+
 enum Undeclared: string
 {
     case Blue = 'Blue';
