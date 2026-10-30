@@ -238,6 +238,20 @@ class MarkedHostExcisionTest extends TestCase
     }
 
     /**
+     * HTML attribute names are case-insensitive, so a host marked in capitals
+     * is excised and registers on its own, as one marked in lowercase does.
+     *
+     * @dataProvider pathProvider
+     */
+    public function testAHostMarkedInCapitalsIsExcisedAndRegistersOnItsOwn($path): void
+    {
+        $this->assertSame([
+            'phrases' => ['Buy {m0o}now{m0c}'],
+            'blocks' => [['Inner one', 'two'], ['Outer intro', 'outer outro']],
+        ], $this->registered($path, '<p>Outer intro <span DATA-LS-CONTENTBLOCK>Inner one <b>two</b></span> <span Data-Ls-Phrase>Buy <b>now</b></span> outer outro</p>'));
+    }
+
+    /**
      * A nested host's attributes are its own: registered under its category,
      * not also under the enclosing phrase's.
      */

@@ -2894,7 +2894,8 @@ class Client
         // Which hosts are nested is read from the fragment as written: the
         // render stamps a single host with the block's id, and that stamp is
         // this unit's identity, not a nested declaration.
-        $source = strpos($html, 'data-ls-') === false && strpos($html, 'data-langsys-') === false ? null : $this->fragmentDocument($html);
+        // Attribute names are case-insensitive in HTML: DATA-LS-PHRASE marks a host too.
+        $source = stripos($html, 'data-ls-') === false && stripos($html, 'data-langsys-') === false ? null : $this->fragmentDocument($html);
         $sourceRoot = \Langsys\SDK\Html\Document::fragmentRoot($source);
 
         $rendered = $this->translateBlockUnit($html, $category, $params, false);
