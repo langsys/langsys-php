@@ -219,6 +219,24 @@ class LegacyKeysTest extends TestCase
         ];
     }
 
+    /**
+     * A key a group file holds with a dot in it resolves, as Laravel's
+     * Arr::get reads the file: the key as written first, then its path.
+     */
+    public function testADottedKeyAGroupFileHoldsAsWrittenResolves(): void
+    {
+        $php = $this->php('app/lang/en/auth.php', ['failed.login' => 'These credentials do not match.', 'nested' => ['ok' => 'Fine']]);
+        $keys = new LegacyKeys(['files' => [$php]]);
+
+        $entry = $keys->resolve('auth.failed.login');
+        $this->assertNotNull($entry, 'the key resolves');
+        $this->assertSame(['These credentials do not match.', 'auth'], [$entry['phrase'], $entry['category']]);
+        $this->assertSame('Fine', $keys->resolve('auth.nested.ok')['phrase'], 'control: a nested key');
+        foreach ($keys->keys() as $key) {
+            $this->assertNotNull($keys->resolve($key), $key . ' is listed, so it resolves');
+        }
+    }
+
     public function testAnUnrecognisedValueResolvesAsWrittenAndIsReported(): void
     {
         $php = $this->php('app/lang/en/greeting.php', ['hello' => 'Hello, :Name']);

@@ -359,7 +359,14 @@ final class LegacyKeys
                 return null;
             }
 
-            $value = self::valueAt($data, explode('.', substr($key, strlen($group) + 1)), $pairs);
+            // As Laravel's Arr::get reads the group: an item that holds a dot
+            // is a key as written first, then a path.
+            $item = substr($key, strlen($group) + 1);
+            if (strpos($item, '.') !== false && array_key_exists($item, $data) && is_string($data[$item])) {
+                return [$data[$item], $group];
+            }
+
+            $value = self::valueAt($data, explode('.', $item), $pairs);
 
             return $value === null ? null : [$value, $group];
         }
