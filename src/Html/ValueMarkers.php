@@ -525,10 +525,11 @@ final class ValueMarkers
 
     /**
      * $html with every sentinel a live reader issued written as the marker it
-     * came from, its value escaped: how a line rendered as a string rather
-     * than as nodes, such as a language file's, gives its values back. Inside
-     * a tag, where no marker can stand, a sentinel is its escaped value.
-     * Anything else shaped like one is left as it is.
+     * came from, its value escaped quotes and all: how a line rendered as a
+     * string rather than as nodes, such as a language file's, gives its
+     * values back. Inside a tag or a comment, where no marker can stand, a
+     * sentinel is its escaped value. Anything else shaped like one is left as
+     * it is.
      *
      * @param string $html
      * @return string
@@ -550,20 +551,16 @@ final class ValueMarkers
             }
             list($name, $value, $form) = $decoded;
 
-            $before = substr($html, 0, $offset);
-            $lt = strrpos($before, '<');
-            $gt = strrpos($before, '>');
-
-            if ($lt !== false && ($gt === false || $lt > $gt)) {
+            if (self::insideTag($html, $offset)) {
                 $marker = htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             } elseif (is_array($form)) {
                 $marker = '<span';
                 foreach ($form as $attribute => $attributeValue) {
                     $marker .= ' ' . $attribute . '="' . htmlspecialchars((string) $attributeValue, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '"';
                 }
-                $marker .= '>' . htmlspecialchars((string) $value, ENT_NOQUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</span>';
+                $marker .= '>' . htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</span>';
             } else {
-                $marker = '<!--ls:' . $name . '-->' . htmlspecialchars((string) $value, ENT_NOQUOTES | ENT_SUBSTITUTE, 'UTF-8') . '<!--/ls-->';
+                $marker = '<!--ls:' . $name . '-->' . htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '<!--/ls-->';
             }
 
             $out .= substr($html, $at, $offset - $at) . $marker;
@@ -571,6 +568,65 @@ final class ValueMarkers
         }
 
         return $out . substr($html, $at);
+    }
+
+    /**
+     * Whether $offset in $html falls inside a tag, its quoted attribute
+     * values included whatever they hold, or inside a comment.
+     *
+     * @param string $html
+     * @param int $offset
+     * @return bool
+     */
+    private static function insideTag($html, $offset)
+    {
+        $length = strlen($html);
+        $at = 0;
+
+        while (($open = strpos($html, '<', $at)) !== false && $open < $offset) {
+            if (substr_compare($html, '<!--', $open, 4) === 0) {
+                $close = strpos($html, '-->', $open + 4);
+                if ($close === false || $close + 3 > $offset) {
+                    return true;
+                }
+                $at = $close + 3;
+                continue;
+            }
+
+            // Only `<` before a letter, `/`, `!` or `?` opens a tag.
+            if (!preg_match('#\G<[A-Za-z/!?]#', $html, $unused, 0, $open)) {
+                $at = $open + 1;
+                continue;
+            }
+
+            // A quote opens a value only after `=`; a `>` inside one is text.
+            $quote = null;
+            $afterEquals = false;
+            for ($i = $open + 1; $i < $length; $i++) {
+                $char = $html[$i];
+                if ($quote !== null) {
+                    if ($char === $quote) {
+                        $quote = null;
+                    }
+                } elseif ($char === '>') {
+                    break;
+                } elseif ($afterEquals && ($char === '"' || $char === "'")) {
+                    $quote = $char;
+                    $afterEquals = false;
+                } elseif ($char === '=') {
+                    $afterEquals = true;
+                } elseif (strpos(" \t\n\f\r", $char) === false) {
+                    $afterEquals = false;
+                }
+            }
+
+            if ($i >= $offset) {
+                return true;
+            }
+            $at = $i + 1;
+        }
+
+        return false;
     }
 
     /**

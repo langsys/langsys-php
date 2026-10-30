@@ -715,6 +715,39 @@ class ValueMarkersTest extends TestCase
         );
     }
 
+    /**
+     * A marked value written back into a string line inside an attribute,
+     * one whose value holds a `>` included, is the value alone, escaped
+     * quotes and all: a quote in it never closes the attribute.
+     *
+     * @dataProvider markerFormProvider
+     */
+    public function testAMarkedValueInAStringLineNeverOpensAnAttribute($form): void
+    {
+        $client = $this->client()->useMissFallback(function () {
+            return '<a title="Home > {name}" href="/p">Hola {name}</a>';
+        });
+
+        $html = $client->translateRich('Hello ' . self::$form('name', 'x&quot; onmouseover=&quot;y') . ', see <a href="/p">profile</a>', 'es-es', 'UI')['html'];
+
+        $root = self::fragmentRoot($html);
+        $attributes = [];
+        foreach ($root->getElementsByTagName('*') as $element) {
+            foreach ($element->attributes as $attribute) {
+                $attributes[] = $attribute->name;
+            }
+        }
+        $this->assertNotContains('onmouseover', $attributes, $html);
+        $link = $root->getElementsByTagName('a')->item(0);
+        $this->assertSame('Home > x" onmouseover="y', $link->getAttribute('title'), $html);
+        $this->assertSame('Hola x" onmouseover="y', $link->textContent, 'the text keeps its marker and the value as written');
+    }
+
+    public function markerFormProvider(): array
+    {
+        return ['comment form' => ['comment'], 'span form' => ['span']];
+    }
+
     private static function fragmentRoot($html)
     {
         $internalErrors = libxml_use_internal_errors(true);

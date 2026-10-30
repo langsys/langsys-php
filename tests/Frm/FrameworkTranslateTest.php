@@ -278,8 +278,8 @@ class FrameworkTranslateTest extends TestCase
 
     /**
      * A marked value comes back in a language file's line as the marker it
-     * was read from, its value escaped; inside a tag, where no marker can
-     * stand, as its escaped value.
+     * was read from, its value escaped quotes and all; inside a tag, where no
+     * marker can stand, as its escaped value.
      */
     public function testALanguageFileLineGivesAMarkedValueBackAsItsMarker(): void
     {
@@ -296,7 +296,7 @@ class FrameworkTranslateTest extends TestCase
             $client->translateRich('Hello <!--ls:name-->B&amp;ob<!--/ls--> <b>x</b>')
         );
         $this->assertSame(
-            ['html' => 'Hola <abbr title="Ana &lt;3 &quot;A&quot;"><span data-ls-param="name">Ana &lt;3 "A"</span></abbr> <i>y</i>', 'from' => 'fallback'],
+            ['html' => 'Hola <abbr title="Ana &lt;3 &quot;A&quot;"><span data-ls-param="name">Ana &lt;3 &quot;A&quot;</span></abbr> <i>y</i>', 'from' => 'fallback'],
             $client->translateRich('Hi <span data-ls-param="name">Ana &lt;3 "A"</span> <i>y</i>')
         );
     }
