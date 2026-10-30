@@ -9,6 +9,7 @@ use Langsys\SDK\Html\HtmlParser;
 use Langsys\SDK\Messages\ServerMessage;
 use Langsys\SDK\Snapshot\Snapshot;
 use Langsys\SDK\Tests\Mock\MockHttpClient;
+use Langsys\SDK\Tests\Support\SpyLogger;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -25,11 +26,11 @@ class SnapshotSeedTest extends TestCase
      */
     private $http;
 
-    private function snapshot(array $catalog = null)
+    private function snapshot(array $catalog = null, $projectId = 'project-id')
     {
         $parser = new HtmlParser();
         $payload = [
-            'project_id' => 'project-id',
+            'project_id' => $projectId,
             'generated_at' => '2026-09-25T00:00:00Z',
             'base_locale' => 'en-us',
             'locales' => ['es-es'],
@@ -107,6 +108,25 @@ class SnapshotSeedTest extends TestCase
         $this->assertSame('Guardar', $client->translate('Save', null, 'UI'));
         $this->assertSame(0, $this->fetches());
         $this->assertFalse($client->hasPendingRegistrations(), 'the snapshot never decides a registration');
+    }
+
+    /**
+     * A snapshot made for another project answers nothing here, whichever way
+     * it is given, and says so: the live catalog answers.
+     */
+    public function testASnapshotMadeForAnotherProjectIsNotUsed(): void
+    {
+        foreach (['useSnapshot()' => false, 'the snapshot option' => true] as $how => $asOption) {
+            $logger = new SpyLogger();
+            $client = $asOption
+                ? $this->client(['UI' => ['Save' => 'Guardar (en vivo)']], ['snapshot' => $this->snapshot(null, 'another-project'), 'logger' => $logger])
+                : $this->client(['UI' => ['Save' => 'Guardar (en vivo)']], ['logger' => $logger])->useSnapshot($this->snapshot(null, 'another-project'));
+            $client->setLocale('es-es');
+
+            $this->assertSame('Guardar (en vivo)', $client->translate('Save', null, 'UI'), $how);
+            $this->assertSame(1, $this->fetches(), $how);
+            $this->assertCount(1, $logger->messagesAt('warning'), $how);
+        }
     }
 
     public function testTheSnapshotOptionSeedsTheSameWay(): void

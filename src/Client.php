@@ -378,7 +378,7 @@ class Client
         }
 
         if (isset($options['snapshot']) && $options['snapshot'] instanceof Snapshot) {
-            $this->snapshot = $options['snapshot'];
+            $this->useSnapshot($options['snapshot']);
         }
 
         if (array_key_exists('warn_runtime_requirements', $options)) {
@@ -1603,12 +1603,25 @@ class Client
      * the live catalog. While authorization is unavailable, the snapshot also
      * gives the request-locale resolver the locales it may serve (SRV-6).
      * When to seed - at boot, per request, before hydration - is the caller's.
+     * A snapshot made for another project is not used, and a warning says so.
      *
      * @param Snapshot $snapshot
      * @return $this
      */
     public function useSnapshot(Snapshot $snapshot)
     {
+        // A snapshot answers only for the project it was made from: another
+        // project's would serve its translations here with no request.
+        $project = (string) $this->config->getProjectId();
+        if ($project !== '' && $snapshot->projectId() !== $project) {
+            $this->logger->warning('A snapshot made for another project is not used', [
+                'project_id' => $project,
+                'snapshot_project_id' => $snapshot->projectId(),
+            ]);
+
+            return $this;
+        }
+
         $this->snapshot = $snapshot;
 
         return $this;
