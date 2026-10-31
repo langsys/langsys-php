@@ -186,7 +186,8 @@ final class Document
      * whose bodies libxml parses as markup; in xmp, iframe, noembed and
      * noframes, which a browser reads without decoding, `<` and `&` are
      * escaped too where libxml2 parses those bodies as markup (2.9), and
-     * html() writes them back as they were. A browser reads
+     * html() writes them back as they were. A start tag the input ends
+     * inside is left out, as a browser leaves it out. A browser reads
      * `<!-->` and `<!--->` as an empty comment and libxml as opening one that
      * runs to a later `-->`, so they are written `<!---->`.
      *
@@ -556,6 +557,12 @@ final class Document
                 $edits[] = [$lt, 1, '&lt;'];
                 $at = $lt + 1;
                 continue;
+            }
+
+            // A start tag the input ends inside is no tag at all to a browser.
+            if (substr($m[0], -1) !== '>') {
+                $edits[] = [$lt, strlen($m[0]), ''];
+                break;
             }
 
             $name = strtolower($m[1]);
