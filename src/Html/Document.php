@@ -547,6 +547,9 @@ final class Document
             if (substr_compare($html, '<!--', $lt, 4) === 0) {
                 $at = self::commentEnd($html, $lt);
                 if ($at === null) {
+                    // A comment the input ends inside ends with it, as in a
+                    // browser; libxml 2.9 would drop it.
+                    $edits[] = [strlen($html), 0, '-->'];
                     break;
                 }
                 if ($at - $lt <= 6) {

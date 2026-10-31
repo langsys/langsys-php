@@ -605,13 +605,13 @@ class RawTextBodyTest extends TestCase
         $this->assertSame('<p>Hi</p>', \Langsys\SDK\Html\ValueMarkers::placeholderHtml('<p>Hi</p>'), 'a closed fragment is untouched');
         $this->assertStringNotContainsString('ls-fragment', $this->client()->translateContentBlock('<div><p>Hello</p><p>World</p>', 'UI'), 'nor one leaving an element open');
 
-        // A fragment ending inside a start tag, an attribute value or a
-        // comment leaves that construct out, as a browser does, and the id is
-        // the fragment's own.
+        // A fragment ending inside a start tag or an attribute value leaves
+        // that tag out, and one ending inside a comment ends the comment
+        // there, as a browser does; the id is the fragment's own.
         $parser = new HtmlParser();
         foreach ([
             '<p>Hello world</p><p>Second</p><script' => '<p>Hello world</p><p>Second</p>',
-            '<p>Hello world</p><p>Second</p><!-- todo' => '<p>Hello world</p><p>Second</p>',
+            '<p>Hello world</p><p>Second</p><!-- todo' => '<p>Hello world</p><p>Second</p><!-- todo-->',
             '<p>Hello world</p><a title="Read more>Link' => '<p>Hello world</p>',
         ] as $html => $rendered) {
             $out = preg_replace('/ data-ls-contentblock="[0-9a-f]+"/', '', $this->client()->translateContentBlock($html, 'UI'));
