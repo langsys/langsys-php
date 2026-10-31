@@ -150,9 +150,20 @@ final class SourceScanner
                 $implements = [];
                 for ($j = $i + 1; $j < $count && $tokens[$j] !== '{'; $j++) {
                     if (is_array($tokens[$j]) && $tokens[$j][0] === T_IMPLEMENTS) {
+                        // A qualified name is one token on PHP 8 and its
+                        // segments and separators before, so each name is
+                        // joined up to the comma that ends it.
+                        $names = [''];
                         for ($k = $j + 1; $k < $count && $tokens[$k] !== '{'; $k++) {
-                            if (is_array($tokens[$k]) && in_array($tokens[$k][0], self::nameTokens(), true)) {
-                                $implements[] = substr('\\' . $tokens[$k][1], strrpos('\\' . $tokens[$k][1], '\\') + 1);
+                            if ($tokens[$k] === ',') {
+                                $names[] = '';
+                            } elseif (is_array($tokens[$k]) && ($tokens[$k][0] === T_NS_SEPARATOR || in_array($tokens[$k][0], self::nameTokens(), true))) {
+                                $names[count($names) - 1] .= $tokens[$k][1];
+                            }
+                        }
+                        foreach ($names as $qualified) {
+                            if ($qualified !== '') {
+                                $implements[] = substr('\\' . $qualified, strrpos('\\' . $qualified, '\\') + 1);
                             }
                         }
                         break;
