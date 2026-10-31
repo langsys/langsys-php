@@ -35,6 +35,7 @@ machine translated, and billed, again.
 | A content block containing `<script>`, `<style>`, `<template>`, `<noscript>` or `<math>` | Their contents are no longer part of the block |
 | Text inside `<svg>` | Translated now, so a block containing it has new text |
 | A content block holding a `<textarea>` or `<title>` with markup in it | Its body is read as the text a browser shows |
+| A fragment that ends inside a start tag, such as `…<a title="Read more` | The unfinished tag is left out, as a browser leaves it out |
 | `translateContentBlock('<p>Hello</p>')` — one phrase in one text node | Registers as the phrase `Hello`, not as a block |
 | A paragraph with a translatable attribute (`title`, `alt`, …) on the page | Registers as one block of the attribute and the text |
 | An `<img alt>`, `<input placeholder>` or inline element outside a paragraph | Registers; it did not before |

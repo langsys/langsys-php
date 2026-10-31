@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `<math>`, whose contents are no longer part of it;
   - a block holding text inside `<svg>`, which is translated now;
   - a block holding a `<textarea>` or `<title>` with markup in it;
+  - a fragment that ends inside a start tag, such as `…<a title="Read more`, whose
+    unfinished tag is left out, as a browser leaves it out;
   - a block holding an element marked `data-ls-phrase` or `data-ls-contentblock`,
     which is a unit of its own;
   - a one-phrase fragment such as `translateContentBlock('<p>Hello</p>')`, which is the
@@ -146,7 +148,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mark, its declared charset or its bytes, by the browser's own decoders; written out
   in UTF-8; a page without `<html>`, `<head>` or `<body>` is translated whole; its
   scripts and styles come back byte for byte; a `<` that starts no tag is text; and
-  `<!-->` is an empty comment. Each of these lost or mangled part of a page.
+  `<!-->` is an empty comment. Each of these lost or mangled part of a page. A page
+  reads and writes the same on libxml2 2.9 and 2.15 (Ubuntu 26.04's): it starts with
+  its own first bytes, never a stray `<!--?xml encoding="UTF-8"-->`, and its xmp and
+  iframe bodies come back escaped once.
 - **Script, style and excluded text are never rewritten** by a translation.
 - **A plural Langsys generates for a target locale renders its singular** at a count
   of 1. Every request asks the API for ICU.

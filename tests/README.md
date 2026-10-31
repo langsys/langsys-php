@@ -6,7 +6,15 @@ and needs nothing but this repository; CI runs it alone
 runs against an SDK test clone (below) and fails without one. `vendor/bin/phpunit`
 runs both. Run the no-clone suite a second time without `ext-intl`
 (`php -n vendor/bin/phpunit --testsuite no-clone`) — several behaviours only
-exist on that path, and CI has a dedicated job for it.
+exist on that path, and CI has a dedicated job for it. `-n` removes intl only
+where PHP loads it as a shared extension; Homebrew's PHP builds it in, so there
+the CI job is the check.
+
+CI runs every job on `ubuntu-24.04` (libxml2 2.9) and `ubuntu-latest` (libxml2
+2.15), which parse HTML differently; the SDK reads a page the same on both, and
+`Html\Document::readsRawBodies()` is how it tells them apart. PHP 7.4 to 8.2 run
+locally from the `shivammathur/php` Homebrew tap
+(`/opt/homebrew/opt/php@7.4/bin/php vendor/bin/phpunit --testsuite no-clone`).
 
 ## Contract tests
 

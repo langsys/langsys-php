@@ -350,15 +350,17 @@ the full comparison.
 over.** A tokenized phrase's key IS its encoded string, so a disagreement about how the DOM is
 BUILT changes the key before canonicalisation is reached; no TOK rule can close one. Measured
 against `langsys-js-server` @ `8105faa`, where real Chromium 153 agreed with parse5 9 of 9 over
-these families, so the expectations are the family's answer rather than one engine's. libxml2 **2.9.13**,
-parsed directly, scores **3 of 7**; through `Html\Document::load()`, which every SDK path parses
-with, the SDK scores **5 of 7**, because it reads a textarea or title body as the text a browser
-reads (`tests/Html/MarkupTokenizerTest.php::testTheSdkReadsEachRowAsItsRecordSays`):
+these families, so the expectations are the family's answer rather than one engine's. libxml2,
+parsed directly, scores **3 of 7** on 2.9.13 and **5 of 7** on 2.15.2; through
+`Html\Document::load()`, which every SDK path parses with, the SDK scores **5 of 7** on both,
+because it reads a textarea or title body as the text a browser reads
+(`tests/Html/MarkupTokenizerTest.php::testTheSdkReadsEachRowAsItsRecordSays`, run in CI on
+libxml2 2.9.14 and 2.15.2):
 
 | Family | Result | What libxml2 does differently |
 |---|---|---|
 | implied close | **3/3 agree** | `<p>` after `<p>`, bare `<li>`, bare `<option>` all close identically |
-| raw text | **0/2 diverge** in libxml2; **2/2 agree** through `Document::load()` | Chromium and parse5 make a `<textarea>`/`<title>` body RAW TEXT, so `<b>` is literal characters. libxml2 parses it as markup, so `<b>` becomes an element, takes a slot, and shifts every later slot index; `Document::load()` writes each `<` in such a body as `&lt;` before libxml2 parses, so the SDK's keys and block ids are the JS family's |
+| raw text | **0/2 diverge** in libxml2 2.9.13, **2/2 agree** in 2.15.2; **2/2 agree** through `Document::load()` on both | Chromium and parse5 make a `<textarea>`/`<title>` body RAW TEXT, so `<b>` is literal characters. libxml2 2.9 parses it as markup, so `<b>` becomes an element, takes a slot, and shifts every later slot index; 2.15 reads it as text. `Document::load()` writes each `<` in such a body as `&lt;` before libxml2 parses, so the SDK's keys and block ids are the JS family's on either |
 | foster parenting | **0/2 diverge** | Chromium and parse5 move a stray `<b>` and loose text OUT of a `<table>`, ahead of it. libxml2 leaves both inside. They also insert a `<tbody>` libxml2 does not, adding a slot level |
 
 Each divergence is a **different key for identical source**. The keys are the ENCODED STRINGS
@@ -387,13 +389,14 @@ A stray element in a table splits a phrase key silently and leaves block ids alo
 `<title>`/`<textarea>` carrying markup, which libxml2 alone splits in both identities, agrees
 through the loader.
 
-**The libxml2 answers in this section are 2.9.13's, not libxml2's.** Measured by the Reviewer:
-Nokogiri on libxml2 2.13.9 behaves like 2.9.13, while lxml on libxml2 2.14.6 — like parse5 7.3.0
-and happy-dom 20.10.2 — gives the JS-family tokens on all seven parse-model inputs and drops no
-control characters. The boundary lies between 2.13.9 and 2.14.6; no cause is stated, because none
-was measured. PHP takes libxml2 from the PHP build and composer cannot pin it, so this SDK's ids
-for content carrying markup inside `<textarea>`/`<title>` move when a host's libxml2 crosses that
-line. `LIBXML_DOTTED_VERSION` is recorded in the parse-model fixture's provenance.
+**libxml2 reads these inputs differently by version, and the SDK's reading does not depend on
+it.** libxml2 2.15.2, as Ubuntu 26.04 ships it, reads a textarea or title body as text, as parse5
+7.3.0 does, and agrees on both raw-text rows; lxml on libxml2 2.14.6 does too, while Nokogiri on
+2.13.9 behaves like 2.9.13. No libxml2 measured foster-parents: 2.9.13, lxml's 2.14.6 and 2.15.2
+all keep the stray `<b>` and the loose text inside the table. The fixture's `libxml2_raw_bodies`
+column holds 2.15.2's answers where they differ, and `Html\Document::readsRawBodies()` asks libxml2
+once per process which reading it has. Through `Document::load()` the SDK gives the same tokens, keys
+and block ids on 2.9 and on 2.15, so a host's libxml2 version moves none of them.
 
 ### C0 controls
 
