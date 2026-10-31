@@ -15,8 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   registers, the `Client`'s options, interpolation and ICU, value markers, server
   messages, key-based language files and sync, snapshots, the request's locale, the
   reference lists, caching and long-lived workers. `npx langsys-skill install` installs it
-  from `vendor/langsys/langsys-php/skill/`. A test holds every method, class, option,
-  environment variable, command and link it names to the code.
+  from `vendor/langsys/langsys-php/skill/`. A test holds the names it uses to the code:
+  methods, classes, options and the keys inside them, environment variables, commands and
+  their flags, and links and the headings they point to.
 
 ## [2.0.0] - 2026-10-31
 

@@ -17,6 +17,13 @@ use PHPUnit\Framework\TestCase;
  *
  * problems() reads the docs and the facts as data, so each check is proven by
  * planting the defect it exists to catch.
+ *
+ * It holds names, not behaviour: what a method does, an argument's order and
+ * an option's default are the review's to check. Three name checks are out of
+ * reach on purpose. Whether a `Class::method()` is static: the skill's prose
+ * writes instance methods that way too (`MessageCatalog::addRule()`). A method
+ * past the first link of a chain. And an object in a variable RECEIVERS
+ * doesn't name, since the examples' other variables are the reader's own.
  */
 class SkillGateTest extends TestCase
 {
@@ -40,6 +47,21 @@ class SkillGateTest extends TestCase
     const NOT_CONSTRUCTOR_OPTIONS = ['send_vary'];
 
     const PREAMBLE = '/<!-- langsys-skill-preamble:start -->\n(.*?)\n<!-- langsys-skill-preamble:end -->/s';
+
+    /**
+     * Where the skill writes an array the SDK reads keys from, and which keys
+     * those are. Each pattern ends at the array's opening bracket.
+     */
+    const KEYED_LITERALS = [
+        "/'request_locale' => \\[/" => 'request_locale',
+        '/resolveRequestLocale\\(\\[/' => 'request',
+        "/'redis' => \\[/" => 'redis',
+        '/new RedisCache\\(\\[/' => 'redis',
+        "/'migration' => \\[/" => 'migration',
+        "/'namespaces' => \\[/" => 'namespaces',
+        '/importLegacyTranslations\\(\\[/' => 'targets',
+        '#flushPendingRegistrations\\(\\);\\s*//\\s*\\[#' => 'flush',
+    ];
 
     public function testTheSkillHasNoProblemAgainstTheCode(): void
     {
@@ -138,8 +160,50 @@ class SkillGateTest extends TestCase
                 'SKILL.md: does not state the PHP 8.1 floor composer.json requires',
             ],
             'skill/ kept out of the Composer download' => [
-                function (&$d, &$f) { $f['gitattributes'] .= "/skill export-ignore\n"; },
-                '.gitattributes: skill/ is export-ignored, so the package would not ship it',
+                function (&$d, &$f) { $f['export_ignored'] = self::exportIgnored("/skill export-ignore\n"); },
+                '.gitattributes: skill is export-ignored, so the package would not ship it',
+            ],
+            'skill/ kept out by a pattern that names no directory' => [
+                function (&$d, &$f) { $f['export_ignored'] = self::exportIgnored("*.md export-ignore\n"); },
+                '.gitattributes: skill/SKILL.md is export-ignored, so the package would not ship it',
+            ],
+            'a bare class name that does not exist' => [
+                function (&$d, &$f) { $d['init-config.md'] = str_replace('| `ApiException` |', '| `ApiErrorException` |', $d['init-config.md']); },
+                'init-config.md: `ApiErrorException` names no class of this SDK, of PHP or of the skill\'s own examples',
+            ],
+            'a cache class the SDK does not have' => [
+                function (&$d, &$f) { $d['SKILL.md'] = str_replace('`RedisCache`, `NullCache`', '`RedisCache`, `ApcuCache`', $d['SKILL.md']); },
+                'SKILL.md: `ApcuCache` names no class of this SDK, of PHP or of the skill\'s own examples',
+            ],
+            'a command flag the command does not take' => [
+                function (&$d, &$f) { $d['migration.md'] = str_replace('--out=catalog', '--output=catalog', $d['migration.md']); },
+                'migration.md: --output is not an option of langsys-snapshot',
+            ],
+            'a request_locale key RequestLocale does not read' => [
+                function (&$d, &$f) { $d['locales.md'] = str_replace("'query_param' =>", "'query' =>", $d['locales.md']); },
+                'locales.md: \'query\' is not a request_locale key',
+            ],
+            'a request key resolveRequestLocale() does not read' => [
+                function (&$d, &$f) { $d['server-rendering.md'] = str_replace("'accept_language' =>", "'accept-language' =>", $d['server-rendering.md']); },
+                'server-rendering.md: \'accept-language\' is not a request key resolveRequestLocale() reads',
+            ],
+            'a redis key RedisCache does not read' => [
+                function (&$d, &$f) { $d['catalog.md'] = str_replace("'prefix' => 'langsys::'", "'key_prefix' => 'langsys::'", $d['catalog.md']); },
+                'catalog.md: \'key_prefix\' is not a redis option',
+            ],
+            'a migration key the migration reader does not read' => [
+                function (&$d, &$f) { $d['migration.md'] = str_replace("'format' => 'laravel'", "'type' => 'laravel'", $d['migration.md']); },
+                'migration.md: \'type\' is not a migration key',
+            ],
+            'a flush result key the flush does not return' => [
+                function (&$d, &$f) { $d['writing.md'] = str_replace("'retained' => 0,", "'kept' => 0,", $d['writing.md']); },
+                'writing.md: \'kept\' is not a key of flushPendingRegistrations()\'s result',
+            ],
+            'a heading that is only a comment in a code block' => [
+                function (&$d, &$f) {
+                    $d['primitives.md'] = str_replace('](#opting-out)', '](#opting-in)', $d['primitives.md']) . "\n```bash\n# Opting in\n```\n";
+                },
+                'primitives.md: links primitives.md#opting-in, a heading primitives.md does not have',
             ],
         ];
     }
@@ -218,6 +282,19 @@ class SkillGateTest extends TestCase
         }
         preg_match('/(\d+\.\d+)/', $composer['require']['php'], $php);
 
+        $commands = [];
+        foreach ($composer['bin'] ?? [] as $bin) {
+            preg_match('/getopt\(\'([a-z:]*)\', \[([^\]]*)\]\)/', file_get_contents("$root/$bin"), $m);
+            preg_match_all("/'([a-z-]+):*'/", $m[2], $long);
+            $commands[basename($bin)] = array_merge(str_split(str_replace(':', '', $m[1]) ?: ''), $long[1]);
+        }
+
+        $reads = function ($file, $variables) use ($root) {
+            preg_match_all('/\$(?:' . $variables . ')\[\'([a-z_]+)\'\]/', file_get_contents("$root/$file"), $m);
+            return array_values(array_unique($m[1]));
+        };
+        preg_match_all("/'(\\w+)' =>/", preg_match('/@return array \[(.*)\]/', (string) (new \ReflectionMethod('Langsys\SDK\Client', 'flushPendingRegistrations'))->getDocComment(), $doc) ? $doc[1] : '', $flush);
+
         return [
             'package' => $composer['name'],
             'version' => $version[1] ?? null,
@@ -230,7 +307,46 @@ class SkillGateTest extends TestCase
             'extensions' => $extensions,
             'php' => $php[1],
             'gitattributes' => file_get_contents("$root/.gitattributes"),
+            'export_ignored' => self::exportIgnored(),
+            'command_options' => $commands,
+            'request_locale_keys' => array_merge(array_keys(\Langsys\SDK\Locale\RequestLocale::DEFAULTS), self::NOT_CONSTRUCTOR_OPTIONS),
+            'request_keys' => $reads('src/Locale/RequestLocale.php', 'request'),
+            'redis_keys' => $reads('src/Cache/RedisCache.php', 'options|redis'),
+            'migration_keys' => $reads('src/Migration/LegacyKeys.php', 'config|entry|namespace|tiers'),
+            'flush_keys' => $flush[1],
         ];
+    }
+
+    /**
+     * The paths of skill/ that `git archive` leaves out, as git reads the
+     * repository's attributes plus $extra, given as a global attributes file.
+     */
+    public static function exportIgnored(string $extra = ''): array
+    {
+        $root = dirname(__DIR__, 2);
+        $paths = array_merge(['skill'], array_map(function ($path) use ($root) {
+            return substr($path, strlen($root) + 1);
+        }, glob("$root/skill/*.md")));
+
+        $config = '';
+        if ($extra !== '') {
+            $file = tempnam(sys_get_temp_dir(), 'ls-attr');
+            file_put_contents($file, $extra);
+            $config = '-c core.attributesFile=' . escapeshellarg($file) . ' ';
+        }
+        $output = shell_exec('git -C ' . escapeshellarg($root) . ' ' . $config . 'check-attr export-ignore -- ' . implode(' ', array_map('escapeshellarg', $paths)));
+        if (isset($file)) {
+            unlink($file);
+        }
+
+        $ignored = [];
+        foreach (explode("\n", trim((string) $output)) as $line) {
+            if (preg_match('/^(.*): export-ignore: set$/', $line, $m)) {
+                $ignored[] = $m[1];
+            }
+        }
+
+        return $ignored;
     }
 
     /**
@@ -279,11 +395,50 @@ class SkillGateTest extends TestCase
                 }
             }
 
-            // A bare name() quoted inline.
+            // A bare name() quoted inline: an SDK method, or PHP's own function.
             preg_match_all('/`([a-z_]\w*)\(/', $text, $m);
             foreach (array_unique($m[1]) as $name) {
-                if (!isset($allMethods[strtolower($name)]) && !in_array($name, self::FOREIGN_CALLS, true)) {
+                if (!isset($allMethods[strtolower($name)]) && !function_exists($name) && !in_array($name, self::FOREIGN_CALLS, true)) {
                     $found[] = "$file: $name() is not a public method of any SDK class";
+                }
+            }
+
+            // A class named on its own, inline: one with a hump, as SDK classes are.
+            preg_match_all('/`\\\\?([A-Z][a-z0-9]+(?:[A-Z][A-Za-z0-9]*)+)`/', $text, $m);
+            foreach (array_unique($m[1]) as $name) {
+                if (!isset($facts['classes'][$name]) && !in_array($name, $declared, true) && !class_exists($name) && !interface_exists($name)) {
+                    $found[] = "$file: `$name` names no class of this SDK, of PHP or of the skill's own examples";
+                }
+            }
+
+            // Command flags: a command's own on its line, any command's elsewhere.
+            $anyOption = array_merge(...array_values($facts['command_options']));
+            foreach (explode("\n", $text) as $line) {
+                $command = preg_match('#vendor/bin/([a-z][a-z-]*)#', $line, $c) ? $c[1] : null;
+                if ($command !== null && !isset($facts['command_options'][$command])) {
+                    continue;
+                }
+                $pattern = $command !== null ? '/(?<![\w-])--?([a-z][a-z-]*)/' : '/`--([a-z][a-z-]*)/';
+                preg_match_all($pattern, $command !== null ? preg_replace('#vendor/bin/[a-z-]+#', '', $line) : $line, $m);
+                foreach (array_unique($m[1]) as $flag) {
+                    $accepted = $command !== null ? $facts['command_options'][$command] : $anyOption;
+                    if (!in_array($flag, $accepted, true)) {
+                        $found[] = "$file: --$flag is not an option of " . ($command !== null ? $command : 'either command');
+                    }
+                }
+            }
+
+            // Keys inside the arrays the SDK reads.
+            foreach (self::KEYED_LITERALS as $anchor => $kind) {
+                $offset = 0;
+                while (preg_match($anchor, $text, $a, PREG_OFFSET_CAPTURE, $offset)) {
+                    $offset = $a[0][1] + strlen($a[0][0]);
+                    list($keys, $end) = self::literalKeys($text, $offset - 1);
+                    $found = array_merge($found, self::badKeys($file, $kind, $keys, $facts));
+                    if ($kind === 'request' && preg_match('/\G\s*,\s*\[/', $text, $b, 0, $end)) {
+                        list($keys) = self::literalKeys($text, $end + strlen($b[0]) - 1);
+                        $found = array_merge($found, self::badKeys($file, 'request_locale', $keys, $facts));
+                    }
                 }
             }
 
@@ -393,8 +548,83 @@ class SkillGateTest extends TestCase
             $found[] = "SKILL.md: does not state the PHP {$facts['php']} floor composer.json requires";
         }
 
-        if (preg_match('#^/?skill/?\s+export-ignore#m', $facts['gitattributes'])) {
-            $found[] = '.gitattributes: skill/ is export-ignored, so the package would not ship it';
+        foreach ($facts['export_ignored'] as $path) {
+            $found[] = ".gitattributes: $path is export-ignored, so the package would not ship it";
+        }
+
+        return $found;
+    }
+
+    /**
+     * The keys of the PHP array literal whose `[` is at $open, each with its
+     * depth and the key that holds its array, and the offset past its `]`.
+     *
+     * @return array{0: array<int, array{key: string, depth: int, parent: ?string}>, 1: int}
+     */
+    private static function literalKeys(string $text, int $open): array
+    {
+        $keys = [];
+        $parents = [];
+        $last = null;
+        $length = strlen($text);
+        for ($i = $open; $i < $length; $i++) {
+            $char = $text[$i];
+            if ($char === '[') {
+                $parents[] = $last;
+                $last = null;
+            } elseif ($char === ']') {
+                $last = array_pop($parents);
+                if ($parents === []) {
+                    return [$keys, $i + 1];
+                }
+            } elseif ($char === "'" || $char === '"') {
+                $close = $i + 1;
+                while ($close < $length && $text[$close] !== $char) {
+                    $close += $text[$close] === '\\' ? 2 : 1;
+                }
+                if (preg_match('/\G\s*=>/', $text, $m, 0, $close + 1)) {
+                    $last = substr($text, $i + 1, $close - $i - 1);
+                    $keys[] = ['key' => $last, 'depth' => count($parents), 'parent' => end($parents) ?: null];
+                }
+                $i = $close;
+            }
+        }
+
+        return [$keys, $length];
+    }
+
+    /** The keys of one literal that the SDK doesn't read where the skill writes them. */
+    private static function badKeys(string $file, string $kind, array $keys, array $facts): array
+    {
+        $found = [];
+        foreach ($keys as $key) {
+            $name = $key['key'];
+            switch ($kind) {
+                case 'request_locale':
+                    $bad = $key['depth'] === 1 && !in_array($name, $facts['request_locale_keys'], true);
+                    $why = 'is not a request_locale key';
+                    break;
+                case 'request':
+                    $bad = $key['depth'] === 1 && !in_array($name, $facts['request_keys'], true);
+                    $why = 'is not a request key resolveRequestLocale() reads';
+                    break;
+                case 'redis':
+                    $bad = $key['depth'] === 1 && !in_array($name, $facts['redis_keys'], true);
+                    $why = 'is not a redis option';
+                    break;
+                case 'flush':
+                    $bad = $key['depth'] === 1 && !in_array($name, $facts['flush_keys'], true);
+                    $why = "is not a key of flushPendingRegistrations()'s result";
+                    break;
+                default:
+                    // A namespace's or a locale's own name is the reader's to choose.
+                    $named = $key['parent'] === 'namespaces' || ($key['depth'] === 1 && $kind !== 'migration');
+                    $bad = !$named && !in_array($name, $facts['migration_keys'], true);
+                    $why = 'is not a migration key';
+            }
+            if ($bad) {
+                $found[] = "$file: '$name' $why";
+            }
         }
 
         return $found;
@@ -403,7 +633,8 @@ class SkillGateTest extends TestCase
     /** The anchors GitHub gives a file's headings. */
     private static function anchors(string $text): array
     {
-        preg_match_all('/^#{1,6} (.+)$/m', $text, $m);
+        // A `#` line in a fenced block is a comment in its code, not a heading.
+        preg_match_all('/^#{1,6} (.+)$/m', preg_replace('/^```.*?^```/ms', '', $text), $m);
 
         return array_map(function ($heading) {
             return str_replace(' ', '-', preg_replace('/[^a-z0-9 _-]/', '', strtolower($heading)));
