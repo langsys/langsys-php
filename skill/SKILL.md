@@ -20,12 +20,12 @@ The entry skill isn't installed with any SDK. If `langsys` isn't among your skil
 
 This is `langsys-php`, step 2 for PHP. It describes `langsys/langsys-php` at the version in its frontmatter. Check the installed version first (`composer show langsys/langsys-php`). If it differs, say so before relying on anything here.
 
-`langsys/langsys-php` is the PHP SDK every Langsys PHP binding builds on: the API client, the catalog and its cache, phrase discovery and registration, the HTML reader that walks pages and fragments, interpolation and ICU, the request's locale, server messages, the key-based migration and sync. A binding's skill (`langsys-laravel`) reads this one first and adds only what its framework changes. Where a binding forwards a call, the behaviour is the one described here. The examples are plain PHP 7.4.
+`langsys/langsys-php` is the PHP SDK every Langsys PHP binding builds on: the API client, the catalog and its cache, phrase discovery and registration, the HTML reader that walks pages and fragments, interpolation and ICU, the request's locale, server messages, the key-based migration and sync. A binding's skill (`langsys-laravel`) reads this one first and adds only what its framework changes. Where a binding forwards a call, the behaviour is the one described here. The examples are plain PHP, written for 7.4 except the one that declares an enum, which needs 8.1.
 
 ## The model
 
 - **The source text is the key.** There are no catalog files and no message ids: `$client->translate('Save', null, 'UI')` looks up the phrase `Save` and returns it as-is until a translation exists.
-- **Content is discovered as the app runs.** A request the API lets write registers each phrase and content block it misses, after the response, and the Translation Manager fills in the translations.
+- **Content is discovered as the app runs.** A request the API lets write registers each phrase and content block it misses, at the end of the request, and the Translation Manager fills in the translations.
 - **The catalog is fetched per project and locale**, held in memory for the request and in the cache (a file by default) across requests.
 - **Untranslated text renders as its source**, so the base language always looks right. That is why most mistakes here are invisible: they show only when someone switches locale or reads what was registered in the Translation Manager.
 

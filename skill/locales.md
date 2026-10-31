@@ -11,15 +11,20 @@ $client->setLocale('fr-ca');   // explicit: every call after it uses fr-ca
 $client->getLocale();          // the locale set, else this request's, chosen once per request
 ```
 
-With no locale set, the request's locale is chosen from the first usable source:
+With no locale set, `getLocale()` chooses the request's locale once per request, from PHP's superglobals, taking the first usable source:
 
-1. **A locale your framework already resolved**, passed as `framework` in the request data to `resolveRequestLocale()`. It is mapped to the project's form (`es_ES` to `es-es`, a bare `es` to the project's default Spanish), and served as the base locale when the project doesn't serve it.
-2. **The URL**: a `?locale=` query parameter, the first path segment (`/fr/pricing`) or the subdomain (`fr.example.com`).
-3. **A cookie or session value** named `locale`.
-4. **`Accept-Language`**, negotiated against the project's locales.
-5. **The project's base locale.**
+1. **The URL**: a `?locale=` query parameter, the first path segment (`/fr/pricing`) or the subdomain (`fr.example.com`).
+2. **A cookie or session value** named `locale`.
+3. **`Accept-Language`**, negotiated against the project's locales.
+4. **The project's base locale.**
 
-Every candidate is checked against the locales the project serves, its base and target locales. An unsupported one is skipped, never served. `fr` or `fr-be` matches a project serving `fr-fr`.
+Every candidate is checked against the locales the project serves, its base and target locales. An unsupported one is skipped, never served. A language alone, or with another region (`fr`, `fr-be`), matches when the project serves one locale of that language, or its `default_locales` names one; a project serving `fr-fr` and `fr-ca` matches neither. A locale with a script part, such as `zh-hant-tw`, never matches by its own name in the URL, a cookie or `Accept-Language`; only a bare `zh` reaches it, under the rule above. Where that matters, set it with `setLocale()`.
+
+**A locale your framework already resolved** (Laravel's `App::getLocale()`) is mapped to the project's form, `es_ES` to `es-es` and a bare `es` to the project's default Spanish, and served as the base locale when the project doesn't serve it. Apply it yourself, since `getLocale()` reads only the request:
+
+```php
+$client->setLocale($client->resolveRequestLocale(['framework' => $appLocale])['locale']);
+```
 
 ```php
 $client = new Client($key, $project, ['request_locale' => [
@@ -36,7 +41,7 @@ $client = new Client($key, $project, ['request_locale' => [
 $result = $client->resolveRequestLocale();   // ['locale' => 'fr-fr', 'source' => ..., 'vary' => 'Accept-Language, Cookie']
 ```
 
-`resolveRequestLocale($request, $options)` reads PHP's superglobals when `$request` is `null`, or takes `framework`, `path`, `host`, `query`, `cookies`, `session` and `accept_language` from the array you pass. `$options` overrides `request_locale` for that call.
+`resolveRequestLocale($request, $options)` reads PHP's superglobals when `$request` is `null`, or takes `framework`, `path`, `host`, `query`, `cookies`, `session` and `accept_language` from the array you pass. `$options` overrides `request_locale` for that call. It only returns its choice: `setLocale()` the `locale` for the translate calls to use it.
 
 ## `Vary`
 
@@ -48,7 +53,7 @@ The response's `Vary` names every request field the choice read, so a CDN never 
 | A cookie or session value | `Cookie` |
 | `Accept-Language` or the base locale | `Accept-Language, Cookie`, or `Accept-Language` alone with the cookie and session lookups off and no resolver |
 
-The SDK sends the header itself. A framework that sets `Vary` on its own response object passes `'send_vary' => false` in `request_locale` and puts the result's `vary` on its response. The SDK never writes a cookie: remembering a visitor's choice is the app's.
+The SDK sends the header with PHP's `header()`, and only while no output has been sent, so choose the locale before the page starts printing. A framework that sets `Vary` on its own response object passes `'send_vary' => false` in `request_locale` and puts the result's `vary` on its response. So does a long-lived worker (Swoole, RoadRunner), where `header()` and the superglobals don't belong to the request being served: pass that request to `resolveRequestLocale()`, `setLocale()` its `locale`, and put its `vary` on the response ([server-rendering.md](./server-rendering.md)). The SDK never writes a cookie: remembering a visitor's choice is the app's.
 
 ## The reference lists
 

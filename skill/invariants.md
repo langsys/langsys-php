@@ -32,7 +32,7 @@ $client->translate('Save', 'UI');          // ❌ looks 'Save' up in a locale ca
 $client->translate('Save', null, 'UI');    // ✅ the request's locale, category UI
 ```
 
-`translate($phrase, $locale, $category, $contentBlockId, $params)`. Every argument after the phrase is optional, so a swap runs, and the phrase renders as its source in every language. The JavaScript SDKs put the category second (`t(phrase, category, params)`), so code ported from them is the usual source of this. `translatePage()` and `translateContentBlock()` take the category second, because they have no locale argument: they use the request's.
+`translate($phrase, $locale, $category, $contentBlockId, $params)`. Every argument after the phrase is optional, so a swap runs: the phrase renders as its source in every language, and every request asks the API for the catalog of a locale called `ui`. The JavaScript SDKs put the category second (`t(phrase, category, params)`), so code ported from them is the usual source of this. `translatePage()` and `translateContentBlock()` take the category second, because they have no locale argument: they use the request's.
 
 ## 4. Categorize only when the same words mean different things
 
@@ -47,7 +47,7 @@ echo $client->translateContentBlock("<p>Hi {$user->name}, you have {$n} items</p
 echo $client->translateContentBlock('<p>Hi {name}, you have {count} items</p>', null, ['name' => $user->name, 'count' => $n]); // ✅ one block
 ```
 
-The same holds for `translatePage()`: write `{name}` in the template and pass the value in its fourth argument, or have the template engine mark each value it prints ([value-markers.md](./value-markers.md)). A list that grows or a branch that appears inside one block also changes its text and gives it a new id.
+The same holds for `translatePage()`. There, have the template engine mark each value it prints ([value-markers.md](./value-markers.md)). Writing `{name}` in the template and passing the value in `translatePage()`'s fourth argument also keeps one block, but a page it can't translate comes back as given, with the `{name}` showing ([interpolation.md](./interpolation.md)). A list that grows or a branch that appears inside one block also changes its text and gives it a new id.
 
 ## 6. Never translate translated text
 
@@ -68,6 +68,6 @@ Whether a request registers is the API's `write_enabled` for that request, not t
 | `translate('Hello, {name}!', null, 'UI', null, ['name' => $n])` | `translate(sprintf('Hello, %s!', $n))` |
 | Pass authored strings and CMS content through | Build strings with `.`, `"{$x}"` or `sprintf` |
 | `translate($phrase, null, $category)` | `translate($phrase, $category)` |
-| `{name}` in markup with params, or marked values | Values printed into a block's text |
+| Marked values on a page, `{name}` with params in a block | Values printed into a block's text |
 | Compare `en-us` | Compare `en-US` |
 | `flushPendingRegistrations()` then `resetRequestState()` per request in a worker | One `Client` per worker with neither |

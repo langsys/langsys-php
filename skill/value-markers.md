@@ -10,7 +10,7 @@ A sentence that shows a value, such as a user's name or a count, is one phrase h
 
 `translatePage()` and `translateContentBlock()` read either form as the phrase `Hello {name}, welcome back` with `name` set to `Ana`. Every visitor's render registers that one phrase, a translation places the value where its `{name}` is, and the output keeps the marker around the value. A plural or select in the translation chooses on the value itself.
 
-This is how a template integration keeps rule 5 of [invariants.md](./invariants.md) without the template writing `{name}` itself. A framework binding marks what its templates print. In hand-written PHP templates, writing `{name}` in the markup and passing params is simpler.
+This is how a page keeps rule 5 of [invariants.md](./invariants.md). A framework binding marks what its templates print. Hand-written PHP templates print the markers themselves. Writing `{name}` in the markup and passing params to `translatePage()` keeps one phrase too, but a page that can't be translated comes back as given, with `{name}` showing, where a marked value shows its value.
 
 | Markup | Registers |
 |---|---|

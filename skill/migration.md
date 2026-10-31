@@ -19,7 +19,7 @@ $client->translate('checkout.submit');   // looks up "Place order", the text you
 
 - **A key resolves to its text, and the text is what registers and translates.** Later you can replace the key with its text and delete the file, and nothing else changes.
 - **The key's group becomes the category**: `checkout.submit` registers under `checkout`, unless you pass one.
-- **Anything that isn't a key is text**, in Langsys syntax: `translate('Pay now')` works as always.
+- **Anything that isn't a key is text**, in Langsys syntax: `translate('Pay now')` works as it does without the option.
 - **Placeholders convert in every file**: `:name`, `{{name}}`, `{name}`, `%{name}`, `%(name)s` and `%(name)d` all become `{name}`, and `%%` is a literal `%`. A placeholder with number formatting (`%.2f`) or no name (`%s`) registers as written, with a warning, as does a capitalising `:Name`.
 - **Plurals convert by the file's `format`**: `laravel`, `vue-i18n`, `i18next` or `plain`. The same characters mean different things (`car | cars` is a plural in vue-i18n and plain text in Laravel), so say which wrote each file. A PHP array file is `laravel` unless you say otherwise; a JSON file is `plain`, which converts no plurals. Any other format is refused when the `Client` is built.
 - **A JSON file can sit under a namespace**: `['path' => 'locales/en/cart.json', 'namespace' => 'cart']` answers `cart.items.title`.
@@ -46,7 +46,7 @@ Each locale takes the `migration` option's shape. A locale the project doesn't t
 
 ## Sync: register from source code, not at runtime
 
-An app behind a framework's translate function (`__()`, `trans()`) can register its phrases from a scan of its code, in a deploy step or CI, and turn runtime registration off:
+An app behind a framework's translate function (`__()`, `trans()`) can register its phrases from a scan of its code, in a deploy step or CI, and turn runtime registration off. The scanner reads PHP: scan PHP source and compiled views, not template files. Raw Blade or Twig yields nothing, and with runtime registration off, nothing in those templates ever registers.
 
 ```php
 use Langsys\SDK\Sync\SourceScanner;
@@ -90,7 +90,7 @@ $client->resolve('Welcome, {name}', 'es-es', null, ['name' => 'Ana']);
 // ['text' => 'Bienvenido, Ana', 'from' => 'catalog' | 'fallback' | 'source']
 ```
 
-A phrase resolves to the catalog's translation, then to your file's line, then to the source, filled with its params either way. While the catalog can't be read, `translate()` and `resolve()` carry on down that chain without throwing. `from` says who wrote the text. Print `catalog` text escaped, even where your framework prints its own lines raw: a translator wrote it.
+A phrase resolves to the catalog's translation, then to your file's line, then to the source, filled with its params either way. While the catalog can't be read, `translate()` and `resolve()` carry on down that chain without throwing. The fallback is asked only for a locale: one set with `setLocale()` or passed to the call. With neither, and no request locale that can be read (a client without credentials, or an API that can't authorize), a phrase goes straight to its source. `from` says who wrote the text. Print `catalog` text escaped, even where your framework prints its own lines raw: a translator wrote it.
 
 ## Catalog snapshots
 
@@ -109,6 +109,7 @@ $client = new Client($key, $project, ['snapshot' => Snapshot::load('catalog.snap
 
 - What the snapshot holds renders without a fetch. Anything else is read from the live catalog, which from then on outranks the snapshot; offline, it stays in the source language.
 - Only the live catalog decides what is new and registered.
+- `Snapshot::load()` throws a `SnapshotException` for a missing, edited or unreadable file, so load it where that is handled: inside the `Client`'s options, a snapshot file a deploy left out fails every request. A snapshot exported for another project is ignored, with a warning.
 - **A snapshot is a cache, never a source. To refresh one, export it again.** Every snapshot carries a checksum, and `Snapshot::load()` refuses one edited since its export. `SnapshotException::getReason()` says why a load failed: `format`, `version`, `missing-member` or `checksum`.
 - Every Langsys SDK reads and writes the same format, `langsys-catalog-snapshot` version 1, so a snapshot exported here loads in a JavaScript SDK and the other way round.
 

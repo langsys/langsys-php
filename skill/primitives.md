@@ -20,7 +20,7 @@ $client->translate('Hello, {name}!', 'es-es', 'UI', null, ['name' => $name]);
 ```
 
 - It returns the translation, or the phrase itself until one exists, with its params filled either way.
-- A miss is queued for registration when the API lets the request write, and sent after the response ([writing.md](./writing.md)). The same miss twice in a request queues once.
+- A miss is queued, and sent at the end of the request if the API lets the request write ([writing.md](./writing.md)). The same miss twice in a request queues once.
 - It returns text, not HTML. Print it escaped, as you would any other text. A line that needs markup is `translateRich()`.
 - `$contentBlockId` names the content block a phrase belongs to. App code passes `null`.
 
@@ -69,7 +69,7 @@ On an element, it registers the element and everything in it as one content bloc
 - **`"false"` or `"0"`:** an ordinary element.
 - **Anything else:** the block's id. The element renders from the catalog entry under that id, and registers under it when the catalog lacks it, unless the element or an ancestor carries `data-ls-resolved`.
 
-Every rendered block host carries `data-ls-contentblock="<id>"`. An element marked with either attribute inside other content is its own unit, and contributes none of its words to what surrounds it: `<p>See <span data-langsys-phrase>our <b>new</b> plans</span> today</p>` is the block `["See", "today"]` and the phrase `our {m0o}new{m0c} plans`.
+Every rendered block host carries its id, in the attribute that declared the block: `<div data-langsys-contentblock>` renders as `data-langsys-contentblock="<id>"`, and a block the page walk found gets `data-ls-contentblock="<id>"`. A host whose value was already its id is left as written. An element marked with either attribute inside other content is its own unit, and contributes none of its words to what surrounds it: `<p>See <span data-langsys-phrase>our <b>new</b> plans</span> today</p>` is the block `["See", "today"]` and the phrase `our {m0o}new{m0c} plans`.
 
 ### Opting out
 

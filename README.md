@@ -190,11 +190,16 @@ echo $client->translatePage($html, 'homepage');
 
 ### Locale Detection
 
-A locale your framework or app already resolved is the one served: pass it as
+A locale your framework or app already resolved is the one to serve: pass it as
 `framework` in the request data to `resolveRequestLocale()` (a framework integration
-passes `App::getLocale()` and the like). It is mapped to the project's form, `es_ES` to
-`es-es` and a bare `es` to the project's default Spanish locale, and served as the base
-locale when the project doesn't serve it; the SDK adds no `Vary` for it.
+passes `App::getLocale()` and the like), and set the result. It is mapped to the
+project's form, `es_ES` to `es-es` and a bare `es` to the project's default Spanish
+locale, and served as the base locale when the project doesn't serve it; the SDK adds no
+`Vary` for it. `resolveRequestLocale()` only returns its choice, so apply it:
+
+```php
+$client->setLocale($client->resolveRequestLocale(['framework' => $appLocale])['locale']);
+```
 
 Where nothing resolved it, `getLocale()` (with no locale set) chooses the request's
 locale once per request, from the first usable source in this order:
@@ -448,8 +453,10 @@ trimmed, case-insensitive):
   it, unless the element or an ancestor carries `data-ls-resolved`: a server rendered that
   markup from the catalog, so nothing is registered for it.
 
-Every rendered block host carries `data-ls-contentblock="<id>"`, the id it was rendered from, so
-the block can be identified from the page in a browser inspector.
+Every rendered block host carries the id it was rendered from, so the block can be identified
+from the page in a browser inspector: a block the walk found gets `data-ls-contentblock="<id>"`,
+a declared one has the id written into the attribute that declared it
+(`data-langsys-contentblock="<id>"`), and one whose value is already its id is left as written.
 
 **Use cases:**
 - Complex widgets that should be translated as a unit
@@ -569,6 +576,11 @@ paragraph.
 | Enum | A backed enum by its value, a plain enum by its name |
 | `DateTimeInterface` | Locale-formatted, medium date style |
 | Phrase not translated yet | Fallback text still interpolates, so users never see raw `{name}` |
+
+`translatePage()` is the exception: a page it can't translate, because no catalog or no
+locale can be read (a client without credentials, or the API unreachable with nothing
+cached), comes back exactly as given, `{name}` included. On a page, mark printed values
+instead (*Values from variables*, below): a marked value shows its value either way.
 
 The phrase registered with Langsys always keeps its placeholders — interpolation
 only affects what your code receives.

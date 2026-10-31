@@ -14,8 +14,8 @@ echo $client->translatePage($html, 'Homepage');   // the request's locale
 The arguments are `($html, $category = null, array $selectorCategories = [], array $params = [])`; the selectors and categories are in [primitives.md](./primitives.md), the params in [interpolation.md](./interpolation.md). The page is read as a browser reads it, from its byte-order mark, its declared charset or its bytes, and written back in UTF-8 with every charset it declares rewritten to UTF-8. Scripts and styles come back byte for byte.
 
 - The body is walked into units, each a phrase or a content block, and what the catalog lacks is queued ([writing.md](./writing.md)).
-- The head's `<title>`, meta description, `og:*` and `twitter:*` tags are translated, and the `<html>` gets `lang`. A document without a head gets the one a browser implies, declaring UTF-8; a fragment gets none.
-- Each rendered block host carries `data-ls-contentblock="<id>"`.
+- In the head, the `<title>` and the `description`, `keywords`, `author`, `og:title`, `og:description`, `og:site_name`, `twitter:title` and `twitter:description` metas are translated, and `og:locale` is set to the page's locale. The `<html>` gets `lang`. A document without a head gets the one a browser implies, declaring UTF-8; a fragment gets none.
+- Each rendered block host carries its id ([primitives.md](./primitives.md)).
 - A page whose catalog can't be read comes back as given ([catalog.md](./catalog.md)).
 
 `translatePage()` takes no locale argument: set one with `setLocale()`, or let the request decide ([locales.md](./locales.md)).
@@ -59,4 +59,29 @@ $client->resetRequestState();
 
 The reset drops anything still queued, so flush first. It clears the write decision, the queue, the catalogs read for the request and the locale, one set with `setLocale()` included: a worker that serves one fixed locale calls `setLocale()` again after each reset. A failed send's backoff belongs to the `Client` and carries across requests on purpose, so a failing endpoint isn't asked again by every request.
 
+**Choose each request's locale from that request.** In Swoole or RoadRunner the superglobals and `header()` don't belong to the request being served, so `getLocale()` would read stale or empty values and its `Vary` would go nowhere. Pass the request, and set the response's header yourself:
+
+```php
+$choice = $client->resolveRequestLocale([
+    'path' => $request->path, 'host' => $request->host, 'query' => $request->query,
+    'cookies' => $request->cookies, 'accept_language' => $request->header('Accept-Language'),
+], ['send_vary' => false]);
+$client->setLocale($choice['locale']);
+if ($choice['vary'] !== null) {
+    $response->header('Vary', $choice['vary']);
+}
+```
+
 A killed process (out of memory, a hard timeout) sends nothing it still had queued. The misses register again on a later render.
+
+## PHP-FPM: the send happens before the response closes
+
+Without a worker, the queue goes out from the shutdown function, which PHP runs before it closes the connection: the visitor's page finishes loading only after the send, and up to 30 seconds later when the API hangs. Frameworks that end the response first (Laravel's terminate step) avoid this. In plain PHP, end it yourself:
+
+```php
+echo $client->translatePage($html, 'Homepage');
+if (function_exists('fastcgi_finish_request')) {
+    fastcgi_finish_request();   // the visitor has the page
+}
+$client->flushPendingRegistrations();
+```

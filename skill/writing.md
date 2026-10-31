@@ -21,7 +21,7 @@ $client->getKeyType();                 // "read", "write" or "ip_write": the key
 
 ## The queue
 
-`translate()`, `resolve()`, `translateRich()`, `translateContentBlock()`, `translatePage()`, `translateMessage()` and `emitMessage()` queue what the catalog lacks. Nothing is sent while the page renders. The queue is sent when the `Client` is freed, or from a shutdown function when the process ends, or when you call:
+`translate()`, `resolve()`, `translateRich()`, `translateContentBlock()`, `translatePage()`, `translateMessage()` and `emitMessage()` queue what the catalog lacks, whatever the API's decision; the flush decides. Nothing is sent while the page renders. The queue is sent when the `Client` is freed, or from a shutdown function when the process ends, or when you call it yourself. Under PHP-FPM the shutdown send runs before the connection closes, so the visitor waits for it ([server-rendering.md](./server-rendering.md)).
 
 ```php
 $result = $client->flushPendingRegistrations();
@@ -39,7 +39,7 @@ $result = $client->flushPendingRegistrations();
 | `decision_unavailable` | Whether this request may write couldn't be read | kept |
 | `send_failed` | The API refused or never received the batch | kept |
 
-After a failed send the next flush waits 3 seconds, then 6, doubling to 5 minutes, and the first successful send resets the wait. The wait belongs to the `Client`, so on a long-lived worker it carries across requests ([server-rendering.md](./server-rendering.md)).
+After a failed send, or a decision that couldn't be read, the next flush waits 3 seconds, then 6, doubling to 5 minutes, and the first successful send resets the wait. The wait belongs to the `Client`, so on a long-lived worker it carries across requests ([server-rendering.md](./server-rendering.md)).
 
 ```php
 $client->hasPendingRegistrations();

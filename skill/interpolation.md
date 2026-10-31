@@ -10,7 +10,7 @@ $client->translatePage($html, 'Home', [], ['name' => $user->name]);
 
 The phrase registers with its placeholders, `Hello, {name}!`, once. `{name}` is the form every Langsys SDK stores, so a catalog renders the same from a PHP backend and a JavaScript frontend. A block fills placeholders in its text and in its translatable attributes; a page also fills them in its `<title>` and translated `<meta>` tags.
 
-`%name%` is accepted for a key you pass, and registers as `{name}`. Only an identifier between the signs counts, so `Save 20% on 5% APR` is left alone. A framework's own syntax (`:name`, `{{name}}`) is not `translate()`'s: convert it with the migration tools ([migration.md](./migration.md)).
+`%name%` fills a key you pass. In markup (pages, blocks and `translateRich()`) it registers as `{name}`. `translate()` and `resolve()` register a phrase as written, so `translate('Hello %name%')` is a different catalog entry from the `{name}` form a page or a JavaScript frontend registers: write `{name}` there. Only an identifier between the signs counts, so `Save 20% on 5% APR` is left alone. A framework's own syntax (`:name`, `{{name}}`) is not `translate()`'s: convert it with the migration tools ([migration.md](./migration.md)).
 
 ## How each value renders
 
@@ -24,7 +24,7 @@ The phrase registers with its placeholders, `Hello, {name}!`, once. `{name}` is 
 | An enum | A backed enum by its value, a plain enum by its name |
 | A `DateTimeInterface` | The locale's medium date style |
 
-An untranslated phrase still interpolates, so a reader never sees a raw `{name}` for a value you passed. Interpolation changes only what your code receives, never what registers.
+An untranslated phrase still interpolates on `translate()`, `resolve()`, `translateRich()` and `translateContentBlock()`, so a reader never sees a raw `{name}` for a value you passed. **`translatePage()` doesn't:** a page it can't translate, because no catalog or no locale can be read (a client without credentials, or the API unreachable with nothing cached), comes back exactly as given, `{name}` included. On a page, mark printed values instead ([value-markers.md](./value-markers.md)): a marked value shows its value either way. Interpolation changes only what your code receives, never what registers.
 
 ## ICU MessageFormat
 

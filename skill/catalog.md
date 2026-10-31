@@ -30,7 +30,9 @@ $client = new Client($key, $project, ['cache' => new RedisCache(['host' => '127.
 
 Use Redis, or another shared cache, when several servers or containers render: each `FileCache` directory fetches its own copy. A cache implements `Langsys\SDK\Cache\CacheInterface`.
 
-A translation made in the Translation Manager reaches a cached catalog when its entry expires. After a deploy that must switch at once, or to see a change now:
+**Redis connects when the cache is built.** With the `redis` driver, `new Client()` connects to Redis, and throws a `LangsysException` when Redis is unreachable or the `redis` extension is missing; `new RedisCache([...])` throws the same way in your own code. So a Redis outage fails every request that builds a client. Build it where that failure is handled, for example falling back to `FileCache` or `NullCache`, or pass a `\Redis` connection your app already manages.
+
+A translation made in the Translation Manager reaches a cached catalog when its entry expires. After a deploy that must switch at once, or to see a change now, clear it once. Clearing every locale, and `cache_clear`, empties the whole store under its directory or prefix: the authorization, the reference lists, and any other project sharing the directory. `cache_clear` in the app's own configuration clears it on every request, so every request authorizes and fetches again. Keep it to a deploy step:
 
 ```php
 $client->clearCache('es-es');                 // one locale
@@ -43,8 +45,9 @@ new Client($key, $project, ['cache_clear' => true]);   // clear when the client 
 
 Rendering never fails because of the API:
 
-- `translate()`, `resolve()`, `translateRich()`, `translateContentBlock()` and `translatePage()` render from what they have: a snapshot, the miss fallback, else the source. A page whose catalog can't be read comes back as given. `translate()` and `resolve()` say so once, at debug.
+- `translate()`, `resolve()`, `translateRich()` and `translateContentBlock()` render from what they have: a snapshot, the miss fallback for a locale set or passed, else the source, with their params filled. `translate()` and `resolve()` say so once, at debug.
+- A page whose catalog can't be read comes back exactly as given, `{name}` placeholders included ([interpolation.md](./interpolation.md)).
 - Nothing is queued while no catalog can be read, since no miss can be decided: the flush reports `catalog_unavailable` ([writing.md](./writing.md)).
-- A failed fetch isn't retried by every call: the next waits 3 seconds, doubling to 5 minutes.
+- A failed fetch isn't retried by every call: the next waits 3 seconds, doubling to 5 minutes. The wait belongs to the `Client`, so under PHP-FPM, where each request builds its own, every request asks a failing API once.
 
 For a render that must not depend on the API at all, seed the client from a snapshot ([migration.md](./migration.md)).

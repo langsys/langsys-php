@@ -38,13 +38,13 @@ Each option overrides its variable where it has one.
 | `cache_ttl` | `LANGSYS_CACHE_TTL` | Seconds a cached catalog is kept |
 | `cache` | none | A `CacheInterface` to use instead of the driver ([catalog.md](./catalog.md)) |
 | `redis` | `[]` | `host`, `port`, `password`, `database`, `timeout`, `prefix` for the `redis` driver |
-| `cache_clear` | `false` | Clear the cache when the `Client` is built |
+| `cache_clear` | `false` | Clear the whole cache when the `Client` is built: a deploy step's option, not the app's ([catalog.md](./catalog.md)) |
 | `base_url` | `LANGSYS_BASE_URL` | Makes relative URLs in registered blocks absolute |
 | `log_path` | `LANGSYS_LOG_PATH` | A JSON Lines log file |
 | `log_level` | `LANGSYS_LOG_LEVEL` | The lowest level logged |
 | `logger` | none | A `Langsys\SDK\Log\LoggerInterface` to use instead of `log_path` |
 | `error_log` | `true` | `false` stops warnings and errors going to PHP's error log when there is no log file |
-| `warn_runtime_requirements` | `true` | `false` stops the setup warnings below |
+| `warn_runtime_requirements` | `true` | With `error_log` `false`, `false` keeps the setup warnings out of PHP's error log too ([Logging](#logging)) |
 | `messages_category` | `LANGSYS_MESSAGES_CATEGORY` | The category of server message templates ([messages.md](./messages.md)) |
 | `require_credentials` | `false` | Throw at first use when the key or project id is missing |
 | `request_locale` | the URL, cookie, session and header steps | Where the request's locale is read from ([locales.md](./locales.md)) |
@@ -63,19 +63,19 @@ $client->isConfigured();      // false
 $client->translate('Hello, {name}', null, null, null, ['name' => 'Ana']);   // "Hello, Ana"
 ```
 
-- Every phrase and block renders as its source with its values filled, and a page comes back as given.
+- Every phrase and block renders as its source with its values filled. A page comes back as given, `{name}` placeholders included.
 - Nothing is fetched or queued. The reference lists are empty ([locales.md](./locales.md)).
-- A miss fallback, a loaded snapshot and the migration files still answer.
-- An explicit write, or the plan for one (`registerPhrases()`, `registerContentBlock()`, `sync()`, `planSync()`, `applySync()`, `importLegacyTranslations()`), throws a `ConfigurationException`.
+- A loaded snapshot and the migration files still answer. A miss fallback answers only for a locale set with `setLocale()` or passed to the call: with neither, there is no request locale to ask it for.
+- An explicit write, or the plan for one (`registerPhrases()`, `registerContentBlock()`, `sync()`, `planSync()`, `applySync()`, `importLegacyTranslations()`), throws a `ConfigurationException`, and so do the calls that ask the API about the project: `authorize()`, `getProject()`, `getKeyType()` and `getTranslations()`.
 - One warning per process names the missing settings.
 
 In production, pass `'require_credentials' => true`. The client still builds, so a framework can create it while it boots, and its first use throws a `ConfigurationException` naming what is missing.
 
 ## Logging
 
-With `log_path` (or `logger`), the SDK logs JSON Lines at `log_level` and above: API requests, cache hits and misses, authorization, and what was queued and flushed. Without either, warnings and errors still go to PHP's error log prefixed `[langsys]`, so a failed registration is never recorded nowhere; `'error_log' => false` turns that off.
+With `log_path` (or `logger`), the SDK logs JSON Lines at `log_level` and above: API requests, cache hits and misses, authorization, and what was queued and flushed. Without either, warnings and errors still go to PHP's error log prefixed `[langsys]`, so a failed registration is always recorded somewhere; `'error_log' => false` turns that off.
 
-The setup warnings, once per process (a client without credentials, a missing `intl`, a PHP below 7.4), go to PHP's error log even then. `'warn_runtime_requirements' => false` turns those off too.
+The setup warnings, once per process (a client without credentials, a missing `intl`, a PHP below 7.4), go to PHP's error log even then. With `'error_log' => false`, `'warn_runtime_requirements' => false` turns those off too.
 
 `getLogViewer()` reads the log file back, and `displayLogs()` prints it as a page. Neither belongs on a public route.
 
