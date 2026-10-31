@@ -106,10 +106,10 @@ final class Document
     }
 
     /**
-     * Read as markup each xmp, iframe, noembed and noframes body a browser
-     * reads as markup - inside a <select>, or in svg or math outside their
-     * integration points - which a libxml2 that reads raw bodies read as the
-     * text written.
+     * Read as markup each body a browser reads as markup and a libxml2 that
+     * reads raw bodies read as text: an xmp, iframe, noembed or noframes
+     * inside a <select>, or in svg or math outside their integration points,
+     * and a title or textarea in svg or math, the drawing's own element.
      *
      * @param DOMDocument $doc
      * @return void
@@ -122,16 +122,24 @@ final class Document
                 $read[] = $element;
             }
         }
-        if ($read === []) {
-            return;
+        if ($read !== []) {
+            $raw = self::rawBodies($doc);
+            $read = array_filter($read, function ($element) use ($raw) {
+                return !in_array($element, $raw, true);
+            });
         }
 
-        $raw = self::rawBodies($doc);
-        foreach ($read as $element) {
-            if (in_array($element, $raw, true)) {
-                continue;
+        // A title or textarea in svg or math is the drawing's element.
+        foreach (self::DECODED_BODIES as $name) {
+            foreach ($doc->getElementsByTagName($name) as $element) {
+                if ($element->hasChildNodes() && self::holdsOnlyText($element) && strpbrk($element->textContent, '<&') !== false
+                    && in_array(self::contentAround($element), self::FOREIGN, true)) {
+                    $read[] = $element;
+                }
             }
+        }
 
+        foreach ($read as $element) {
             $parsed = new DOMDocument();
             self::loadFragment($parsed, $element->textContent);
             while ($element->firstChild !== null) {
@@ -141,6 +149,32 @@ final class Document
                 $element->appendChild($doc->importNode($child, true));
             }
         }
+    }
+
+    /**
+     * The content a browser reads $element in, from its ancestors: null for
+     * HTML, svg or math for theirs, and false where no raw body is read as
+     * written. See contentIn().
+     *
+     * @param \DOMElement $element
+     * @return string|null|false
+     */
+    private static function contentAround(\DOMElement $element)
+    {
+        $ancestors = [];
+        for ($at = $element->parentNode; $at instanceof \DOMElement; $at = $at->parentNode) {
+            $ancestors[] = $at;
+        }
+
+        $content = null;
+        foreach (array_reverse($ancestors) as $ancestor) {
+            $content = self::contentIn($ancestor, $content);
+            if ($content === false) {
+                return false;
+            }
+        }
+
+        return $content;
     }
 
     /**
@@ -208,9 +242,20 @@ final class Document
         $edits = [];
         self::scan($html, $edits);
 
+        // In the order they apply, each once: keepReferences() adds a body's
+        // edits before scan() reaches what is inside it.
+        $order = array_keys($edits);
+        usort($order, function ($a, $b) use ($edits) {
+            return $edits[$a][0] === $edits[$b][0] ? $a - $b : $edits[$a][0] - $edits[$b][0];
+        });
+
         $out = '';
         $at = 0;
-        foreach ($edits as $edit) {
+        foreach ($order as $index) {
+            $edit = $edits[$index];
+            if ($edit[0] < $at) {
+                continue;
+            }
             $out .= substr($html, $at, $edit[0] - $at) . $edit[2];
             $at = $edit[0] + $edit[1];
         }
@@ -600,6 +645,13 @@ final class Document
             if ($foreign !== null) {
                 $inPoint = $points !== [];
                 if ($inPoint || !in_array($name, self::BREAKOUT, true)) {
+                    // A title or textarea here is the drawing's, and a browser
+                    // reads its body as markup. A libxml2 that reads raw bodies
+                    // reads it as text, decoding its references, so they are
+                    // kept as written for load() to read it again as markup.
+                    if (!$inPoint && !$closed && in_array($name, self::DECODED_BODIES, true) && self::readsRawBodies()) {
+                        self::keepReferences($html, $name, $at, $edits);
+                    }
                     if ($name === $foreign && !$closed) {
                         $depth++;
                     } elseif (!$inPoint && !$closed && self::integrationPoint($foreign, $name, $m[0])) {
@@ -670,6 +722,24 @@ final class Document
         }
 
         return $end;
+    }
+
+    /**
+     * Add to $edits each `&` in the body of $name opening at $at, up to its
+     * own end tag, written `&amp;`.
+     *
+     * @param string $html
+     * @param string $name
+     * @param int $at
+     * @param array $edits
+     * @return void
+     */
+    private static function keepReferences($html, $name, $at, array &$edits)
+    {
+        $stop = preg_match('/<\/' . $name . '[\s\/>]/i', $html, $found, PREG_OFFSET_CAPTURE, $at) ? $found[0][1] : strlen($html);
+        for ($i = strpos($html, '&', $at); $i !== false && $i < $stop; $i = strpos($html, '&', $i + 1)) {
+            $edits[] = [$i, 1, '&amp;'];
+        }
     }
 
     /**
