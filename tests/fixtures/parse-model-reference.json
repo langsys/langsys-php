@@ -3,9 +3,9 @@
   "purpose": "A tokenized phrase's key IS its encoded string, so any disagreement about how the DOM is BUILT changes the key before canonicalisation is even reached. Canonicalisation cannot close these; only the parser can.",
   "js_family_source": "langsys-js-server @ 8105faa, real Chromium 153 measured against parse5 over these same families: 9 of 9 agreed, so these are the JS-FAMILY answer rather than one engine's.",
   "measured_at": "2026-09-12",
-  "measured_by": "langsys-php-sdk on PHP 8.3.19 with libxml2 2.9.13 (LIBXML_DOTTED_VERSION), via DOMDocument::loadHTML with LIBXML_HTML_NOIMPLIED|LIBXML_HTML_NODEFDTD. The test wraps each fragment in a <div> to give the tokenizer a root; the real translatePage route (PageTranslator::parseDocument) reproduces every value identically, verified both ways. Every libxml2 column in this file is scoped to that version.",
-  "agreement": "3 of 7 ON LIBXML2 2.9.13 - implied close agrees 3/3; raw text 0/2 and foster parenting 0/2 diverge. VERSION-BOUND, not a property of libxml2: the Reviewer measured lxml on libxml2 2.14.6 giving the JS-family tokens on all seven inputs, and Nokogiri on libxml2 2.13.9 behaving like 2.9.13. The boundary lies between 2.13.9 and 2.14.6; no cause is stated because none was measured. PHP takes libxml2 from the PHP build, which composer cannot pin, so these ids move when a host's libxml2 crosses that line.",
-  "sdk_agreement": "5 of 7 through Html\\Document::load(), which every SDK path parses with: it writes each `<` in a textarea or title body as `&lt;` before libxml2 parses, so the SDK reads those bodies as the text a browser reads and agrees with the JS family on both raw-text rows. Foster parenting still diverges. The libxml2 columns record libxml2 itself, parsed directly.",
+  "measured_by": "langsys-php-sdk on PHP 8.3.19 with libxml2 2.9.13 (LIBXML_DOTTED_VERSION), via DOMDocument::loadHTML with LIBXML_HTML_NOIMPLIED|LIBXML_HTML_NODEFDTD. The test wraps each fragment in a <div> to give the tokenizer a root; the real translatePage route (PageTranslator::parseDocument) reproduces every value identically, verified both ways. Every libxml2 column in this file is scoped to that version. The `libxml2_raw_bodies` column is libxml2 2.15.2, on GitHub's ubuntu-latest (Ubuntu 26.04), measured 2026-10-30.",
+  "agreement": "3 of 7 on libxml2 2.9.13 and 5 of 7 on 2.15.2, libxml2 parsed directly. Implied close agrees 3/3 on both. The two raw-text rows diverge on 2.9.13 and agree on 2.15.2, whose parser reads a textarea and a title body as text; `libxml2_raw_bodies` records that result, and Html\\Document::readsRawBodies() tells the two apart. Foster parenting diverges 0/2 on both, as on lxml's libxml2 2.14.6: no libxml2 measured moves a stray element or text out of a table. Nokogiri on libxml2 2.13.9 behaved like 2.9.13.",
+  "sdk_agreement": "5 of 7 through Html\\Document::load(), which every SDK path parses with, on libxml2 2.9.13 and 2.15.2 alike: it reads each textarea and title body as the text a browser reads, so the SDK agrees with the JS family on both raw-text rows whichever libxml2 the host has. Foster parenting still diverges. The libxml2 columns record libxml2 itself, parsed directly.",
   "cases": [
     {
       "id": "raw-text-textarea",
@@ -13,6 +13,7 @@
       "html": "<p>Keep</p><textarea>a <b>b</b></textarea>",
       "js_family": "{m0o}Keep{m0c}{m1o}a <b>b</b>{m1c}",
       "libxml2": "{m0o}Keep{m0c}{m1o}a {m2o}b{m2c}{m1c}",
+      "libxml2_raw_bodies": "{m0o}Keep{m0c}{m1o}a <b>b</b>{m1c}",
       "agrees": false,
       "why": "Chromium and parse5 make a <textarea> body RAW TEXT, so <b> is literal characters. libxml2 parses it as markup, so <b> becomes an element and takes a slot.",
       "libxml2_tree": "<p>Keep</p><textarea>a <b>b</b></textarea>",
@@ -40,6 +41,7 @@
       "html": "<title>a <b>b</b></title><p>Keep</p>",
       "js_family": "{m0o}a <b>b</b>{m0c}{m1o}Keep{m1c}",
       "libxml2": "{m0o}a {m1o}b{m1c}{m0c}{m2o}Keep{m2c}",
+      "libxml2_raw_bodies": "{m0o}a <b>b</b>{m0c}{m1o}Keep{m1c}",
       "agrees": false,
       "why": "Same as textarea, and it also shifts every later slot index: the <p> is slot 1 in the JS family and slot 2 here.",
       "libxml2_tree": "<title>a <b>b</b></title><p>Keep</p>",

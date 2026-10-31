@@ -33,7 +33,15 @@ final class Document
     const IGNORE_ENCODING = 2097152;
 
     /**
-     * Load $html into $doc as DOMDocument::loadHTML() does, in recovery mode.
+     * What every load starts with, so libxml reads the input as UTF-8 rather
+     * than ISO-8859-1. libxml2 2.9 reads it as a processing instruction, and
+     * 2.14 and later as a comment, as a browser does; load() removes either.
+     */
+    const UTF8_HINT = '<?xml encoding="UTF-8">';
+
+    /**
+     * Load $html into $doc as DOMDocument::loadHTML() does, in recovery mode,
+     * as UTF-8, and with each body read as a browser reads it, on any libxml2.
      *
      * @param DOMDocument $doc
      * @param string $html
@@ -42,7 +50,132 @@ final class Document
      */
     public static function load(DOMDocument $doc, $html, $options = 0)
     {
-        return $doc->loadHTML(self::forLibxml((string) $html), $options | self::RECOVER | self::IGNORE_ENCODING);
+        if (!$doc->loadHTML(self::UTF8_HINT . self::forLibxml((string) $html), $options | self::RECOVER | self::IGNORE_ENCODING)) {
+            return false;
+        }
+
+        self::dropHint($doc);
+        if (self::readsRawBodies()) {
+            self::readAsMarkup($doc);
+        }
+
+        return true;
+    }
+
+    /**
+     * Whether this process's libxml2 reads an xmp body as the text written,
+     * as a browser does - 2.14 and later - rather than parsing it as markup,
+     * as 2.9 does. libxml2 is asked once per process.
+     *
+     * @return bool
+     */
+    public static function readsRawBodies()
+    {
+        static $raw = null;
+        if ($raw === null) {
+            $doc = new DOMDocument();
+            $errors = libxml_use_internal_errors(true);
+            $doc->loadHTML('<xmp>&amp;</xmp>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD | self::RECOVER);
+            if (!$errors) {
+                libxml_clear_errors();
+            }
+            libxml_use_internal_errors($errors);
+            $raw = $doc->documentElement !== null && $doc->documentElement->textContent === '&amp;';
+        }
+
+        return $raw;
+    }
+
+    /**
+     * Remove the node UTF8_HINT was read as, the first in the document.
+     *
+     * @param DOMDocument $doc
+     * @return void
+     */
+    private static function dropHint(DOMDocument $doc)
+    {
+        $node = $doc->firstChild;
+        while ($node instanceof \DOMElement) {
+            $node = $node->firstChild;
+        }
+
+        if (($node instanceof \DOMProcessingInstruction && strtolower($node->target) === 'xml')
+            || ($node instanceof \DOMComment && strncmp($node->data, '?xml', 4) === 0)) {
+            $node->parentNode->removeChild($node);
+        }
+    }
+
+    /**
+     * Read as markup each xmp, iframe, noembed and noframes body a browser
+     * reads as markup - inside a <select>, or in svg or math outside their
+     * integration points - which a libxml2 that reads raw bodies read as the
+     * text written.
+     *
+     * @param DOMDocument $doc
+     * @return void
+     */
+    private static function readAsMarkup(DOMDocument $doc)
+    {
+        $read = [];
+        foreach (self::textOnlyBodies($doc) as $element) {
+            if (strpbrk($element->textContent, '<&') !== false) {
+                $read[] = $element;
+            }
+        }
+        if ($read === []) {
+            return;
+        }
+
+        $raw = self::rawBodies($doc);
+        foreach ($read as $element) {
+            if (in_array($element, $raw, true)) {
+                continue;
+            }
+
+            $parsed = new DOMDocument();
+            self::loadFragment($parsed, $element->textContent);
+            while ($element->firstChild !== null) {
+                $element->removeChild($element->firstChild);
+            }
+            foreach (iterator_to_array(self::fragmentRoot($parsed)->childNodes) as $child) {
+                $element->appendChild($doc->importNode($child, true));
+            }
+        }
+    }
+
+    /**
+     * The xmp, iframe, noembed and noframes elements at or below $node that
+     * hold text and nothing else.
+     *
+     * @param \DOMNode $node
+     * @return \DOMElement[]
+     */
+    private static function textOnlyBodies(\DOMNode $node)
+    {
+        $elements = [];
+        if ($node instanceof \DOMElement && in_array(strtolower($node->nodeName), self::RAW_BODIES, true)) {
+            $elements[] = $node;
+        }
+        if ($node instanceof DOMDocument || $node instanceof \DOMElement) {
+            foreach (self::RAW_BODIES as $name) {
+                foreach ($node->getElementsByTagName($name) as $element) {
+                    $elements[] = $element;
+                }
+            }
+        }
+
+        return array_values(array_filter($elements, function (\DOMElement $element) {
+            if (!$element->hasChildNodes()) {
+                return false;
+            }
+            foreach ($element->childNodes as $child) {
+                if (!$child instanceof \DOMText) {
+                    return false;
+                }
+            }
+
+            return true;
+        }));
     }
 
     /**
@@ -52,7 +185,8 @@ final class Document
      * next `>`, is written `&lt;`, as is every `<` in a textarea or a title,
      * whose bodies libxml parses as markup; in xmp, iframe, noembed and
      * noframes, which a browser reads without decoding, `<` and `&` are
-     * escaped too, and html() writes them back as they were. A browser reads
+     * escaped too where libxml2 parses those bodies as markup (2.9), and
+     * html() writes them back as they were. A browser reads
      * `<!-->` and `<!--->` as an empty comment and libxml as opening one that
      * runs to a later `-->`, so they are written `<!---->`.
      *
@@ -86,10 +220,11 @@ final class Document
 
     /**
      * $node as HTML, as DOMDocument::saveHTML() writes it, but with each xmp,
-     * iframe, noembed and noframes body a browser reads as written - see
-     * rawBodies() - as the text it holds: libxml writes that text escaped,
-     * which a browser would show. A body holding its own end tag, or a
-     * noscript's, stays escaped.
+     * iframe, noembed and noframes body that holds only text written by the
+     * SDK, not by libxml2, whose writers differ: 2.9 escapes those bodies
+     * and 2.15 writes them as they are. A body a browser reads as
+     * written - see rawBodies() - is written as the text it holds; any other,
+     * or one holding its own end tag or a noscript's, is written escaped.
      *
      * @param \DOMNode $node
      * @return string
@@ -102,30 +237,33 @@ final class Document
             return $html;
         }
 
+        $bodies = self::textOnlyBodies($node);
+        if ($bodies === []) {
+            return $html;
+        }
+
+        $raw = self::rawBodies($node);
         $nonce = bin2hex(random_bytes(8));
         $texts = [];
         $swapped = [];
 
-        foreach (self::rawBodies($node) as $element) {
-            // Raw only when nothing in it can end the element, or a
+        foreach ($bodies as $element) {
+            // As written only when nothing in it can end the element, or a
             // <noscript> around it, which a browser reads as raw text too: the
             // page's own body never holds either end tag, so one there came
             // with a translation, and stays escaped.
             $text = $element->textContent;
-            if (stripos($text, '</' . strtolower($element->nodeName)) !== false || stripos($text, '</noscript') !== false) {
-                continue;
-            }
+            $asWritten = in_array($element, $raw, true)
+                && stripos($text, '</' . strtolower($element->nodeName)) === false
+                && stripos($text, '</noscript') === false;
 
             $placeholder = 'ls' . $nonce . 'r' . count($texts) . 'r';
-            $texts[$placeholder] = $text;
+            $texts[$placeholder] = $asWritten ? $text : htmlspecialchars($text, ENT_NOQUOTES | ENT_SUBSTITUTE, 'UTF-8');
             $children = iterator_to_array($element->childNodes);
             foreach ($children as $child) {
                 $element->removeChild($child);
             }
             $swapped[] = [$element, $element->appendChild($doc->createTextNode($placeholder)), $children];
-        }
-        if ($swapped === []) {
-            return $html;
         }
 
         try {
@@ -285,7 +423,7 @@ final class Document
      */
     public static function loadFragment(DOMDocument $doc, $html)
     {
-        return self::load($doc, '<?xml encoding="UTF-8"><' . self::FRAGMENT_ROOT . '>' . Charset::scrub($html), LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        return self::load($doc, '<' . self::FRAGMENT_ROOT . '>' . Charset::scrub($html), LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
     }
 
     /** Elements whose body a browser reads as text, up to their own end tag. */
@@ -489,7 +627,7 @@ final class Document
     private static function textBody($html, $name, $at, array &$edits)
     {
         $end = preg_match('/<\/' . $name . '[\s\/>]/i', $html, $found, PREG_OFFSET_CAPTURE, $at) ? $found[0][1] : null;
-        $escape = in_array($name, self::DECODED_BODIES, true) ? '<' : (in_array($name, self::RAW_BODIES, true) ? '<&' : '');
+        $escape = in_array($name, self::DECODED_BODIES, true) ? '<' : (in_array($name, self::RAW_BODIES, true) && !self::readsRawBodies() ? '<&' : '');
         $stop = $end === null ? strlen($html) : $end;
 
         for ($i = $at + strcspn($html, $escape, $at); $escape !== '' && $i < $stop; $i += 1 + strcspn($html, $escape, $i + 1)) {

@@ -513,7 +513,7 @@ class PageTranslator
             $html = $prolog . '<html>' . substr($html, strlen($prolog));
         }
 
-        $loaded = Document::load($doc, '<?xml encoding="UTF-8">' . $html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        $loaded = Document::load($doc, $html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
 
         libxml_clear_errors();
         libxml_use_internal_errors($internalErrors);
@@ -1513,8 +1513,10 @@ class PageTranslator
                 continue;
             }
 
-            // The encoding hint parseDocument() adds is not the page's.
-            if ($child instanceof \DOMProcessingInstruction && strtolower($child->target) === 'xml') {
+            // An XML declaration is not written back. libxml2 2.9 reads one
+            // as a processing instruction, and 2.14 and later as a comment.
+            if (($child instanceof \DOMProcessingInstruction && strtolower($child->target) === 'xml')
+                || ($child instanceof \DOMComment && strncmp($child->data, '?xml', 4) === 0)) {
                 continue;
             }
 

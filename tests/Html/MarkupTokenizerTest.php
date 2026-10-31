@@ -442,12 +442,16 @@ class MarkupTokenizerTest extends TestCase
      * this SDK actually produces, so that a change in libxml2, in our load
      * flags, or in the tokenizer shows up here rather than as mismatched ids in
      * production. Agreement rows assert agreement and would fail if it were
-     * lost.
+     * lost. A libxml2 that reads raw bodies as text (2.14 and later) is held
+     * to the row's `libxml2_raw_bodies` column where it has one.
      *
      * @dataProvider parseModelProvider
      */
     public function testParseModelAgreementIsWhatWeMeasured($case): void
     {
+        $column = \Langsys\SDK\Html\Document::readsRawBodies() && isset($case['libxml2_raw_bodies']) ? 'libxml2_raw_bodies' : 'libxml2';
+        $agrees = $column === 'libxml2' ? $case['agrees'] : $case[$column] === $case['js_family'];
+
         $doc = new \DOMDocument();
         libxml_use_internal_errors(true);
         $doc->loadHTML(
@@ -462,12 +466,12 @@ class MarkupTokenizerTest extends TestCase
         $encoded = (new \Langsys\SDK\Html\MarkupTokenizer())->encode($root);
 
         $this->assertSame(
-            $case['libxml2'],
+            $case[$column],
             $encoded['text'],
             $case['id'] . ' — ' . $case['why']
         );
 
-        if ($case['agrees']) {
+        if ($agrees) {
             $this->assertSame(
                 $case['js_family'],
                 $encoded['text'],
