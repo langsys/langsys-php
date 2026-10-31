@@ -1516,7 +1516,7 @@ class PageTranslator
             // An XML declaration is not written back. libxml2 2.9 reads one
             // as a processing instruction, and 2.14 and later as a comment.
             if (($child instanceof \DOMProcessingInstruction && strtolower($child->target) === 'xml')
-                || ($child instanceof \DOMComment && strncmp($child->data, '?xml', 4) === 0)) {
+                || ($child instanceof \DOMComment && preg_match('/^\?xml\s[^>]*\?$/i', $child->data))) {
                 continue;
             }
 

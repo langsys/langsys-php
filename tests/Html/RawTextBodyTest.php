@@ -616,12 +616,18 @@ class RawTextBodyTest extends TestCase
             '<!-- built 2026-10-30 --><p>Hello world</p>' => '<!-- built 2026-10-30 -->',
             '<p>Hello world</p>' => '<p',
             '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html><html><body><p>Hello world</p></body></html>' => '<!DOCTYPE html>',
+            '<?xml version="1.0" encoding="UTF-8"?><p>Hello world</p>' => '<p',
         ] as $page => $start) {
             $out = $this->client(['Hello world' => 'Hola mundo'])->translatePage($page, 'UI');
 
             $this->assertSame(0, strpos($out, $start), $page . ' became ' . $out);
             $this->assertStringContainsString('Hola mundo', $out, $page);
             $this->assertStringNotContainsString('?xml', $out, $page);
+        }
+
+        // Anything else shaped like one is the page's own and is kept.
+        foreach (['<!--?xml note--><p>Hello world</p>' => '?xml note', '<?xml-stylesheet href="s.xsl"?><!DOCTYPE html><html><body><p>Hello world</p></body></html>' => 'xml-stylesheet href="s.xsl"'] as $page => $kept) {
+            $this->assertStringContainsString($kept, $this->client(['Hello world' => 'Hola mundo'])->translatePage($page, 'UI'), $page);
         }
 
         $client = $this->client(['Hello world' => 'Hola mundo']);

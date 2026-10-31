@@ -105,7 +105,8 @@ final class Document
     }
 
     /**
-     * Remove the node UTF8_HINT was read as, the first in the document.
+     * Remove the node UTF8_HINT was read as: the first in the document after
+     * a doctype, which libxml2 puts ahead of it.
      *
      * @param DOMDocument $doc
      * @return void
@@ -113,12 +114,12 @@ final class Document
     private static function dropHint(DOMDocument $doc)
     {
         $node = $doc->firstChild;
-        while ($node instanceof \DOMElement) {
-            $node = $node->firstChild;
+        while ($node instanceof \DOMDocumentType || $node instanceof \DOMElement) {
+            $node = $node instanceof \DOMDocumentType ? $node->nextSibling : $node->firstChild;
         }
 
         if (($node instanceof \DOMProcessingInstruction && strtolower($node->target) === 'xml')
-            || ($node instanceof \DOMComment && strncmp($node->data, '?xml', 4) === 0)) {
+            || ($node instanceof \DOMComment && $node->data === substr(self::UTF8_HINT, 1, -1))) {
             $node->parentNode->removeChild($node);
         }
     }
@@ -859,8 +860,8 @@ final class Document
     }
 
     /**
-     * How long the prolog $html opens with is: the whitespace, comments and
-     * doctype before its first tag or text.
+     * How long the prolog $html opens with is: the whitespace, XML
+     * declaration, comments and doctype before its first tag or text.
      *
      * @param string $html
      * @return int
@@ -871,6 +872,10 @@ final class Document
         $at = 0;
         while (true) {
             $at += strspn($html, " \t\n\f\r", $at);
+            if (preg_match('/\G<\?xml\s[^>]*>/i', $html, $declaration, 0, $at)) {
+                $at += strlen($declaration[0]);
+                continue;
+            }
             if (substr($html, $at, 4) === '<!--') {
                 $end = self::commentEnd($html, $at);
                 if ($end === null) {
