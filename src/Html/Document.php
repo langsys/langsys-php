@@ -248,10 +248,10 @@ final class Document
         return $out . substr($html, $at);
     }
 
-    /** Text bodies libxml parses as markup: a browser decodes these. */
+    /** Text bodies libxml2 2.9 parses as markup: a browser decodes these. */
     const DECODED_BODIES = ['textarea', 'title'];
 
-    /** Text bodies libxml parses as markup: a browser reads these as written. */
+    /** Text bodies libxml2 2.9 parses as markup: a browser reads these as written. */
     const RAW_BODIES = ['iframe', 'noembed', 'noframes', 'xmp'];
 
     /**
