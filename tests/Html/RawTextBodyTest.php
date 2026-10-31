@@ -673,11 +673,18 @@ class RawTextBodyTest extends TestCase
             '<p>Hello world</p><p>Second</p><script' => '<p>Hello world</p><p>Second</p>',
             '<p>Hello world</p><p>Second</p><!-- todo' => '<p>Hello world</p><p>Second</p><!-- todo-->',
             '<p>Hello world</p><a title="Read more>Link' => '<p>Hello world</p>',
+            // A `>` inside the unfinished value is not the tag's end.
+            '<p>Hello world</p><a title="Read more>Link</a>' => '<p>Hello world</p>',
+            '<p>Hello world</p><img alt="a > b>' => '<p>Hello world</p>',
+            '<p>See <a href="/docs>the docs</a> for more.</p>' => '<p>See </p>',
+            // The control: a finished tag is kept as written.
+            '<p>See <a href="/docs">the docs</a> for more.</p>' => '<p>See <a href="/docs">the docs</a> for more.</p>',
         ] as $html => $rendered) {
             $out = preg_replace('/ data-ls-contentblock="[0-9a-f]+"/', '', $this->client()->translateContentBlock($html, 'UI'));
             $this->assertSame($rendered, $out, $html);
         }
         $this->assertSame(['Hello world'], array_values($parser->extractPhrases('<p>Hello world</p><a title="Read more>Link')));
+        $this->assertSame(['Hello world'], array_values($parser->extractPhrases('<p>Hello world</p><a title="Read more>Link</a>')));
         $this->assertSame('<p>Hello {name}</p><p>Second</p>', \Langsys\SDK\Html\ValueMarkers::placeholderHtml('<p>Hello <span data-ls-param="name">Bob</span></p><p>Second</p><style'));
     }
 

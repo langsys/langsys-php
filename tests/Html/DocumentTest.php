@@ -20,7 +20,7 @@ class DocumentTest extends TestCase
             'a stray quote in a meta' => ['<meta name="viewport" content="width=device-width""><title>Welcome</title><p>Hi</p>', ['meta', 'title', 'p']],
             'a quote in an unquoted value' => ["<img alt=Don't><p>Two</p><p title='x'>Three</p>", ['img', 'p', 'p']],
             'a value quoted after spaces' => ['<p title = "a > <i>b" id=x>Hi</p><b>y</b>', ['p', 'b']],
-            'a quoted value the input ends inside' => ['<p>a</p><p title="x > <b>', ['p', 'p']],
+            'a quoted value the input ends inside' => ['<p>a</p><p title="x > <b>', ['p']],
             'a doctype and a processing instruction' => ['<!DOCTYPE html><?php echo "<html>" ?><p>Hi</p>', ['p']],
             'an attribute value' => ['<p title="1 > 0" data-note="<html>">Hi</p><b title=\'a>b<body>\'>x</b>', ['p', 'b']],
             'a script body' => ['<script>document.write("<html><body>")</script><p>Hi</p>', ['script', 'p']],

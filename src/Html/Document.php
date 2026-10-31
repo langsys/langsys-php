@@ -604,15 +604,16 @@ final class Document
             }
             // A quote opens a value only after `=`; anywhere else in a tag it
             // is a character, as in a browser's tokenizer.
-            if (!preg_match('/\G<([a-zA-Z][^\s\/>]*+)(?:[^>=]++|=[\t\n\f\r ]*+(?:"[^"]*+"?|\'[^\']*+\'?|[^\t\n\f\r >]*+))*+>?/', $html, $m, 0, $lt)) {
+            if (!preg_match('/\G<([a-zA-Z][^\s\/>]*+)(?:[^>=]++|=[\t\n\f\r ]*+(?:"[^"]*+"?|\'[^\']*+\'?|[^\t\n\f\r >]*+))*+(>)?/', $html, $m, 0, $lt)) {
                 // A `<` that opens nothing is text.
                 $edits[] = [$lt, 1, '&lt;'];
                 $at = $lt + 1;
                 continue;
             }
 
-            // A start tag the input ends inside is no tag at all to a browser.
-            if (substr($m[0], -1) !== '>') {
+            // A start tag the input ends inside is no tag at all to a browser,
+            // whatever the unfinished value it ends in holds.
+            if (!isset($m[2])) {
                 $edits[] = [$lt, strlen($m[0]), ''];
                 break;
             }
