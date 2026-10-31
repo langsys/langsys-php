@@ -1,0 +1,330 @@
+<?php
+
+namespace Langsys\SDK\Tests\Migration;
+
+use Langsys\SDK\Migration\LegacyKeys;
+use PHPUnit\Framework\TestCase;
+
+/**
+ * MIG-5 and MIG-7: keys resolve against the app's kept source files - JSON and
+ * PHP arrays, nested, several at once, in two tiers - and the namespace a key
+ * sits under becomes its category.
+ */
+class LegacyKeysTest extends TestCase
+{
+    /** @var string */
+    private $dir;
+
+    protected function setUp(): void
+    {
+        $this->dir = sys_get_temp_dir() . '/langsys-mig-' . bin2hex(random_bytes(4));
+        mkdir($this->dir . '/app/lang/en', 0777, true);
+        mkdir($this->dir . '/framework/lang/en', 0777, true);
+        mkdir($this->dir . '/vendor/courier/lang/en', 0777, true);
+        mkdir($this->dir . '/app/lang/vendor/courier/en', 0777, true);
+    }
+
+    protected function tearDown(): void
+    {
+        $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($this->dir, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST);
+        foreach ($it as $file) {
+            $file->isDir() ? rmdir($file->getPathname()) : unlink($file->getPathname());
+        }
+        rmdir($this->dir);
+    }
+
+    private function json($path, array $data)
+    {
+        file_put_contents($this->dir . '/' . $path, json_encode($data));
+
+        return $this->dir . '/' . $path;
+    }
+
+    private function php($path, array $data)
+    {
+        file_put_contents($this->dir . '/' . $path, '<?php return ' . var_export($data, true) . ';');
+
+        return $this->dir . '/' . $path;
+    }
+
+    public function testNestedKeysResolveInJsonAndPhpArrayFiles(): void
+    {
+        $json = $this->json('app/en.json', ['checkout' => ['submit' => 'Place order', 'form' => ['title' => 'Your details']]]);
+        $php = $this->php('app/lang/en/account.php', ['profile' => ['title' => 'Your profile'], 'save' => 'Save changes']);
+        $keys = new LegacyKeys(['files' => [$json, $php]]);
+
+        $this->assertSame(['phrase' => 'Place order', 'category' => 'checkout', 'key' => 'checkout.submit', 'file' => $json, 'recognised' => true, 'issue' => null], $keys->resolve('checkout.submit'));
+        $this->assertSame('Your details', $keys->resolve('checkout.form.title')['phrase']);
+        $this->assertSame('Your profile', $keys->resolve('account.profile.title')['phrase']);
+        $this->assertSame('account', $keys->resolve('account.save')['category'], 'a PHP file group is the namespace');
+        $this->assertNull($keys->resolve('checkout.missing'));
+        $this->assertNull($keys->resolve('checkout.form'), 'a subtree is not a phrase');
+    }
+
+    public function testAFlatJsonKeyIsTriedAsWrittenFirst(): void
+    {
+        $json = $this->json('app/en.json', ['checkout.submit' => 'Flat wins', 'checkout' => ['submit' => 'Nested'], 'Welcome back. Glad to see you.' => 'Welcome back. Glad to see you.']);
+        $keys = new LegacyKeys(['files' => [$json]]);
+
+        $this->assertSame('Flat wins', $keys->resolve('checkout.submit')['phrase']);
+        $this->assertSame('checkout', $keys->resolve('checkout.submit')['category']);
+        $this->assertNull($keys->resolve('Welcome back. Glad to see you.')['category'], 'a sentence key has no namespace');
+    }
+
+    public function testTheFirstConfiguredFileWinsAndADuplicateIsReported(): void
+    {
+        $first = $this->json('app/en.json', ['checkout' => ['submit' => 'First']]);
+        $second = $this->php('app/lang/en/checkout.php', ['submit' => 'Second']);
+        $keys = new LegacyKeys(['files' => [$first, $second]]);
+
+        $this->assertSame('First', $keys->resolve('checkout.submit')['phrase']);
+        $this->assertSame(['checkout.submit' => [$first, $second]], $keys->duplicates());
+    }
+
+    public function testAFallbackTierAnswersWhatTheAppDoesNotAndAnOverrideIsNotADuplicate(): void
+    {
+        $app = $this->php('app/lang/en/auth.php', ['failed' => 'Those details are wrong.']);
+        $framework = $this->php('framework/lang/en/auth.php', ['failed' => 'These credentials do not match our records.', 'throttle' => 'Too many login attempts.']);
+        $keys = new LegacyKeys(['files' => [$app], 'fallback_files' => [$framework]]);
+
+        $this->assertSame('Those details are wrong.', $keys->resolve('auth.failed')['phrase'], 'the app overrides');
+        $this->assertSame('Too many login attempts.', $keys->resolve('auth.throttle')['phrase'], 'the framework answers the rest');
+        $this->assertSame([], $keys->duplicates());
+    }
+
+    public function testAPackageKeyResolvesThroughItsNamespaceInTwoTiers(): void
+    {
+        $override = $this->php('app/lang/vendor/courier/en/messages.php', ['welcome' => 'Hi there']);
+        $package = $this->php('vendor/courier/lang/en/messages.php', ['welcome' => 'Welcome', 'bye' => 'Goodbye']);
+        $keys = new LegacyKeys(['namespaces' => ['courier' => ['files' => [$override], 'fallback_files' => [$package]]]]);
+
+        $this->assertSame(['phrase' => 'Hi there', 'category' => 'messages', 'key' => 'courier::messages.welcome', 'file' => $override, 'recognised' => true, 'issue' => null], $keys->resolve('courier::messages.welcome'));
+        $this->assertSame('Goodbye', $keys->resolve('courier::messages.bye')['phrase']);
+        $this->assertNull($keys->resolve('courier::messages.missing'));
+        $this->assertNull($keys->resolve('unknown::messages.welcome'));
+        $this->assertSame([], $keys->duplicates());
+
+        $short = new LegacyKeys(['namespaces' => ['courier' => [$package]]]);
+        $this->assertSame('Welcome', $short->resolve('courier::messages.welcome')['phrase'], 'a bare list is the files tier');
+    }
+
+    public function testPluralKeyPairsResolveAsOneIcuPhrase(): void
+    {
+        $json = $this->json('app/en.json', ['cart' => ['items_one' => '{{count}} item', 'items_other' => '{{count}} items', 'old' => 'one entry', 'old_plural' => '{{count}} entries']]);
+        $keys = new LegacyKeys(['files' => [['path' => $json, 'format' => 'i18next']]]);
+
+        $this->assertSame('{count, plural, one {# item} other {# items}}', $keys->resolve('cart.items')['phrase']);
+        $this->assertSame('{count, plural, one {one entry} other {# entries}}', $keys->resolve('cart.old')['phrase']);
+        $this->assertSame('cart', $keys->resolve('cart.items')['category']);
+    }
+
+    public function testSuffixPairsPairOnlyInAnI18nextFile(): void
+    {
+        $json = $this->json('app/en.json', ['cart' => ['items_one' => '{{count}} item', 'items_other' => '{{count}} items']]);
+        $keys = new LegacyKeys(['files' => [$json]]);
+
+        $this->assertNull($keys->resolve('cart.items'), 'an undeclared JSON file is plain: no pairing');
+        $this->assertSame('{count} item', $keys->resolve('cart.items_one')['phrase'], 'each suffixed key is its own phrase');
+    }
+
+    /**
+     * MIG-7's test: the format decides what a pipe means, and a file's type
+     * decides the default.
+     */
+    public function testTheFileFormatDecidesWhatAPipeMeans(): void
+    {
+        $json = $this->json('app/en.json', ['cart' => ['label' => 'car | cars']]);
+        $php = $this->php('app/lang/en/cart.php', ['count' => '{0} None|{1} One|[2,*] :count items']);
+
+        $undeclared = new LegacyKeys(['files' => [$json]]);
+        $entry = $undeclared->resolve('cart.label');
+        $this->assertSame('car | cars', $entry['phrase']);
+        $this->assertFalse($entry['recognised']);
+        $this->assertSame([$json, 'cart.label'], [$undeclared->problems()[0]['file'], $undeclared->problems()[0]['key']], 'warned by file and key');
+
+        $vue = new LegacyKeys(['files' => [['path' => $json, 'format' => 'vue-i18n']]]);
+        $this->assertSame('{count, plural, =1 {car} other {cars}}', $vue->resolve('cart.label')['phrase']);
+
+        $laravel = new LegacyKeys(['files' => [$php]]);
+        $this->assertSame('{count, plural, =0 {None} =1 {One} other {# items}}', $laravel->resolve('cart.count')['phrase'], 'a PHP array file is laravel by default');
+    }
+
+    /**
+     * MIG-7: a format this SDK does not read is refused when the configuration
+     * loads, naming the format and the file - never read as plain.
+     *
+     * @dataProvider unreadFormatProvider
+     */
+    public function testAFormatThisSdkDoesNotReadIsRefusedAtLoad($entry, array $named): void
+    {
+        try {
+            new LegacyKeys(['files' => [$entry]]);
+            $this->fail('the file is refused');
+        } catch (\Langsys\SDK\Exception\LangsysException $e) {
+            foreach ($named as $expected) {
+                $this->assertStringContainsString($expected, $e->getMessage());
+            }
+        }
+    }
+
+    public function unreadFormatProvider(): array
+    {
+        return [
+            'an unknown declared format' => [['path' => 'app/en.json', 'format' => 'yaml'], ['yaml', 'app/en.json']],
+            'gettext by declaration' => [['path' => 'app/en.json', 'format' => 'gettext'], ['gettext', 'app/en.json']],
+            'rails-i18n by type' => ['config/locales/en.yml', ['rails-i18n', 'config/locales/en.yml']],
+            'gettext by type' => ['locale/django.po', ['gettext', 'locale/django.po']],
+            'a .mo names its .po' => ['locale/django.mo', ['locale/django.mo', 'locale/django.po']],
+            'a namespace file too' => [['path' => 'vendor/x.yml'], ['rails-i18n', 'vendor/x.yml']],
+        ];
+    }
+
+    public function testEveryFormatThisSdkReadsLoads(): void
+    {
+        foreach (['laravel', 'plain', 'vue-i18n', 'i18next'] as $format) {
+            $this->assertInstanceOf(LegacyKeys::class, new LegacyKeys(['files' => [['path' => 'app/en.json', 'format' => $format]]]));
+        }
+        $this->assertInstanceOf(LegacyKeys::class, new LegacyKeys(['files' => ['lang/en/app.php', 'lang/en.json']]));
+    }
+
+    public function testANamespacedFileIsRefusedToo(): void
+    {
+        $this->expectException(\Langsys\SDK\Exception\LangsysException::class);
+        new LegacyKeys(['namespaces' => ['courier' => ['files' => ['vendor/courier/en.yml']]]]);
+    }
+
+    /**
+     * A tier given as one path rather than a list is read as that one file,
+     * so it is refused the same way.
+     *
+     * @dataProvider onePathConfigProvider
+     */
+    public function testAFileGivenAsOnePathIsRefusedToo(array $config): void
+    {
+        try {
+            new LegacyKeys($config);
+            $this->fail('the file is refused');
+        } catch (\Langsys\SDK\Exception\LangsysException $e) {
+            $this->assertStringContainsString('config/locales/en.yml', $e->getMessage());
+        }
+    }
+
+    public function onePathConfigProvider(): array
+    {
+        return [
+            'files' => [['files' => 'config/locales/en.yml']],
+            'fallback files' => [['fallback_files' => 'config/locales/en.yml']],
+            'a namespace\'s files' => [['namespaces' => ['courier' => ['files' => 'config/locales/en.yml']]]],
+            'a namespace given as its path' => [['namespaces' => ['courier' => 'config/locales/en.yml']]],
+        ];
+    }
+
+    /**
+     * A key a group file holds with a dot in it resolves, as Laravel's
+     * Arr::get reads the file: the key as written first, then its path.
+     */
+    public function testADottedKeyAGroupFileHoldsAsWrittenResolves(): void
+    {
+        $php = $this->php('app/lang/en/auth.php', ['failed.login' => 'These credentials do not match.', 'nested' => ['ok' => 'Fine']]);
+        $keys = new LegacyKeys(['files' => [$php]]);
+
+        $entry = $keys->resolve('auth.failed.login');
+        $this->assertNotNull($entry, 'the key resolves');
+        $this->assertSame(['These credentials do not match.', 'auth'], [$entry['phrase'], $entry['category']]);
+        $this->assertSame('Fine', $keys->resolve('auth.nested.ok')['phrase'], 'control: a nested key');
+        foreach ($keys->keys() as $key) {
+            $this->assertNotNull($keys->resolve($key), $key . ' is listed, so it resolves');
+        }
+    }
+
+    public function testAnUnrecognisedValueResolvesAsWrittenAndIsReported(): void
+    {
+        $php = $this->php('app/lang/en/greeting.php', ['hello' => 'Hello, :Name']);
+        $keys = new LegacyKeys(['files' => [$php]]);
+
+        $entry = $keys->resolve('greeting.hello');
+        $this->assertSame('Hello, :Name', $entry['phrase']);
+        $this->assertFalse($entry['recognised']);
+
+        $problems = $keys->problems();
+        $this->assertCount(1, $problems);
+        $this->assertSame([$php, 'greeting.hello'], [$problems[0]['file'], $problems[0]['key']]);
+    }
+
+    public function testFilesAreReadOnlyWhenAKeyIsFirstLookedUp(): void
+    {
+        $json = $this->json('app/en.json', ['checkout' => ['submit' => 'Place order']]);
+        $keys = new LegacyKeys(['files' => [$json]]);
+
+        $this->assertSame([], $keys->loadedFiles(), 'constructing reads nothing');
+        $this->assertSame('Place order', $keys->resolve('checkout.submit')['phrase']);
+        $this->assertSame([$json], $keys->loadedFiles(), 'the first lookup reads the file');
+    }
+
+    /**
+     * A package key is shaped as Laravel parses one: a namespace and a group
+     * with no whitespace, the group a path under the language directory, and
+     * an item that is any array key path.
+     *
+     * @dataProvider packageKeyShapeProvider
+     */
+    public function testAPackageKeyIsShapedAsLaravelParsesOne($text, $isKey): void
+    {
+        $this->assertSame($isKey, LegacyKeys::isPackageKey($text));
+    }
+
+    public function packageKeyShapeProvider(): array
+    {
+        return [
+            'namespace, group and item' => ['courier::messages.welcome', true],
+            'a whole group' => ['courier::messages', true],
+            'a group in a subdirectory' => ['filament-panels::pages/auth/login.title', true],
+            'an item holding spaces' => ['courier::messages.Welcome back', true],
+            'a sentence around a static call' => ['Call {cls}::create() to start', false],
+            'a call in a sentence' => ['Use Foo::bar() here', false],
+            'whitespace after the separator' => ['courier:: messages.welcome', false],
+            'whitespace in the namespace' => ['the courier::messages', false],
+            'no namespace' => ['::messages.welcome', false],
+            'no double colon' => ['messages.welcome', false],
+        ];
+    }
+
+    public function testAnUnreadableFileIsReportedAndResolvesNothing(): void
+    {
+        $keys = new LegacyKeys(['files' => [$this->dir . '/does-not-exist.json']]);
+
+        $this->assertNull($keys->resolve('anything'));
+        $this->assertSame([], $keys->loadedFiles());
+        $this->assertStringContainsString('does-not-exist.json', $keys->problems()[0]['file']);
+    }
+
+    /**
+     * A PHP file that fails as it loads - a syntax error, a framework helper
+     * called with no framework, a throw - is reported with its cause and
+     * resolves nothing, rather than failing every lookup after it.
+     *
+     * @dataProvider failingPhpFileProvider
+     */
+    public function testAPhpFileThatFailsToLoadIsReportedAndResolvesNothing($code, $cause): void
+    {
+        file_put_contents($this->dir . '/app/lang/en/broken.php', $code);
+        $json = $this->json('app/en.json', ['checkout' => ['submit' => 'Place order']]);
+        $keys = new LegacyKeys(['files' => [$this->dir . '/app/lang/en/broken.php', $json]]);
+
+        $this->assertNull($keys->resolve('broken.anything'));
+        $this->assertSame('Place order', $keys->resolve('checkout.submit')['phrase'], 'the other files still resolve');
+        $problems = $keys->problems();
+        $this->assertCount(1, $problems);
+        $this->assertSame($this->dir . '/app/lang/en/broken.php', $problems[0]['file']);
+        $this->assertStringContainsString($cause, $problems[0]['issue']);
+    }
+
+    public function failingPhpFileProvider(): array
+    {
+        return [
+            'a syntax error' => ['<?php return [;', 'syntax error'],
+            'a helper with no framework' => ['<?php return ["name" => langsys_no_such_helper("app.name")];', 'langsys_no_such_helper'],
+            'a throw' => ['<?php throw new \\RuntimeException("boom");', 'boom'],
+        ];
+    }
+}

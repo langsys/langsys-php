@@ -1,0 +1,504 @@
+{
+    "projects": [
+        {
+            "id": "77000800-0001-4000-8000-000000000000",
+            "title": "php server-messages translated#1 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Errors",
+                    "phrase": "The password must be at least {min} characters.",
+                    "translations": {
+                        "es-es": "La contraseña debe tener al menos {min} caracteres."
+                    }
+                }
+            ],
+            "user": {
+                "token": "123501|df4e94ce40241b60a7948a4ad4fa4c93df46539c",
+                "device_id": "php-server-messages-1"
+            }
+        },
+        {
+            "id": "77000800-0002-4000-8000-000000000000",
+            "title": "php server-messages translated#2 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Errors",
+                    "phrase": "The password must be at least {min} characters.",
+                    "translations": {
+                        "es-es": "La contraseña debe tener al menos {min} caracteres."
+                    }
+                }
+            ],
+            "user": {
+                "token": "123502|8379f161a233b03f4960ce50c284f2712433ed22",
+                "device_id": "php-server-messages-2"
+            }
+        },
+        {
+            "id": "77000800-0003-4000-8000-000000000000",
+            "title": "php server-messages translated#3 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Errors",
+                    "phrase": "The password must be at least {min} characters.",
+                    "translations": {
+                        "es-es": "La contraseña debe tener al menos {min} caracteres."
+                    }
+                }
+            ],
+            "user": {
+                "token": "123503|450a605481bfbff86d84ebecb94eb2a35daf992d",
+                "device_id": "php-server-messages-3"
+            }
+        },
+        {
+            "id": "77000800-0004-4000-8000-000000000000",
+            "title": "php server-messages translated#4 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Errors",
+                    "phrase": "The password must be at least {min} characters.",
+                    "translations": {
+                        "es-es": "La contraseña debe tener al menos {min} caracteres."
+                    }
+                }
+            ],
+            "user": {
+                "token": "123504|d87c1b654fef22570bd89a69cdeaa7d90f3cd57c",
+                "device_id": "php-server-messages-4"
+            }
+        },
+        {
+            "id": "77000800-0005-4000-8000-000000000000",
+            "title": "php server-messages translated#5 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Errors",
+                    "phrase": "The password must be at least {min} characters.",
+                    "translations": {
+                        "es-es": "La contraseña debe tener al menos {min} caracteres."
+                    }
+                }
+            ],
+            "user": {
+                "token": "123505|786f0a1b0794a5c5deb8ec857b1c60daf07f3bdb",
+                "device_id": "php-server-messages-5"
+            }
+        },
+        {
+            "id": "77000800-0006-4000-8000-000000000000",
+            "title": "php server-messages translated#6 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Errors",
+                    "phrase": "The password must be at least {min} characters.",
+                    "translations": {
+                        "es-es": "La contraseña debe tener al menos {min} caracteres."
+                    }
+                }
+            ],
+            "user": {
+                "token": "123506|cadb4398f0d81c55a62b2f987a674a54208f8c43",
+                "device_id": "php-server-messages-6"
+            }
+        },
+        {
+            "id": "77000800-0007-4000-8000-000000000000",
+            "title": "php server-messages one-listed#1 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Errors",
+                    "phrase": "The name is required."
+                }
+            ],
+            "user": {
+                "token": "123507|f7517d7f6fbe4ecb1abdbeb63e06b970d94bf47c",
+                "device_id": "php-server-messages-7"
+            }
+        },
+        {
+            "id": "77000800-0008-4000-8000-000000000000",
+            "title": "php server-messages one-listed#2 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Errors",
+                    "phrase": "The name is required."
+                }
+            ],
+            "user": {
+                "token": "123508|16ee3cef7dc0b8ac1dc5324cebc1dd361e5fcc50",
+                "device_id": "php-server-messages-8"
+            }
+        },
+        {
+            "id": "77000800-0009-4000-8000-000000000000",
+            "title": "php server-messages one-listed#3 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Errors",
+                    "phrase": "The name is required."
+                }
+            ],
+            "user": {
+                "token": "123509|faa372da5c831b3493b522d03b575ba9aff4baa1",
+                "device_id": "php-server-messages-9"
+            }
+        },
+        {
+            "id": "77000800-000a-4000-8000-000000000000",
+            "title": "php server-messages one-listed#4 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Errors",
+                    "phrase": "The name is required."
+                }
+            ],
+            "user": {
+                "token": "123510|875faaa6ce29e95b8b930ff3c959d195b78fa2c7",
+                "device_id": "php-server-messages-10"
+            }
+        },
+        {
+            "id": "77000800-000b-4000-8000-000000000000",
+            "title": "php server-messages one-listed#5 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Errors",
+                    "phrase": "The name is required."
+                }
+            ],
+            "user": {
+                "token": "123511|45a72e2c8e4f925d09bc88473b1b67fc77a0cd94",
+                "device_id": "php-server-messages-11"
+            }
+        },
+        {
+            "id": "77000800-000c-4000-8000-000000000000",
+            "title": "php server-messages one-listed#6 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Errors",
+                    "phrase": "The name is required."
+                }
+            ],
+            "user": {
+                "token": "123512|f9991233ac85d6d785b685454e5156859f6f1e85",
+                "device_id": "php-server-messages-12"
+            }
+        },
+        {
+            "id": "77000800-000d-4000-8000-000000000000",
+            "title": "php server-messages writer#1 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "123513|e3ffa76c1a332b1c536dfab8fb2f70743ed2eac8",
+                "device_id": "php-server-messages-13"
+            }
+        },
+        {
+            "id": "77000800-000e-4000-8000-000000000000",
+            "title": "php server-messages writer#2 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "123514|285144be1986b99bbff1f2d6f7bded3e94197ef5",
+                "device_id": "php-server-messages-14"
+            }
+        },
+        {
+            "id": "77000800-000f-4000-8000-000000000000",
+            "title": "php server-messages writer#3 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "123515|1063428245a4d1809a95f1ed3d4993371a568c3e",
+                "device_id": "php-server-messages-15"
+            }
+        },
+        {
+            "id": "77000800-0010-4000-8000-000000000000",
+            "title": "php server-messages writer#4 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "123516|ede88508b5e734540706a5f781517181d49b9260",
+                "device_id": "php-server-messages-16"
+            }
+        },
+        {
+            "id": "77000800-0011-4000-8000-000000000000",
+            "title": "php server-messages writer#5 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "123517|2000cf319b356a326284ac8603caa457abfbbd09",
+                "device_id": "php-server-messages-17"
+            }
+        },
+        {
+            "id": "77000800-0012-4000-8000-000000000000",
+            "title": "php server-messages writer#6 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "123518|2dc36c04ee3f37d90fbb17f4b35a05d93d9f9144",
+                "device_id": "php-server-messages-18"
+            }
+        },
+        {
+            "id": "77000800-0013-4000-8000-000000000000",
+            "title": "php server-messages reader#1 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "123519|57dbcf206eac7b4e24fc69378e2594fc0ae6a1bf",
+                "device_id": "php-server-messages-19"
+            }
+        },
+        {
+            "id": "77000800-0014-4000-8000-000000000000",
+            "title": "php server-messages reader#2 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "123520|4168503908c505b7e316780d73e216362d34b96a",
+                "device_id": "php-server-messages-20"
+            }
+        },
+        {
+            "id": "77000800-0015-4000-8000-000000000000",
+            "title": "php server-messages reader#3 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "123521|06e3adc2b370109f8515001e7252b8e8e9746821",
+                "device_id": "php-server-messages-21"
+            }
+        },
+        {
+            "id": "77000800-0016-4000-8000-000000000000",
+            "title": "php server-messages reader#4 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "123522|e03cd4b7b78e9e8e23398ac753282e51877c1f5d",
+                "device_id": "php-server-messages-22"
+            }
+        },
+        {
+            "id": "77000800-0017-4000-8000-000000000000",
+            "title": "php server-messages reader#5 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "123523|9a6c884d2d6093d1af8ae76171725021f0bb8c0e",
+                "device_id": "php-server-messages-23"
+            }
+        },
+        {
+            "id": "77000800-0018-4000-8000-000000000000",
+            "title": "php server-messages reader#6 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "123524|020c3902efb2e1ccebdd221f96b107cccd85c713",
+                "device_id": "php-server-messages-24"
+            }
+        }
+    ],
+    "keys": [
+        {
+            "id": "77000801-0001-4000-8000-000000000000",
+            "key": "php-server-messages-1-read",
+            "type": "read",
+            "project": "77000800-0001-4000-8000-000000000000"
+        },
+        {
+            "id": "77000801-0002-4000-8000-000000000000",
+            "key": "php-server-messages-2-read",
+            "type": "read",
+            "project": "77000800-0002-4000-8000-000000000000"
+        },
+        {
+            "id": "77000801-0003-4000-8000-000000000000",
+            "key": "php-server-messages-3-read",
+            "type": "read",
+            "project": "77000800-0003-4000-8000-000000000000"
+        },
+        {
+            "id": "77000801-0004-4000-8000-000000000000",
+            "key": "php-server-messages-4-read",
+            "type": "read",
+            "project": "77000800-0004-4000-8000-000000000000"
+        },
+        {
+            "id": "77000801-0005-4000-8000-000000000000",
+            "key": "php-server-messages-5-read",
+            "type": "read",
+            "project": "77000800-0005-4000-8000-000000000000"
+        },
+        {
+            "id": "77000801-0006-4000-8000-000000000000",
+            "key": "php-server-messages-6-read",
+            "type": "read",
+            "project": "77000800-0006-4000-8000-000000000000"
+        },
+        {
+            "id": "77000801-0007-4000-8000-000000000000",
+            "key": "php-server-messages-7-write",
+            "type": "write",
+            "project": "77000800-0007-4000-8000-000000000000"
+        },
+        {
+            "id": "77000801-0008-4000-8000-000000000000",
+            "key": "php-server-messages-8-write",
+            "type": "write",
+            "project": "77000800-0008-4000-8000-000000000000"
+        },
+        {
+            "id": "77000801-0009-4000-8000-000000000000",
+            "key": "php-server-messages-9-write",
+            "type": "write",
+            "project": "77000800-0009-4000-8000-000000000000"
+        },
+        {
+            "id": "77000801-000a-4000-8000-000000000000",
+            "key": "php-server-messages-10-write",
+            "type": "write",
+            "project": "77000800-000a-4000-8000-000000000000"
+        },
+        {
+            "id": "77000801-000b-4000-8000-000000000000",
+            "key": "php-server-messages-11-write",
+            "type": "write",
+            "project": "77000800-000b-4000-8000-000000000000"
+        },
+        {
+            "id": "77000801-000c-4000-8000-000000000000",
+            "key": "php-server-messages-12-write",
+            "type": "write",
+            "project": "77000800-000c-4000-8000-000000000000"
+        },
+        {
+            "id": "77000801-000d-4000-8000-000000000000",
+            "key": "php-server-messages-13-write",
+            "type": "write",
+            "project": "77000800-000d-4000-8000-000000000000"
+        },
+        {
+            "id": "77000801-000e-4000-8000-000000000000",
+            "key": "php-server-messages-14-write",
+            "type": "write",
+            "project": "77000800-000e-4000-8000-000000000000"
+        },
+        {
+            "id": "77000801-000f-4000-8000-000000000000",
+            "key": "php-server-messages-15-write",
+            "type": "write",
+            "project": "77000800-000f-4000-8000-000000000000"
+        },
+        {
+            "id": "77000801-0010-4000-8000-000000000000",
+            "key": "php-server-messages-16-write",
+            "type": "write",
+            "project": "77000800-0010-4000-8000-000000000000"
+        },
+        {
+            "id": "77000801-0011-4000-8000-000000000000",
+            "key": "php-server-messages-17-write",
+            "type": "write",
+            "project": "77000800-0011-4000-8000-000000000000"
+        },
+        {
+            "id": "77000801-0012-4000-8000-000000000000",
+            "key": "php-server-messages-18-write",
+            "type": "write",
+            "project": "77000800-0012-4000-8000-000000000000"
+        },
+        {
+            "id": "77000801-0013-4000-8000-000000000000",
+            "key": "php-server-messages-19-read",
+            "type": "read",
+            "project": "77000800-0013-4000-8000-000000000000"
+        },
+        {
+            "id": "77000801-0014-4000-8000-000000000000",
+            "key": "php-server-messages-20-read",
+            "type": "read",
+            "project": "77000800-0014-4000-8000-000000000000"
+        },
+        {
+            "id": "77000801-0015-4000-8000-000000000000",
+            "key": "php-server-messages-21-read",
+            "type": "read",
+            "project": "77000800-0015-4000-8000-000000000000"
+        },
+        {
+            "id": "77000801-0016-4000-8000-000000000000",
+            "key": "php-server-messages-22-read",
+            "type": "read",
+            "project": "77000800-0016-4000-8000-000000000000"
+        },
+        {
+            "id": "77000801-0017-4000-8000-000000000000",
+            "key": "php-server-messages-23-read",
+            "type": "read",
+            "project": "77000800-0017-4000-8000-000000000000"
+        },
+        {
+            "id": "77000801-0018-4000-8000-000000000000",
+            "key": "php-server-messages-24-read",
+            "type": "read",
+            "project": "77000800-0018-4000-8000-000000000000"
+        }
+    ]
+}

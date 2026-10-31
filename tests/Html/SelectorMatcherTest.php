@@ -16,6 +16,18 @@ class SelectorMatcherTest extends TestCase
     // CSS to XPath Conversion Tests
     // =========================================================================
 
+    /**
+     * An unquoted attribute value, which CSS allows for an identifier, reads
+     * as the quoted one.
+     */
+    public function testAnUnquotedAttributeValueReadsAsAQuotedOne()
+    {
+        $matcher = new SelectorMatcher();
+
+        $this->assertSame($matcher->cssToXpath('input[type="submit"]'), $matcher->cssToXpath('input[type=submit]'));
+        $this->assertSame($matcher->cssToXpath('a[href^="/docs"]'), $matcher->cssToXpath("a[href^='/docs']"));
+    }
+
     public function testCssToXpathTagSelector()
     {
         $matcher = new SelectorMatcher();

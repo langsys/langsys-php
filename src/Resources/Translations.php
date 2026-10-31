@@ -2,6 +2,9 @@
 
 namespace Langsys\SDK\Resources;
 
+use Langsys\SDK\Locale\LocaleDetector;
+
+use Langsys\SDK\Exception\LangsysException;
 use Langsys\SDK\Http\HttpClient;
 use Langsys\SDK\Log\LoggerInterface;
 use Langsys\SDK\Log\NullLogger;
@@ -66,7 +69,7 @@ class Translations
     {
         return $this->http->get('translations', [
             'project_id' => $this->projectId,
-            'locale' => $locale,
+            'locale' => LocaleDetector::normalize($locale),
             'format' => 'flat',
         ]);
     }
@@ -81,7 +84,7 @@ class Translations
     {
         return $this->http->get('translations/data', [
             'project_id' => $this->projectId,
-            'locale' => $locale,
+            'locale' => LocaleDetector::normalize($locale),
         ]);
     }
 
@@ -97,11 +100,57 @@ class Translations
 
         $response = $this->getFlat($locale);
 
-        if (isset($response['data'])) {
-            return $response['data'];
+        // A 2xx with no `data` key is FOREIGN, not an empty catalog: every
+        // translations response goes through ApiResponse::resourceResponse(),
+        // which assigns simpleResponse['data'] unconditionally, so an empty
+        // catalog arrives WITH the key. HttpClient::handleResponse() turns any
+        // empty-bodied 2xx into [] - it has to, for 204 - so an empty 200 from a
+        // proxy or load balancer lands here, and must not be cached as a blank
+        // catalog for the whole TTL.
+        //
+        // array_key_exists, not isset: `{"data":null}` is also not a catalog,
+        // and isset() cannot tell it from an absent key.
+        if (!array_key_exists('data', $response)) {
+            throw new LangsysException(sprintf(
+                'Translations response for %s carried no data key',
+                $locale
+            ));
         }
 
-        return [];
+        $data = $response['data'];
+
+        // Validate BEFORE this can reach a cache, or a malformed response is
+        // written into the shared cache and re-read for the rest of its TTL.
+        // Depth 2, because a top-level array of scalar slices breaks every
+        // lookup just as thoroughly as a scalar does.
+        //
+        // THROWS rather than returning []: [] is a valid catalog, so a caller
+        // would cache it and every later request would read a blank catalog for
+        // the rest of the TTL - an hour by default, fleet-wide on a shared
+        // Redis, and unable to self-heal under a read key, which never
+        // refetches. Failing puts this on the same footing as an unreachable
+        // API: the entry points degrade to source text, nothing is cached, and
+        // the next request tries again.
+        if (!is_array($data)) {
+            throw new LangsysException(sprintf(
+                'Translations response for %s is not a catalog map (got %s)',
+                $locale,
+                gettype($data)
+            ));
+        }
+
+        foreach ($data as $category => $slice) {
+            if (!is_array($slice)) {
+                throw new LangsysException(sprintf(
+                    'Translations response for %s has a malformed category slice %s (got %s)',
+                    $locale,
+                    var_export($category, true),
+                    gettype($slice)
+                ));
+            }
+        }
+
+        return $data;
     }
 
     /**

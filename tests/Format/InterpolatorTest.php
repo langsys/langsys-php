@@ -155,6 +155,44 @@ class InterpolatorTest extends TestCase
         );
     }
 
+    /**
+     * An enum renders as Laravel's enum_value() reads it: a backed enum by its
+     * value, a plain enum by its name, in a placeholder and as an ICU argument.
+     */
+    public function testAnEnumParamRendersByItsValueOrName()
+    {
+        if (PHP_VERSION_ID < 80100) {
+            $this->markTestSkipped('Enums need PHP 8.1');
+        }
+
+        // Declared at run time, so the file still parses on PHP 7.4.
+        if (!class_exists(\Langsys\SDK\Tests\Format\Fixtures\TicketStatus::class, false)) {
+            eval('namespace Langsys\SDK\Tests\Format\Fixtures;
+                enum TicketStatus: string { case Open = \'open\'; case OnHold = \'on hold\'; }
+                enum Priority: int { case High = 3; }
+                enum Channel { case Email; }');
+        }
+
+        $this->assertSame(
+            'Status: on hold, priority 3, via Email',
+            $this->interpolator->interpolate('Status: {status}, priority {priority}, via {channel}', [
+                'status' => \Langsys\SDK\Tests\Format\Fixtures\TicketStatus::OnHold,
+                'priority' => \Langsys\SDK\Tests\Format\Fixtures\Priority::High,
+                'channel' => \Langsys\SDK\Tests\Format\Fixtures\Channel::Email,
+            ])
+        );
+
+        $this->requireIntl();
+
+        $this->assertSame(
+            'Abierto por Email',
+            $this->interpolator->interpolate('{status, select, open {Abierto} other {Otro}} por {channel}', [
+                'status' => \Langsys\SDK\Tests\Format\Fixtures\TicketStatus::Open,
+                'channel' => \Langsys\SDK\Tests\Format\Fixtures\Channel::Email,
+            ], 'es-es')
+        );
+    }
+
     public function testBooleansRenderAsJsStyleTrueFalse()
     {
         // Matches JS String(bool), NOT PHP's native "1" / "".
@@ -565,6 +603,90 @@ class InterpolatorTest extends TestCase
     }
 
     /**
+     * ICU-6: a pattern that parses can still fail to format - `{count}` written
+     * inside the branches of `{count, plural, ...}` declares one argument with
+     * two types, and intl's format() returns false (U_ARGUMENT_TYPE_MISMATCH).
+     * The render goes through this SDK's own branch selection with the value
+     * filled in: never "", never the raw construct.
+     */
+    public function testAFormatterFailureRendersThroughTheSdksOwnBranchSelection()
+    {
+        $this->requireIntl();
+
+        $pattern = 'You have {count, plural, one {{count} car} other {{count} cars}}';
+
+        $this->assertFalse(
+            \MessageFormatter::create('en', $pattern)->format(['count' => 3]),
+            'the vector must make intl fail at format time'
+        );
+
+        $this->assertSame('You have 3 cars', $this->interpolator->interpolate($pattern, ['count' => 3], 'en'));
+        $this->assertSame('You have 1 car', $this->interpolator->interpolate($pattern, ['count' => 1], 'en'));
+    }
+
+    /**
+     * ICU-6's CLDR clause: where intl can compute the value's category, the
+     * fallback uses it - Polish 3 is `few`, which one-iff-1 would render as
+     * `other`.
+     */
+    public function testAFormatterFailurePicksTheCldrCategory()
+    {
+        $this->requireIntl();
+
+        $pattern = '{n, plural, one {# kot} few {# koty} many {# kotów} other {# kota}} ({n})';
+
+        $this->assertFalse(\MessageFormatter::create('pl', $pattern)->format(['n' => 3]));
+
+        $this->assertSame('3 koty (3)', $this->interpolator->interpolate($pattern, ['n' => 3], 'pl'));
+        $this->assertSame('5 kotów (5)', $this->interpolator->interpolate($pattern, ['n' => 5], 'pl'));
+        $this->assertSame('1 kot (1)', $this->interpolator->interpolate($pattern, ['n' => 1], 'pl'));
+
+        // An ordinal takes the ordinal rules, not the cardinal ones: English 2
+        // is `two` (2nd) and 11 is `other` (11th).
+        $ordinal = '{n, selectordinal, one {#st} two {#nd} few {#rd} other {#th}} ({n})';
+        $this->assertFalse(\MessageFormatter::create('en', $ordinal)->format(['n' => 2]));
+
+        $this->assertSame('2nd (2)', $this->interpolator->interpolate($ordinal, ['n' => 2], 'en'));
+        $this->assertSame('11th (11)', $this->interpolator->interpolate($ordinal, ['n' => 11], 'en'));
+        $this->assertSame('22nd (22)', $this->interpolator->interpolate($ordinal, ['n' => 22], 'en'));
+    }
+
+    /**
+     * ICU-6's warning fires with debug logging off - a formatter failure is a
+     * defect in the phrase, not the normal event ICU-4 notes at debug - names
+     * the phrase, the locale and intl's error, and fires once per template and
+     * locale.
+     */
+    public function testAFormatterFailureWarnsWithDebugOffOncePerTemplateAndLocale()
+    {
+        $this->requireIntl();
+
+        $path = tempnam(sys_get_temp_dir(), 'langsys-icu6-');
+        $interpolator = new Interpolator(new \Langsys\SDK\Log\Logger($path, 'warning'));
+
+        $pattern = 'You have {count, plural, one {{count} car} other {{count} cars}}';
+
+        $interpolator->interpolate($pattern, ['count' => 3], 'en');
+        $interpolator->interpolate($pattern, ['count' => 5], 'en');
+        $interpolator->interpolate($pattern, ['count' => 3], 'de');
+
+        $lines = array_values(array_filter(explode("\n", (string) file_get_contents($path))));
+        @unlink($path);
+
+        $warnings = array_values(array_filter($lines, function ($line) {
+            return strpos($line, 'ICU formatting failed') !== false;
+        }));
+
+        $this->assertCount(2, $warnings, 'one warning per (template, locale): en once, de once');
+        foreach ($warnings as $warning) {
+            $this->assertStringContainsString('You have {count, plural', $warning);
+            $this->assertStringContainsString('U_ARGUMENT_TYPE_MISMATCH', $warning);
+        }
+        $this->assertStringContainsString('"locale":"en"', $warnings[0]);
+        $this->assertStringContainsString('"locale":"de"', $warnings[1]);
+    }
+
+    /**
      * The interpolation reference fixtures, asserted against by other Langsys
      * SDKs so a shared catalog renders the same sentence everywhere.
      *
@@ -588,6 +710,16 @@ class InterpolatorTest extends TestCase
 
         $this->assertNotEmpty($cases);
 
+        // Every row once supplied a params object, which is how three SDKs shipped a
+        // no-params short-circuit that returned the raw pattern with every fixture
+        // run green. Both shapes must stay in the file.
+        $this->assertNotEmpty(array_filter($cases, function ($case) {
+            return !array_key_exists('params', $case);
+        }), 'the fixture must keep a row with no params at all');
+        $this->assertNotEmpty(array_filter($cases, function ($case) {
+            return array_key_exists('params', $case) && $case['params'] === [];
+        }), 'the fixture must keep a row with an empty params map');
+
         foreach ($cases as $case) {
             // requires_intl is MEASURED at generation time by running each case
             // with and without the extension, not guessed from the template -
@@ -599,7 +731,10 @@ class InterpolatorTest extends TestCase
 
             $this->assertSame(
                 $case['expected'],
-                $this->interpolator->interpolate($case['template'], $case['params'], $case['locale']),
+                // A row without params maps to the default []: passing a locale
+                // positionally means this API cannot omit the argument itself.
+                // ClientInterpolationTest drives the genuinely omitted form.
+                $this->interpolator->interpolate($case['template'], array_key_exists('params', $case) ? $case['params'] : [], $case['locale']),
                 $case['description'] . ' — ' . $case['template']
             );
         }
@@ -798,5 +933,448 @@ class InterpolatorTest extends TestCase
             '2026-07-08',
             $this->interpolator->interpolate('{d}', ['d' => $date])
         );
+    }
+
+    /**
+     * MessageFormatter signals a bad pattern with false by default and with an
+     * IntlException when intl.use_exceptions=1, which '@' does not suppress.
+     * Behaviour already present on this line; pinned under BOTH ini states,
+     * because testing only one would miss the bug entirely.
+     *
+     * @dataProvider useExceptionsProvider
+     */
+    public function testMalformedIcuNeverThrows($useExceptions)
+    {
+        if (!class_exists('MessageFormatter')) {
+            $this->markTestSkipped('ext-intl is not available.');
+        }
+
+        $previous = ini_get('intl.use_exceptions');
+        ini_set('intl.use_exceptions', $useExceptions);
+
+        try {
+            $out = (new Interpolator())->interpolate(
+                '{n, plural, one {# item} other {# items}',
+                ['n' => 2],
+                'en-us'
+            );
+            $this->assertIsString($out);
+        } finally {
+            ini_set('intl.use_exceptions', $previous === false ? '0' : $previous);
+        }
+    }
+
+    public function useExceptionsProvider()
+    {
+        return [
+            'intl.use_exceptions=0' => ['0'],
+            'intl.use_exceptions=1' => ['1'],
+        ];
+    }
+
+    // =========================================================================
+    // ICU-4 — recovery must be observable
+    // =========================================================================
+
+    /**
+     * A recovered argument never appears in the source phrase, so there is
+     * nothing to grep for and no failing behaviour to notice: the page renders,
+     * reads plausibly, and is subtly wrong. Asserting the notice fires AND names
+     * the argument — a test that only checks the rendered string passes whether
+     * or not anyone can ever diagnose it.
+     */
+    public function testRecoveryEmitsADebugNoticeNamingEveryDefaultedArgument()
+    {
+        $this->requireIntl();
+
+        $logger = new RecordingLogger();
+        $interpolator = new Interpolator($logger);
+
+        $interpolator->interpolate(
+            '{gender, select, male {M} other {O}} and {mood, select, glad {G} other {N}}',
+            ['unrelated' => 1],
+            'pl'
+        );
+
+        $this->assertCount(1, $logger->records, 'exactly one notice per recovering render');
+
+        list($level, $message, $context) = $logger->records[0];
+
+        $this->assertSame('debug', $level);
+        $this->assertSame(['gender', 'mood'], $context['defaulted_arguments'], 'every defaulted argument is named');
+        $this->assertSame('pl', $context['locale']);
+        $this->assertStringContainsString('params', $message, 'the notice states the fix');
+        $this->assertStringContainsString('NORMAL', $message, 'and that a source phrase lacking the argument is expected');
+    }
+
+    /**
+     * Deduped per locale + template, so a recovering phrase rendered on every
+     * request produces one line rather than a flood — and a second locale is a
+     * genuinely different rendering, so it notes again.
+     */
+    public function testRecoveryNoticeIsDedupedPerLocaleAndTemplate()
+    {
+        $this->requireIntl();
+
+        $logger = new RecordingLogger();
+        $interpolator = new Interpolator($logger);
+        $template = '{gender, select, male {M} other {O}}';
+
+        $interpolator->interpolate($template, ['x' => 1], 'pl');
+        $interpolator->interpolate($template, ['x' => 1], 'pl');
+        $interpolator->interpolate($template, ['x' => 1], 'ru');
+
+        $this->assertCount(2, $logger->records);
+        $this->assertSame('pl', $logger->records[0][2]['locale']);
+        $this->assertSame('ru', $logger->records[1][2]['locale']);
+    }
+
+    /**
+     * The notice must fire for NON-select argument types too.
+     *
+     * Coverage, not behaviour: the notice is emitted from the recovery decision,
+     * which is argument-type-agnostic — it reads the names `missingIcuArguments()`
+     * found and never inspects their type. So this passes today and is expected
+     * to. It exists because the other three notice tests all recover `select`
+     * arguments, and a suite that only ever recovers one argument type cannot
+     * distinguish "the notice fires on recovery" from "the notice fires on
+     * select" — a later change making the notice type-specific would leave every
+     * existing assertion green.
+     */
+    public function testRecoveryNoticeFiresForPluralAndNumberArgumentsToo()
+    {
+        $this->requireIntl();
+
+        $logger = new RecordingLogger();
+
+        (new Interpolator($logger))->interpolate(
+            '{n, plural, one {# item} other {# items}} and {m, number} more',
+            ['unrelated' => 1],
+            'pl'
+        );
+
+        $this->assertCount(1, $logger->records);
+
+        list($level, , $context) = $logger->records[0];
+
+        $this->assertSame('debug', $level);
+        $this->assertSame(['n', 'm'], $context['defaulted_arguments'], 'both non-select types are named');
+        $this->assertSame('pl', $context['locale']);
+    }
+
+    public function testNoNoticeWhenNothingWasDefaulted()
+    {
+        $this->requireIntl();
+
+        $logger = new RecordingLogger();
+
+        (new Interpolator($logger))->interpolate(
+            '{gender, select, male {M} other {O}}',
+            ['gender' => 'male'],
+            'pl'
+        );
+
+        $this->assertSame([], $logger->records);
+    }
+
+    // =========================================================================
+    // Supplied arguments keep CLDR selection while others recover
+    // =========================================================================
+
+    /**
+     * The divergence this closes: one missing argument used to route the WHOLE
+     * string to the simplified renderer, whose branch selection knows only `=N`,
+     * one-iff-1 and `other`. So a SUPPLIED plural at n=3 rendered `other` in
+     * Polish, Russian and Arabic where CLDR requires `few` — grammatically wrong
+     * output in every language that marks the distinction, caused by an
+     * unrelated argument being absent.
+     *
+     * @dataProvider cldrFewProvider
+     */
+    public function testSuppliedPluralKeepsCldrSelectionWhileAnotherArgumentRecovers($locale, $expected)
+    {
+        $this->requireIntl();
+
+        $out = (new Interpolator())->interpolate(
+            '{gender, select, male {M} female {F} other {O}} — {n, plural, one {# item} few {# items-few} many {# items-many} other {# items-other}}',
+            ['n' => 3],
+            $locale
+        );
+
+        // The count is written in the locale's own digits, which differ
+        // between ICU versions: Arabic's is 3 on ICU 76.1 and 78.2, ٣ on 74.2.
+        $digits = (new \NumberFormatter($locale, \NumberFormatter::DECIMAL))->format(3);
+        $this->assertSame(str_replace('3', $digits, $expected), $out);
+    }
+
+    public function cldrFewProvider()
+    {
+        return [
+            'pl n=3 is few'      => ['pl', 'O — 3 items-few'],
+            'ru n=3 is few'      => ['ru', 'O — 3 items-few'],
+            'ar n=3 is few'      => ['ar', 'O — 3 items-few'],
+            // English has no `few` category, so `other` is correct here - the
+            // control that proves the assertion tracks CLDR rather than a string.
+            'en-us n=3 is other' => ['en-us', 'O — 3 items-other'],
+        ];
+    }
+
+    /**
+     * Recovery descends: a missing argument nested inside a SUPPLIED select
+     * recovers, while the select itself stays on the CLDR path.
+     *
+     * The first version of this test supplied BOTH arguments, so nothing was
+     * missing, nothing recovered, and it asserted the ordinary intl path while
+     * claiming to prove descent — it would have passed against an SDK with no
+     * descent at all. `n` is withheld here so the nested node must actually be
+     * rewritten.
+     *
+     * CHARACTERISATION, not a regression pin: this case produces the same string
+     * under the previous whole-string renderer, because a MISSING argument has no
+     * CLDR category to lose — both implementations land on `other`. The vectors
+     * that discriminate are the ones with a SUPPLIED plural alongside
+     * (`cldrFewProvider`). Recorded so nobody reads a green here as evidence the
+     * node-by-node rewrite is working.
+     */
+    public function testRecoveryDescendsIntoASuppliedNode()
+    {
+        $this->requireIntl();
+
+        $template = '{g, select, female {F: {n, plural, one {# item} few {# few} other {# other}}} other {O}}';
+
+        // g supplied and selected by CLDR; n missing and recovered in place.
+        $this->assertSame(
+            'F: {n} other',
+            (new Interpolator())->interpolate($template, ['g' => 'female'], 'pl')
+        );
+
+        // Control: with n supplied, the same nested node takes the CLDR branch,
+        // so the assertion above is about recovery rather than about the string.
+        $this->assertSame(
+            'F: 3 few',
+            (new Interpolator())->interpolate($template, ['g' => 'female', 'n' => 3], 'pl')
+        );
+    }
+
+    /**
+     * The commonest call shape. A catalog value can contain an ICU construct the
+     * caller knows nothing about — the backend promotes a plain {name} into a
+     * gendered select for locales that need one — so "no params" is precisely
+     * the case that needs recovery. This used to return the raw MessageFormat
+     * source to the page.
+     */
+    public function testIcuRecoversWhenTheCallerSuppliesNoParamsAtAll()
+    {
+        $out = (new Interpolator())->interpolate(
+            '{count, plural, one {# item} other {# items}}',
+            [],
+            'en-us'
+        );
+
+        $this->assertSame('{count} items', $out);
+        $this->assertStringNotContainsString('plural', $out, 'raw ICU source must never reach the page');
+    }
+
+    /**
+     * The recovered `{argName}` literal must survive the formatter call — for
+     * TYPED arguments as well as branch-typed ones, and whether the argument is
+     * absent or present-and-null.
+     *
+     * Two failure modes, both surfaced by mutating the recovery on the JS leg and
+     * both invisible to the branch-typed vectors above:
+     *
+     *   - a null NUMBER coerces to `'0 due'` rather than erasing to `' due'`.
+     *     That is worse than the empty string, because `0` reads as data: an
+     *     invoice showing "0 due" is a plausible sentence stating something false,
+     *     where " due" at least looks broken.
+     *   - the same mutation breaks ABSENT-argument recovery outright, emitting raw
+     *     ICU source. So the absent cases sit beside the null ones deliberately —
+     *     a suite with only null vectors passes while absent recovery is gone.
+     *
+     * @dataProvider recoveredLiteralProvider
+     */
+    public function testRecoveredLiteralSurvivesTheFormatterCall($template, $params, $expected)
+    {
+        $this->assertSame($expected, (new Interpolator())->interpolate($template, $params, 'en-us'));
+    }
+
+    public function recoveredLiteralProvider()
+    {
+        return [
+            // A null typed argument must not coerce. '0 due' would be the
+            // dangerous outcome; ' due' the merely broken one.
+            'null number'            => ['{amt, number} due', ['amt' => null], '{amt} due'],
+            'absent number'          => ['{amt, number} due', [], '{amt} due'],
+            'absent number, params'  => ['{amt, number} due', ['other' => 1], '{amt} due'],
+            'null date'              => ['{d, date} shipped', ['d' => null], '{d} shipped'],
+            'absent date'            => ['{d, date} shipped', ['other' => 1], '{d} shipped'],
+            'null plural'            => ['{n, plural, one {# item} other {# items}}', ['n' => null], '{n} items'],
+            'absent plural'          => ['{n, plural, one {# item} other {# items}}', [], '{n} items'],
+            // {count} inside its own plural fails to format on ICU 76.1 (ICU-6).
+            'after a formatter failure' => ['{count, plural, one {{count} car} other {{count} cars}}, {amt, number} due', ['count' => 3], '3 cars, {amt} due'],
+
+            // Controls: a supplied argument still formats through CLDR, so the
+            // assertions above are about recovery rather than about the type
+            // never formatting at all.
+            // Without intl a number prints as given.
+            'supplied number'        => ['{amt, number} due', ['amt' => 1234.5], extension_loaded('intl') ? '1,234.5 due' : '1234.5 due'],
+            'supplied plural'        => ['{n, plural, one {# item} other {# items}}', ['n' => 1], '1 item'],
+        ];
+    }
+
+    /**
+     * A recovered branch holds its values as written, as the same branch does
+     * with its argument supplied: a value is never read as ICU, so it never
+     * fills in another param, unescapes a quote or takes a plural's count.
+     *
+     * @dataProvider recoveredValueProvider
+     */
+    public function testARecoveredBranchKeepsItsValuesAsWritten($template, array $params, $expected)
+    {
+        $interpolator = new Interpolator();
+
+        $this->assertSame($expected, $interpolator->interpolate($template, $params, 'es-ES'));
+        $this->assertSame($expected, $interpolator->interpolate($template, $params + ['g' => 'other'], 'es-ES'), 'control: the argument supplied');
+    }
+
+    public function recoveredValueProvider()
+    {
+        $welcome = '{g, select, female {Bienvenida, {name}} other {Bienvenide, {name}}}';
+
+        return [
+            'another param named'   => [$welcome, ['name' => '{order}', 'order' => 'SECRET'], 'Bienvenide, {order}'],
+            'a doubled quote'       => [$welcome, ['name' => "It''s me"], "Bienvenide, It''s me"],
+            'a quoted brace'        => [$welcome, ['name' => "a'{b}'c"], "Bienvenide, a'{b}'c"],
+            'ICU syntax'            => [$welcome, ['name' => '{count, plural, other {#}}', 'count' => 7], 'Bienvenide, {count, plural, other {#}}'],
+            'a # inside a plural'   => ['{n, plural, other {# {g, select, other {fans de {team}}}}}', ['n' => 3, 'team' => '#1 Club'], '3 fans de #1 Club'],
+        ];
+    }
+
+    /**
+     * A recovering phrase that does not parse is named in the warning as
+     * written, never as the pattern its recovery handed intl.
+     */
+    public function testARecoveringPhraseThatDoesNotParseIsNamedAsWritten()
+    {
+        $logger = new RecordingLogger();
+        $template = '{g, select, other {Hola}} {broken';
+
+        (new Interpolator($logger))->interpolate($template, [], 'es-ES');
+
+        $warnings = array_values(array_filter($logger->records, function ($record) {
+            return $record[0] === 'warning';
+        }));
+        $this->assertNotEmpty($warnings);
+        $this->assertSame($template, $warnings[0][2]['phrase']);
+    }
+
+    /**
+     * `#` is a plural's count. In a select's branch it is text, as ICU and the
+     * JS formatter both read it, the select nested in a plural or not:
+     * recovered, rendered after a formatter failure, or formatted.
+     *
+     * @dataProvider hashInASelectProvider
+     */
+    public function testAHashInASelectBranchIsText($template, array $params, $expected)
+    {
+        $this->assertSame($expected, (new Interpolator())->interpolate($template, $params, 'es-ES'));
+    }
+
+    public function hashInASelectProvider()
+    {
+        $rank = '{g, select, female {Ella es la #1} other {Es el #1}}';
+        $friends = '{n, plural, one {{g, select, female {# amiga} other {# amigo}}} other {{g, select, female {# amigas} other {# amigos}}}}';
+        // {count} inside its own plural fails to format on ICU 76.1 (ICU-6).
+        $failing = 'Tienes {count, plural, one {{count} coche} other {{count} coches}}. ';
+
+        return [
+            'recovered'                    => [$rank, [], 'Es el #1'],
+            'recovered inside a plural'    => [$friends, ['n' => 3], '# amigos'],
+            'after a formatter failure'    => [$failing . $rank, ['count' => 3, 'g' => 'female'], 'Tienes 3 coches. Ella es la #1'],
+            'control: formatted'           => [$rank, ['g' => 'female'], 'Ella es la #1'],
+            'control: formatted in plural' => [$friends, ['n' => 3, 'g' => 'female'], '# amigas'],
+        ];
+    }
+
+    /**
+     * A date in a plain `{d}` renders as a date in a phrase with ICU in it, as
+     * it does in one without: recovered or formatted, never as a timestamp.
+     *
+     * @dataProvider dateInAnIcuPhraseProvider
+     */
+    public function testADateInAPlainPlaceholderOfAnIcuPhraseRendersAsADate($template, array $params, $expected)
+    {
+        $interpolator = new Interpolator();
+        $date = new \DateTimeImmutable('2026-03-05 10:00:00', new \DateTimeZone('UTC'));
+
+        $this->assertSame(
+            sprintf($expected, $interpolator->interpolate('{d}', ['d' => $date], 'es')),
+            $interpolator->interpolate($template, $params + ['d' => $date], 'es')
+        );
+    }
+
+    public function dateInAnIcuPhraseProvider()
+    {
+        return [
+            'formatted'       => ['{n, plural, one {# factura vence} other {# facturas vencen}} el {d}', ['n' => 3], '3 facturas vencen el %s'],
+            'recovered'       => ['{g, select, other {Vence}} el {d}', [], 'Vence el %s'],
+            'inside a branch' => ['{n, plural, one {# factura vence el {d}} other {# facturas vencen el {d}}}', ['n' => 3], '3 facturas vencen el %s'],
+        ];
+    }
+
+    // =========================================================================
+    // TOK-5 — %name% is an accepted spelling of {name}
+    // =========================================================================
+
+    /**
+     * Before this, `%name%` reached the reader verbatim: a placeholder rendered
+     * as literal text on the page. The two spellings exist because different
+     * hosts template differently, and the catalog is shared across all of them.
+     *
+     * @dataProvider percentPlaceholderProvider
+     */
+    public function testPercentPlaceholdersAreAccepted($text, array $params, $expected, $why)
+    {
+        $this->assertSame($expected, $this->interpolator->interpolate($text, $params, 'en-us'), $why);
+    }
+
+    public function percentPlaceholderProvider()
+    {
+        return [
+            'percent form substitutes' => [
+                'Hello, %name%!', ['name' => 'Sarah'], 'Hello, Sarah!',
+                'the escape form must behave exactly like the brace form',
+            ],
+            'brace form still substitutes' => [
+                'Hello, {name}!', ['name' => 'Sarah'], 'Hello, Sarah!',
+                'positive control - adding one spelling must not cost the other',
+            ],
+            'both forms in one string' => [
+                'Hi {a} and %b%', ['a' => 'X', 'b' => 'Y'], 'Hi X and Y',
+                'a phrase may legitimately carry both',
+            ],
+            'ICU is unaffected' => [
+                '{n, plural, one {# item} other {# items}}', ['n' => 3], '3 items',
+                'the normalisation runs before ICU and must not disturb it',
+            ],
+
+            // The reason the pattern is narrow and gated on supplied keys.
+            'percentages are not placeholders' => [
+                'Save 20% on 5% APR', ['name' => 'Sarah'], 'Save 20% on 5% APR',
+                'ordinary prose containing a %...% span must not be eaten',
+            ],
+            'percentages with no params at all' => [
+                'Save 20% on 5% APR', [], 'Save 20% on 5% APR',
+                'and the same with nothing supplied',
+            ],
+            'unsupplied key is left verbatim' => [
+                '%unknown% stays', ['name' => 'Sarah'], '%unknown% stays',
+                'an unmatched key must be returned as written, not turned into a visible {unknown}',
+            ],
+            'a CSS-ish value survives' => [
+                'width: 100%; height: 50%', ['name' => 'Sarah'], 'width: 100%; height: 50%',
+                'a rewrite that is not gated on supplied keys would mangle this',
+            ],
+        ];
     }
 }

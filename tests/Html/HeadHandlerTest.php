@@ -25,7 +25,13 @@ class HeadHandlerTest extends TestCase
     {
         $doc = new DOMDocument();
         libxml_use_internal_errors(true);
-        $doc->loadHTML($html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+
+        // The encoding hint is what PageTranslator passes in production
+        // (PageTranslator.php:253). Without it libxml decodes the bytes as
+        // ISO-8859-1, so a UTF-8 U+00A0 arrives as "Ã‚" plus a non-breaking
+        // space and every non-ASCII assertion in this file measures mojibake
+        // instead of the SDK. The ASCII tests here never noticed.
+        $doc->loadHTML('<?xml encoding="UTF-8">' . $html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
         libxml_clear_errors();
         return $doc;
     }
@@ -498,6 +504,104 @@ class HeadHandlerTest extends TestCase
             if ($meta->getAttribute('property') === 'og:locale') {
                 $this->assertEquals('es_MX', $meta->getAttribute('content'));
             }
+        }
+    }
+
+    // =========================================================================
+    // TOK-2 — extraction and application must agree, or nothing translates
+    // =========================================================================
+
+    /**
+     * The regression this test exists for.
+     *
+     * Collapsing on the extraction side alone is worse than not collapsing at
+     * all. Extraction registered "Acme Home"; application looked up the raw
+     * "Acme\n        Home"; the catalog key that WAS written could never be
+     * found, and the key being looked for was never registered - so the title
+     * silently stopped translating, and was not even re-registered, because the
+     * collapsed form was already in the catalog.
+     *
+     * Before the collapse landed both sides were raw and agreed with each
+     * other. That is the shape to remember: a half-applied normalisation breaks
+     * a pair that was consistently wrong but working.
+     *
+     * @dataProvider titleWhitespaceProvider
+     */
+    public function testATitleIsRegisteredAndTranslatedOnTheSameRender($title, $expectedPhrase, $why)
+    {
+        $html = '<html><head><title>' . $title . '</title></head><body></body></html>';
+
+        // What gets registered.
+        $doc = $this->createDocument($html);
+        $this->assertSame([$expectedPhrase], $this->handler->extractPhrases($doc), $why);
+
+        // And the apply side must find exactly that key - the one we wrote.
+        $doc = $this->createDocument($html);
+        $this->handler->process($doc, 'es-es', ['__uncategorized__' => [$expectedPhrase => 'TRANSLATED']]);
+
+        $this->assertSame(
+            'TRANSLATED',
+            $doc->getElementsByTagName('title')->item(0)->textContent,
+            'registered as ' . json_encode($expectedPhrase) . ' but not found on apply'
+        );
+    }
+
+    public function titleWhitespaceProvider()
+    {
+        return [
+            'authored across lines' => [
+                "Acme\n        Home", 'Acme Home',
+                'the commonest authored shape - an indented title in a template',
+            ],
+            'internal run' => [
+                'Acme   Home', 'Acme Home',
+                'a plain multi-space run, no non-ASCII involved',
+            ],
+            'non-breaking space' => [
+                "Acme\u{00A0}Home", 'Acme Home',
+                'U+00A0 collapses like any other whitespace',
+            ],
+            'padded' => [
+                "  Acme Home  ", 'Acme Home',
+                'leading and trailing whitespace is trimmed on both sides',
+            ],
+        ];
+    }
+
+    /**
+     * The same property stated generally: every phrase the head registers must
+     * be findable by the code that applies translations to the head. A pair
+     * that disagrees cannot be caught by testing either side alone, which is
+     * how this shipped.
+     */
+    public function testEveryHeadPhraseRegisteredIsFoundOnApply()
+    {
+        $html = '<html><head>'
+            . "<title>Acme\n   Home</title>"
+            . '<meta name="description" content="A   long' . "\n" . '  description">'
+            . '<meta property="og:title" content="Share' . "\u{00A0}" . 'title">'
+            . '</head><body></body></html>';
+
+        $doc = $this->createDocument($html);
+        $phrases = $this->handler->extractPhrases($doc);
+
+        $this->assertNotEmpty($phrases);
+
+        $catalog = [];
+        foreach ($phrases as $phrase) {
+            $catalog[$phrase] = 'X:' . $phrase;
+        }
+
+        $doc = $this->createDocument($html);
+        $this->handler->process($doc, 'es-es', ['__uncategorized__' => $catalog]);
+
+        $rendered = $doc->saveHTML();
+        foreach ($phrases as $phrase) {
+            $this->assertStringContainsString(
+                'X:' . $phrase,
+                $rendered,
+                'registered ' . json_encode($phrase) . ' but the apply side never looked it up'
+            );
         }
     }
 }

@@ -27,6 +27,38 @@ class UtilitiesTest extends TestCase
         $this->utilities = new Utilities($this->http, 'test-project-id');
     }
 
+    /**
+     * A display locale is one path segment, however it is written.
+     */
+    public function testADisplayLocaleIsOnePathSegment()
+    {
+        $this->utilities->getCountries('../authorize-project/x');
+        $this->utilities->getDialCodes('../x?y=1');
+
+        $this->assertSame(['countries/..%2Fauthorize-project%2Fx', 'countries/dial-codes/..%2Fx%3Fy%3D1'], array_column($this->http->getRequests(), 'endpoint'));
+    }
+
+    /**
+     * A display locale that names no segment, or one an HTTP client resolves
+     * away - `.` or `..` - would reach another route: it is refused, and
+     * nothing is sent.
+     */
+    public function testADisplayLocaleThatIsNoSegmentIsRefused()
+    {
+        foreach (['', '.', '..'] as $locale) {
+            foreach (['getCountries', 'getDialCodes'] as $method) {
+                try {
+                    $this->utilities->$method($locale);
+                    $this->fail($method . '(' . json_encode($locale) . ') was sent');
+                } catch (\InvalidArgumentException $e) {
+                    $this->assertStringContainsString('display locale', $e->getMessage());
+                }
+            }
+        }
+
+        $this->assertSame([], $this->http->getRequests());
+    }
+
     public function testGetCountries()
     {
         $expectedResponse = [

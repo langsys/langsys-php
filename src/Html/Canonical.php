@@ -1,0 +1,100 @@
+<?php
+
+namespace Langsys\SDK\Html;
+
+/**
+ * The canonical form of a phrase: what every token path must agree on.
+ *
+ * `Whitespace::collapse()` is the whitespace primitive. This is the whole
+ * phrase contract, which is collapse PLUS placeholder canonicalisation, and it
+ * exists as one function for the reason the whitespace fix already proved
+ * twice: the moment a canonicalisation is applied on the registration side and
+ * not the lookup side, the key that was written can never be found again, the
+ * phrase re-registers on every render, and nothing translates. That failure is
+ * invisible in a diff and produces no error.
+ *
+ * So: every site that PRODUCES a token and every site that LOOKS ONE UP calls
+ * this, and neither is allowed its own variant.
+ */
+final class Canonical
+{
+    /**
+     * Canonicalise a phrase for registration or lookup.
+     *
+     * @param string $text
+     * @return string
+     */
+    public static function phrase($text)
+    {
+        return self::placeholders(Whitespace::collapse(self::stripControls($text)));
+    }
+
+    /**
+     * The form a phrase passed in code takes - a translate() argument, a
+     * language-file line, an imported or synced key - for registration and
+     * for lookup: the C0 controls stripControls() deletes, and nothing else,
+     * so its whitespace and its placeholders stay as written (TOK-2). Not
+     * phrase(), whose collapse is the form text read from markup takes. The
+     * runtime lookup, the queue, the import and the sync all call this, so
+     * what one registers is what another looks up.
+     *
+     * @param string $text
+     * @return string
+     */
+    public static function codePhrase($text)
+    {
+        return self::stripControls($text);
+    }
+
+    /**
+     * Delete the 28 C0 controls TOK-2 strips from every id input and catalog
+     * key: U+0001-U+0008, U+000B, U+000C and U+000E-U+001F. Deleted, not mapped
+     * to a space - libxml2 before 2.14 already deletes them from DOM text, and
+     * deletion is the one treatment every parser can agree with. TAB, LF and CR
+     * are not in the set; they collapse. NUL, U+007F and the C1 range stay.
+     *
+     * Byte-wise, because each of these is a single byte that never occurs
+     * inside a multi-byte UTF-8 sequence, so malformed input cannot make the
+     * strip fail.
+     *
+     * @param string $text
+     * @return string
+     */
+    public static function stripControls($text)
+    {
+        return (string) preg_replace('/[\x01-\x08\x0B\x0C\x0E-\x1F]/', '', (string) $text);
+    }
+
+    /**
+     * Rewrite `%name%` to `{name}` (TOK-5).
+     *
+     * `{name}` is the placeholder form a phrase CARRIES; `%name%` is an
+     * accepted escape for authors whose templating language eats braces. The JS
+     * core normalises at capture, so a phrase authored as `Hello %name%` is
+     * stored as `Hello {name}` there — and since a block's id hashes its
+     * phrases, keeping the raw form here gave the same markup two ids across
+     * the fleet (measured: `bb74011a…` here against `1e4b462c…` in the TS core).
+     *
+     * Unconditional, unlike the Interpolator's version, which rewrites only for
+     * keys the caller supplied. At capture there is no caller and no parameter
+     * list to consult, so the form alone has to decide.
+     *
+     * That makes the pattern the only guard, and it is deliberately narrow:
+     * the span between the two signs must look like an identifier, so ordinary
+     * copy is untouched — `Save 20% on 5% APR` has spaces between its signs and
+     * `width: 100%` has no closing sign. The residual case is prose where two
+     * percent signs bracket a bare word with no spaces (`100%cotton%blend`),
+     * which is rewritten. Accepted knowingly: converging with the core's stored
+     * form matters more than that shape, and the alternative — diverging ids on
+     * every phrase carrying a real placeholder — is the commoner harm.
+     *
+     * @param string $text
+     * @return string
+     */
+    public static function placeholders($text)
+    {
+        $result = preg_replace('/%([A-Za-z_][A-Za-z0-9_]*)%/', '{$1}', (string) $text);
+
+        return $result === null ? (string) $text : $result;
+    }
+}

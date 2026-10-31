@@ -33,6 +33,7 @@ class PageTranslatorTest extends TestCase
                 'id' => 'test-project-id',
                 'title' => 'Test Project',
                 'key_type' => 'write',
+                'write_enabled' => true,
                 'base_locale' => 'en-us',
             ],
         ]);
@@ -663,6 +664,7 @@ class PageTranslatorTest extends TestCase
             'data' => [
                 'id' => 'test-project-id',
                 'key_type' => 'read', // Read-only
+                'write_enabled' => false,
             ],
         ]);
 
@@ -979,6 +981,24 @@ class PageTranslatorTest extends TestCase
         $this->assertStringContainsString('Sobrescritura gana', $result);
     }
 
+    public function testANonOverrideSelectorAppliesOnlyWhereNoCategoryReachesTheElement(): void
+    {
+        $this->setTranslations([
+            'Navigation' => ['Home' => 'Inicio'],
+            'homepage' => ['Home' => 'Casa'],
+        ]);
+        $html = '<!DOCTYPE html><html><head></head><body><nav><ul><li>Home</li></ul></nav></body></html>';
+        $rule = ['category' => 'Navigation'];
+        $translator = new PageTranslator($this->client);
+
+        $this->assertStringContainsString('<li>Inicio</li>', $translator->translate($html, 'es-es', null, ['nav li' => $rule]));
+        $this->assertStringContainsString('<li>Casa</li>', $translator->translate($html, 'es-es', 'homepage', ['nav li' => $rule]));
+        $this->assertStringContainsString(
+            '<li>Inicio</li>',
+            $translator->translate($html, 'es-es', 'homepage', ['nav li' => $rule + ['overrideParentElementCategory' => true]])
+        );
+    }
+
     // =========================================================================
     // data-langsys-contentblock Tests
     // =========================================================================
@@ -1215,5 +1235,1100 @@ class PageTranslatorTest extends TestCase
         // Structure should be preserved
         $this->assertStringContainsString('<div class="field">', $result);
         $this->assertStringContainsString('<div class="actions">', $result);
+    }
+
+    // =========================================================================
+    // R-1 — the legacy fallback must cover the PAGE path, not only
+    //        translateContentBlock. A website renders through translatePage.
+    // =========================================================================
+
+    private function legacyBlockFixture()
+    {
+        $inner = '<h2>Welcome to our shop</h2><p>Free delivery</p>';
+        $category = 'Marketing';
+        $phrases = ['Welcome to our shop', 'Free delivery'];
+
+        return [
+            'inner' => $inner,
+            'category' => $category,
+            'html' => '<!DOCTYPE html><html><head></head><body><div data-langsys-contentblock>'
+                . $inner . '</div></body></html>',
+            'legacyId' => md5(implode('|', array_merge([$category], $phrases))),
+            'translations' => [
+                'Welcome to our shop' => 'Bienvenido a nuestra tienda',
+                'Free delivery' => 'Envio gratis',
+            ],
+        ];
+    }
+
+    public function testTranslatePageServesAContentBlockFoundUnderItsLegacyId(): void
+    {
+        $f = $this->legacyBlockFixture();
+        $this->setTranslations([$f['category'] => [$f['legacyId'] => $f['translations']]]);
+
+        $result = (new PageTranslator($this->client))->translate($f['html'], 'es-es', $f['category']);
+
+        $this->assertStringContainsString('Bienvenido a nuestra tienda', $result);
+        $this->assertStringContainsString('Envio gratis', $result);
+    }
+
+    /**
+     * The anti-stranding half on the page path. Queuing a legacy-resolved block
+     * registers it under the CURRENT id and leaves its translations on the old
+     * one - which is the damage, not a side effect of it.
+     */
+    public function testTranslatePageDoesNotQueueALegacyResolvedContentBlock(): void
+    {
+        $f = $this->legacyBlockFixture();
+        $this->setTranslations([$f['category'] => [$f['legacyId'] => $f['translations']]]);
+
+        (new PageTranslator($this->client))->translate($f['html'], 'es-es', $f['category']);
+
+        $this->assertFalse(
+            $this->client->hasPendingRegistrations(),
+            'Queuing a legacy-resolved block is what strands its translations'
+        );
+    }
+
+    /**
+     * Both paths must agree - the divergence is the defect.
+     */
+    public function testPageAndContentBlockPathsAgreeOnALegacyBlock(): void
+    {
+        $f = $this->legacyBlockFixture();
+        $this->setTranslations([$f['category'] => [$f['legacyId'] => $f['translations']]]);
+
+        $viaBlock = $this->client->translateContentBlock(
+            '<div data-langsys-contentblock>' . $f['inner'] . '</div>',
+            $f['category']
+        );
+        $viaPage = (new PageTranslator($this->client))->translate($f['html'], 'es-es', $f['category']);
+
+        $this->assertStringContainsString('Bienvenido a nuestra tienda', $viaBlock);
+        $this->assertStringContainsString('Bienvenido a nuestra tienda', $viaPage);
+    }
+
+    // =========================================================================
+    // R-2 — a queued item is an attempt, not an acceptance
+    // =========================================================================
+
+    /**
+     * Items are only QUEUED here; the flush that would send them runs later and
+     * can skip, fail, or never run. Recording them as registered suppresses them
+     * on every later render until the cache expires, so one failed flush costs
+     * the content indefinitely.
+     */
+    public function testDiscoveredItemsAreNotRecordedAsRegisteredWhenOnlyQueued(): void
+    {
+        $cache = new \Langsys\SDK\Cache\FileCache(sys_get_temp_dir() . '/langsys-test-' . uniqid());
+        $this->setTranslations([]);
+        $html = '<!DOCTYPE html><html><head></head><body><p>Undiscovered phrase</p></body></html>';
+
+        // First render: the item is queued. The flush that would send it has not
+        // run, so nothing has been accepted.
+        $first = $this->createMockClientWithCache($cache);
+        (new PageTranslator($first))->translate($html, 'es-es', 'Marketing');
+        $this->assertTrue($first->hasPendingRegistrations(), 'sanity: the first render queues it');
+
+        // Second render, fresh client, same shared cache - as under PHP-FPM,
+        // with the first request having died before its flush completed. The
+        // item must still be discoverable. Asserted behaviourally rather than by
+        // reading the cache key, so this pin cannot be satisfied by the key
+        // simply changing shape.
+        $second = $this->createMockClientWithCache($cache);
+        (new PageTranslator($second))->translate($html, 'es-es', 'Marketing');
+
+        $this->assertTrue(
+            $second->hasPendingRegistrations(),
+            'A queued-but-unsent item was recorded as registered, so it can never be discovered again'
+        );
+
+        $cache->clear();
+    }
+
+    /**
+     * A cache read that fails after the catalog was read - a Redis connection
+     * dropping mid-render - leaves the page rendering, never throwing.
+     */
+    public function testACacheReadThatFailsMidRenderLeavesThePageRendering(): void
+    {
+        $cache = new class implements \Langsys\SDK\Cache\CacheInterface {
+            public function get($key)
+            {
+                if (strpos($key, 'registered_items_') === 0) {
+                    throw new \RuntimeException('Connection lost');
+                }
+
+                return null;
+            }
+
+            public function set($key, $value, $ttl = 3600)
+            {
+                return true;
+            }
+
+            public function has($key)
+            {
+                return false;
+            }
+
+            public function delete($key)
+            {
+                return true;
+            }
+
+            public function clear()
+            {
+                return true;
+            }
+        };
+        $this->setTranslations(['Marketing' => ['Hello' => 'Hola']]);
+        $client = $this->createMockClientWithCache($cache);
+
+        $html = (new PageTranslator($client))->translate('<!DOCTYPE html><html><head></head><body><p>Hello</p><p>New here</p></body></html>', 'es-es', 'Marketing');
+
+        $this->assertStringContainsString('<p>Hola</p>', $html);
+        $this->assertTrue($client->hasPendingRegistrations(), 'the new phrase is still found');
+    }
+
+    // =========================================================================
+    // R-3 — presence and structure checks must agree with Client::translate()
+    // =========================================================================
+
+    public function testTextCollidingWithAContentBlockIdIsNotRegisteredAsAPhrase(): void
+    {
+        $blockId = md5('some-content-block');
+
+        $this->setTranslations([
+            'Marketing' => [$blockId => ['Inner phrase' => 'Frase interna']],
+        ]);
+
+        $html = '<!DOCTYPE html><html><head></head><body><p>' . $blockId . '</p></body></html>';
+        (new PageTranslator($this->client))->translate($html, 'es-es', 'Marketing');
+
+        $queued = array_map(
+            function ($pending) { return $pending['phrase']; },
+            array_values($this->client->getPendingPhrases())
+        );
+
+        // Asserted unconditionally: a foreach over the queue would pass by
+        // performing no assertions at all when the queue is empty, which is the
+        // same test whether the behaviour is right or absent.
+        $this->assertNotContains(
+            $blockId,
+            $queued,
+            'A nested map is a content block, never a missing phrase'
+        );
+    }
+
+    // =========================================================================
+    // R-4 — the registered-items cache is shared across projects
+    // =========================================================================
+
+    public function testRegisteredItemsCacheKeyIsProjectScoped(): void
+    {
+        $translator = new PageTranslator($this->client);
+
+        $method = new \ReflectionMethod($translator, 'getRegisteredItemsCacheKey');
+        $method->setAccessible(true);
+        $key = $method->invoke($translator, 'Navigation');
+
+        $this->assertStringContainsString('test-project-id', $key);
+        $this->assertStringContainsString('Navigation', $key);
+    }
+
+    /**
+     * Same wiring as createMockClient(), with a real shared cache.
+     */
+    private function createMockClientWithCache($cache)
+    {
+        $client = new Client('test-api-key', 'test-project-id', ['cache' => $cache]);
+        $reflection = new \ReflectionClass($client);
+
+        $httpProperty = $reflection->getProperty('http');
+        $httpProperty->setAccessible(true);
+        $httpProperty->setValue($client, $this->mockHttp);
+
+        foreach (['translations', 'translatableItems'] as $resourceName) {
+            $property = $reflection->getProperty($resourceName);
+            $property->setAccessible(true);
+            $resource = $property->getValue($client);
+
+            $resourceHttp = (new \ReflectionClass($resource))->getProperty('http');
+            $resourceHttp->setAccessible(true);
+            $resourceHttp->setValue($resource, $this->mockHttp);
+        }
+
+        return $client;
+    }
+
+    /**
+     * The page path's attribute register/lookup pair.
+     *
+     * Collection trimmed; the apply side looked up the RAW attribute value. So
+     * an alt text wrapped across source lines - the ordinary way anyone writes
+     * long alt copy - registered as the collapsed phrase and was then never
+     * found again.
+     *
+     * Driven as a true round trip: register the page, take whatever catalog
+     * entry that produced, feed exactly that back, and require the same page to
+     * render it. Building the catalog by hand is what hid this - an attribute
+     * on the page path registers inside a CONTENT BLOCK, keyed by custom_id,
+     * not as a flat phrase, so a hand-built flat catalog fails for every input
+     * and proves nothing about the pair.
+     *
+     * The plain-space control is the load-bearing row: it passed throughout the
+     * defect, which is why page attributes looked like they worked.
+     *
+     * @dataProvider pageAttributeWhitespaceProvider
+     */
+    public function testPageAttributesAreRegisteredAndTranslatedOnTheSameRender($attrValue, $expectedPhrase): void
+    {
+        $html = '<html><body><p>Text <img alt="' . $attrValue . '"></p></body></html>';
+
+        $registered = $this->registeredPayloadFor($html);
+        $this->assertNotEmpty($registered, 'nothing registered at all');
+
+        $phrases = [];
+        $catalog = [];
+        foreach ($registered as $item) {
+            if ($item['type'] === 'content_block') {
+                $entry = [];
+                foreach ($item['phrases'] as $nested) {
+                    $phrases[] = $nested['phrase'];
+                    $entry[$nested['phrase']] = 'X:' . $nested['phrase'];
+                }
+                $catalog[$item['custom_id']] = $entry;
+            } elseif (isset($item['phrase'])) {
+                $phrases[] = $item['phrase'];
+                $catalog[$item['phrase']] = 'X:' . $item['phrase'];
+            }
+        }
+
+        $this->assertContains($expectedPhrase, $phrases, 'registration side canonicalised the attribute');
+
+        $rendered = $this->translatePageWithCatalog($html, $catalog);
+
+        $this->assertStringContainsString(
+            'alt="X:' . $expectedPhrase . '"',
+            $rendered,
+            'apply side never found the key the registration side wrote'
+        );
+    }
+
+    public function pageAttributeWhitespaceProvider(): array
+    {
+        return [
+            // The control. This passed before the fix, which is how the pair
+            // stayed broken - attributes appeared to work.
+            'plain single spaces'  => ['A short alt', 'A short alt'],
+            'wrapped across lines' => ["A long\n     alt", 'A long alt'],
+            'internal run'         => ['A  long   alt', 'A long alt'],
+            'non-breaking space'   => ["A\u{00A0}long alt", 'A long alt'],
+        ];
+    }
+
+    /**
+     * Every phrase text a page registers, in order, from both wire shapes.
+     */
+    private function registeredTexts($html): array
+    {
+        $texts = [];
+        foreach ($this->registeredPayloadFor($html) as $item) {
+            if (isset($item['phrase'])) {
+                $texts[] = $item['phrase'];
+            }
+            foreach (isset($item['phrases']) ? $item['phrases'] : [] as $nested) {
+                $texts[] = $nested['phrase'];
+            }
+        }
+
+        return $texts;
+    }
+
+    /**
+     * Phrases this SDK actually POSTs for a page, as opposed to what it claims
+     * to have found. Registration is what creates the catalog key, so this is
+     * the only honest left-hand side for a register/lookup test.
+     */
+    private function registeredPayloadFor($html): array
+    {
+        $this->setTranslations(['__uncategorized__' => []]);
+        $this->mockHttp->setResponse('POST', 'translatable-items', ['status' => true]);
+
+        $client = $this->createMockClient();
+        $client->setLocale('es-es');
+        $client->translatePage($html);
+
+        $this->mockHttp->clearRequests();
+        $client->flushPendingRegistrations();
+
+        $items = [];
+        foreach ($this->mockHttp->getRequests() as $request) {
+            if ($request['method'] !== 'POST' || !isset($request['data']['translatable_items'])) {
+                continue;
+            }
+            foreach ($request['data']['translatable_items'] as $item) {
+                $items[] = $item;
+            }
+        }
+
+        return $items;
+    }
+
+    /**
+     * Render a page against a catalog keyed exactly as given.
+     */
+    private function translatePageWithCatalog($html, array $catalog): string
+    {
+        $this->setTranslations(['__uncategorized__' => $catalog]);
+
+        $client = $this->createMockClient();
+        $client->setLocale('es-es');
+
+        return $client->translatePage($html);
+    }
+
+    /**
+     * SRV-5's measurable half: each miss is produced once per subtree.
+     *
+     * Asserted on the RAW WALKER, not on what gets POSTed, and the distinction
+     * is the whole test. Three dedupe layers sit between the walk and the wire
+     * (findNewPhrasesWithCategory's `$seen`, the pendingPhrases key, the
+     * pendingContentBlocks id). A walker re-entering every nested block twice
+     * produces eight copies of one miss at depth 3, and all three layers
+     * collapse them to a single POST - so counting requests reports "once" for
+     * a walker doing 2^n work and stays green through exactly the defect the
+     * rule exists for. The earlier version of this test counted requests.
+     *
+     * The duplicates would be identical, which is why a set-based assertion
+     * cannot see them either - the count is right, the SUBJECT was wrong.
+     */
+    public function testADeeplyNestedMissIsWalkedExactlyOnce(): void
+    {
+        $doc = new \DOMDocument();
+        libxml_use_internal_errors(true);
+        $doc->loadHTML(
+            '<?xml encoding="UTF-8"><html><body><div><div><div><p>Deeply nested</p></div></div></div></body></html>',
+            LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD
+        );
+        libxml_clear_errors();
+
+        $reflection = new \ReflectionClass(PageTranslator::class);
+        $translator = $reflection->newInstanceWithoutConstructor();
+
+        $parser = $reflection->getProperty('htmlParser');
+        $parser->setAccessible(true);
+        $parser->setValue($translator, new HtmlParser());
+
+        $walk = $reflection->getMethod('walkForExtraction');
+        $walk->setAccessible(true);
+
+        $phrases = [];
+        $blocks = [];
+        $walk->invokeArgs($translator, [$doc->documentElement, &$phrases, &$blocks, null]);
+
+        $occurrences = 0;
+        foreach ($phrases as $phrase) {
+            if (isset($phrase['text']) && $phrase['text'] === 'Deeply nested') {
+                $occurrences++;
+            }
+        }
+
+        $this->assertSame(
+            1,
+            $occurrences,
+            'a depth-3 subtree must be WALKED once; dedupe downstream would hide 2^n here'
+        );
+    }
+
+    /**
+     * TOK-1: the page path translates SVG text, and skips MathML.
+     *
+     * This was a characterisation test asserting the opposite - the gap was
+     * real and recorded - and it failed the moment the gap closed, which is
+     * what a characterisation test is for.
+     *
+     * `<svg>` is handled as a LEAF where it is found, not promoted to a block
+     * element. The promotion is what broke icon-bearing paragraphs the first
+     * time: it made containsNestedBlocks() true for the icon's parent, so the
+     * walker recursed past it and skipped the parent's own text.
+     */
+    public function testThePagePathTranslatesSvgTextButNotMath(): void
+    {
+        $registered = $this->registeredTexts(
+            '<html><body><svg><text>SvgLabel</text></svg>'
+            . '<math><mi>MathLabel</mi></math><p>Ordinary</p></body></html>'
+        );
+
+        // Sorted, not in document order: phrases and content blocks flush as
+        // separate batches, so cross-queue order is an artefact of the flush,
+        // not a property worth pinning. Order WITHIN a block is a real
+        // property and is asserted in testAnInlineIconKeepsDocumentOrder.
+        sort($registered);
+
+        $this->assertSame(['Ordinary', 'SvgLabel'], $registered);
+    }
+
+    /**
+     * D1's ordering clause: a block containing an inline icon registers its own
+     * text AND the svg's text, in document order.
+     *
+     * This is the clause the first attempt broke - promoting `<svg>` to a block
+     * element made the walker skip the parent's own text, so `Hello` vanished
+     * and only `Label` survived. assertSame on the whole list, because the
+     * defect was text going missing and containment cannot see that.
+     *
+     * @dataProvider inlineIconOrderProvider
+     */
+    public function testAnInlineIconKeepsDocumentOrder($html, array $expected): void
+    {
+        $this->assertSame($expected, $this->registeredTexts('<html><body>' . $html . '</body></html>'));
+    }
+
+    public function inlineIconOrderProvider(): array
+    {
+        return [
+            'text then icon text' => [
+                '<p>Hello <svg><text>Label</text></svg></p>', ['Hello', 'Label'],
+            ],
+            'icon text then text' => [
+                '<p><svg><text>Label</text></svg> Hello</p>', ['Label', 'Hello'],
+            ],
+            'text either side' => [
+                '<p>Before <svg><text>Mid</text></svg> After</p>', ['Before', 'Mid', 'After'],
+            ],
+            'decorative icon, no svg text' => [
+                '<p>Click <svg><path/></svg> to continue</p>', ['Click', 'to continue'],
+            ],
+        ];
+    }
+
+    /**
+     * D1's in-place clause: translating SVG text replaces the text node and
+     * leaves the drawing alone.
+     *
+     * Both shapes that used to destroy it: a standalone `<svg>`, and an `<svg>`
+     * that is an element's only content - the latter took the simple-phrase
+     * branch, which applies by assigning to textContent, and rendered
+     * `<p>Etiqueta</p>` with every `<path>` gone.
+     *
+     * @dataProvider svgApplyProvider
+     */
+    public function testTranslatingSvgTextLeavesTheDrawingIntact($html, $why): void
+    {
+        $rendered = $this->translatePageWithCatalog($html, $this->catalogFor($html));
+
+        $this->assertStringContainsString('X:Label', $rendered, 'the label must actually translate');
+        $this->assertStringContainsString('<path', $rendered, $why);
+        $this->assertStringContainsString('<text', $rendered, 'the text element must survive too');
+    }
+
+    public function svgApplyProvider(): array
+    {
+        $svg = '<svg viewBox="0 0 10 10"><path d="M0 0L1 1"/><text x="1">Label</text></svg>';
+
+        return [
+            'standalone'        => ['<html><body>' . $svg . '</body></html>', 'a standalone drawing must survive'],
+            'only child of a p' => ['<html><body><p>' . $svg . '</p></body></html>', 'this shape used to render as <p>Etiqueta</p>'],
+            'beside text'       => ['<html><body><p>Hello ' . $svg . '</p></body></html>', 'and beside text'],
+        ];
+    }
+
+    /**
+     * A catalog that resolves whatever the page registers, flat and by block id,
+     * so an apply test does not have to know which shape it will take.
+     */
+    private function catalogFor($html): array
+    {
+        $catalog = [];
+        foreach ($this->registeredPayloadFor($html) as $item) {
+            if (isset($item['phrase'])) {
+                $catalog[$item['phrase']] = 'X:' . $item['phrase'];
+            }
+            if (isset($item['phrases'])) {
+                $entry = [];
+                foreach ($item['phrases'] as $nested) {
+                    $entry[$nested['phrase']] = 'X:' . $nested['phrase'];
+                }
+                $catalog[$item['custom_id']] = $entry;
+            }
+        }
+
+        return $catalog;
+    }
+
+    /**
+     * But the CONTENT-BLOCK path does tokenize SVG text, and excludes MathML -
+     * so the gap above is the page path alone, not the SDK.
+     */
+    public function testTheBlockPathTokenizesSvgTextAndNotMath(): void
+    {
+        $parser = new HtmlParser();
+
+        $this->assertSame(
+            ['SvgLabel', 'Ordinary'],
+            array_values($parser->extractPhrases(
+                '<svg><text>SvgLabel</text></svg><math><mi>MathLabel</mi></math><p>Ordinary</p>'
+            ))
+        );
+    }
+
+    /**
+     * An inline `<svg>` icon must not cost the text around it.
+     *
+     * Icon-bearing paragraphs, headings, list items and links are among the
+     * commonest markup on a modern page. Treating `<svg>` as a block element
+     * made `containsNestedBlocks()` true for the parent, so the walker recursed
+     * into it and skipped the parent's own direct text nodes - and
+     * `<p>Click <svg/> to continue</p>` registered NOTHING at all.
+     *
+     * assertSame on the whole registered set, not assertContains: the defect
+     * was text going MISSING, which a containment assertion cannot see.
+     *
+     * @dataProvider inlineIconProvider
+     */
+    public function testTextAroundAnInlineSvgIconIsStillRegistered($html, array $expected, $why): void
+    {
+        $registered = [];
+        foreach ($this->registeredPayloadFor('<html><body>' . $html . '</body></html>') as $item) {
+            if (isset($item['phrase'])) {
+                $registered[] = $item['phrase'];
+            }
+            foreach (isset($item['phrases']) ? $item['phrases'] : [] as $nested) {
+                $registered[] = $nested['phrase'];
+            }
+        }
+
+        $this->assertSame($expected, $registered, $why);
+    }
+
+    public function inlineIconProvider(): array
+    {
+        return [
+            'icon after text in a paragraph' => [
+                '<p>Hello <svg><text>Label</text></svg></p>', ['Hello', 'Label'],
+                'the paragraph text must survive an icon beside it',
+            ],
+            'text either side of an icon' => [
+                '<p>Click <svg><path/></svg> to continue</p>', ['Click', 'to continue'],
+                'a decorative icon mid-sentence registered nothing at all',
+            ],
+            'icon leading a list item' => [
+                '<li><svg/> Item one</li>', ['Item one'],
+                'icon-led list items are ordinary markup',
+            ],
+            'icon leading a heading' => [
+                '<h1><svg/>Heading</h1>', ['Heading'],
+                'and icon-led headings',
+            ],
+        ];
+    }
+
+    /**
+     * And a standalone `<svg>` must survive being rendered.
+     *
+     * Extracting it as a simple phrase routed it through the text-content
+     * fallback, which replaces the element's entire contents with a string - so
+     * translating the label deleted every `<path>` in the graphic. Whatever we
+     * do about translating SVG text, destroying the artwork is not it.
+     */
+    public function testAStandaloneSvgSurvivesRendering(): void
+    {
+        $svg = '<svg viewBox="0 0 10 10"><path d="M0 0L1 1"/><text x="1">Label</text></svg>';
+
+        $rendered = $this->translatePageWithCatalog(
+            '<html><body>' . $svg . '</body></html>',
+            ['Label' => 'X:Label']
+        );
+
+        $this->assertStringContainsString('<path', $rendered, 'the graphic must not be destroyed');
+        $this->assertStringContainsString('<text', $rendered, 'nor its text element flattened away');
+    }
+
+    /**
+     * The page path's padding restoration, which had only its Client-side twin
+     * pinned: non-breaking padding around a translated run must survive, or
+     * words run together in the rendered page.
+     */
+    public function testPagePathPreservesNonBreakingPadding(): void
+    {
+        $rendered = $this->translatePageWithCatalog(
+            "<html><body><p>\u{00A0}Buy now\u{00A0}</p></body></html>",
+            ['Buy now' => 'Compra ya']
+        );
+
+        $this->assertMatchesRegularExpression(
+            '/>[\s\x{00A0}]Compra ya[\s\x{00A0}]</u',
+            $rendered,
+            'padding either side of the translated run must survive'
+        );
+    }
+
+    /**
+     * A tokenized phrase's descendant ATTRIBUTES are registered canonicalised,
+     * and looked up the same way. Both halves were live and neither was pinned.
+     */
+    public function testTokenizedDescendantAttributesAreCanonicalised(): void
+    {
+        $registered = [];
+        foreach ($this->registeredPayloadFor(
+            "<html><body><p data-ls-phrase>Hi <img alt=\"A long\n  alt\"> there</p></body></html>"
+        ) as $item) {
+            if (isset($item['phrase'])) {
+                $registered[] = $item['phrase'];
+            }
+        }
+
+        $this->assertContains(
+            'A long alt',
+            $registered,
+            'a descendant attribute inside a tokenized run must register collapsed'
+        );
+    }
+
+    public function testTokenizedDescendantAttributesAreTranslated(): void
+    {
+        $rendered = $this->translatePageWithCatalog(
+            "<html><body><p data-ls-phrase>Hi <img alt=\"A long\n  alt\"> there</p></body></html>",
+            ['A long alt' => 'Alt traducido']
+        );
+
+        $this->assertStringContainsString(
+            'alt="Alt traducido"',
+            $rendered,
+            'the apply side must look up the key the registration side wrote'
+        );
+    }
+
+    /**
+     * The other page-path padding site: a content block's text node, reached
+     * through walkAndTranslate rather than the single-phrase branch. Both had
+     * to be pinned separately - the first test covered only one of them, so the
+     * second could be reverted to ASCII `\s` with the suite green.
+     */
+    public function testPagePathPreservesNonBreakingPaddingInsideABlock(): void
+    {
+        $parser = new HtmlParser();
+        $id = $parser->generateCustomId('__uncategorized__', ['Buy now', 'Later']);
+
+        $rendered = $this->translatePageWithCatalog(
+            "<html><body><p>\u{00A0}Buy now\u{00A0}<span>Later</span></p></body></html>",
+            [$id => ['Buy now' => 'Compra ya', 'Later' => 'Luego']]
+        );
+
+        $this->assertStringContainsString('Compra ya', $rendered, 'sanity: the block resolved');
+        $this->assertMatchesRegularExpression(
+            '/>[\s\x{00A0}]Compra ya[\s\x{00A0}]</u',
+            $rendered,
+            'padding around a block text node must survive too'
+        );
+    }
+
+    /**
+     * A phrase wrapped in inline markup keeps its markup (SEVERE, pre-existing).
+     *
+     * `replaceTextContent()` looked only at DIRECT child text nodes and then
+     * fell back to `$element->textContent = $translated`, which replaces every
+     * child with a string. So a phrase whose text sits one level down - a link,
+     * a `<strong>`, a `<span>` - had its wrapper DELETED from the served bytes
+     * on translation. `<li><a href="#">Label</a></li>` rendered as
+     * `<li>X:Label</li>`: the link is gone, and with it the navigation.
+     *
+     * Present on `main` (224dc8b) as well as this branch, so not a regression
+     * of the canonicalization work - but it is the same apply path, and the
+     * shapes below are ordinary: nav items, card links, buttons, table cells.
+     *
+     * @dataProvider inlineWrapperProvider
+     */
+    public function testAPhraseWrappedInInlineMarkupKeepsItsMarkup($html, $phrase, $mustKeep): void
+    {
+        $rendered = $this->translatePageWithCatalog(
+            '<html><body>' . $html . '</body></html>',
+            [$phrase => 'X:' . $phrase]
+        );
+
+        $this->assertStringContainsString('X:' . $phrase, $rendered, 'sanity: the phrase translated');
+        $this->assertStringContainsString($mustKeep, $rendered, 'the wrapper must survive translation');
+    }
+
+    public function inlineWrapperProvider(): array
+    {
+        return [
+            'link in a list item' => ['<li><a href="#">Label</a></li>', 'Label', '<a href="#"'],
+            'link in a heading'   => ['<h1><a href="/">Home</a></h1>', 'Home', '<a href="/"'],
+            'strong in a p'       => ['<p><strong>Bold</strong></p>', 'Bold', '<strong>'],
+            'span in a cell'      => ['<td><span>Cell</span></td>', 'Cell', '<span>'],
+            'nested wrappers'     => ['<p><a href="/"><strong>Deep</strong></a></p>', 'Deep', '<strong>'],
+        ];
+    }
+
+    /**
+     * And an element whose text is split by a `<br>` keeps the `<br>`.
+     */
+    public function testABreakInsideATranslatedElementSurvives(): void
+    {
+        $rendered = $this->translatePageWithCatalog(
+            '<html><body><p>Hello<br></p></body></html>',
+            ['Hello' => 'X:Hello']
+        );
+
+        $this->assertStringContainsString('X:Hello', $rendered);
+        $this->assertStringContainsString('<br', $rendered, 'the break must survive');
+    }
+
+    /**
+     * The THIRD route: a tokenized run (data-ls-phrase) containing an icon.
+     *
+     * `MarkupTokenizer::OPAQUE_ELEMENTS` still listed `svg`, under a comment
+     * claiming it mirrored `SKIP_ELEMENTS` - which stopped being true the
+     * moment the page path learned to translate SVG text. So a marked run
+     * registered `Hi {m0o}{m0c}` with the label swallowed, and "both paths
+     * translate SVG text" was two routes out of three.
+     */
+    public function testATokenizedRunExposesSvgText(): void
+    {
+        $registered = $this->registeredTexts(
+            '<html><body><p data-ls-phrase>Hi <svg><path/><text>Label</text></svg></p></body></html>'
+        );
+
+        $this->assertCount(1, $registered, 'a marked run is one phrase');
+        $this->assertStringContainsString('Label', $registered[0], 'the icon label must be inside the tokenized phrase');
+        $this->assertStringContainsString('Hi', $registered[0]);
+    }
+
+    /**
+     * The four canonicalisation sites that were live but unpinned - each an
+     * apply or registration site where reverting to a collapse-only
+     * normalisation changed behaviour and reddened nothing.
+     *
+     * `%name%` is the discriminator: it is normalised by Canonical::phrase and
+     * NOT by Whitespace::collapse, so a site using the wrong one still handles
+     * whitespace correctly and silently fails on placeholders.
+     */
+    public function testABlockTextNodeResolvesAPercentPlaceholder(): void
+    {
+        $parser = new HtmlParser();
+        $id = $parser->generateCustomId('__uncategorized__', ['Hello {name}', 'Later']);
+
+        $rendered = $this->translatePageWithCatalog(
+            '<html><body><p>Hello %name% <span>Later</span></p></body></html>',
+            [$id => ['Hello {name}' => 'Hola {name}', 'Later' => 'X:Later']]
+        );
+
+        $this->assertStringContainsString('Hola Sarah', str_replace('{name}', 'Sarah', $rendered));
+        $this->assertStringNotContainsString('%name%', $rendered, 'the placeholder must not reach the reader');
+    }
+
+    public function testASinglePhraseElementResolvesAPercentPlaceholder(): void
+    {
+        $rendered = $this->translatePageWithCatalog(
+            '<html><body><p>Hello %name%<br></p></body></html>',
+            ['Hello {name}' => 'Hola {name}']
+        );
+
+        $this->assertStringContainsString('Hola', $rendered);
+        $this->assertStringContainsString('<br', $rendered, 'and the break survives');
+    }
+
+    /**
+     * getTextContent() decides whether an element is a simple phrase or a
+     * content block, by comparing its text against the extracted phrase list.
+     * Canonicalising one side and not the other changed which of the two it
+     * became - an identity change, since the id is derived differently.
+     */
+    public function testAPercentPlaceholderDoesNotChangeAnElementsShape(): void
+    {
+        $registered = [];
+        foreach ($this->registeredPayloadFor('<html><body><p>Hello %name%<br></p></body></html>') as $item) {
+            $registered[] = $item['type'] . ':' . (isset($item['phrase']) ? $item['phrase'] : '');
+        }
+
+        $this->assertSame(['phrase:Hello {name}'], $registered, 'must register as a phrase, not a content block');
+    }
+
+    /**
+     * An element's OWN translatable attribute, inside a tokenized run.
+     */
+    public function testATokenizedRunsOwnAttributeIsCanonicalised(): void
+    {
+        $registered = $this->registeredTexts(
+            "<html><body><p data-ls-phrase title=\"A long\n   title\">Hi</p></body></html>"
+        );
+
+        $this->assertContains('A long title', $registered, 'the element\'s own attribute must register collapsed');
+    }
+
+    /**
+     * The fallback that loses markup must LOG, not fatal.
+     *
+     * A `debug()` call was added here against a `$this->logger` the class did
+     * not have, so on the one path that reaches it the warning became "Call to
+     * a member function debug() on null" and took the render down. A line whose
+     * whole purpose is to avoid failing silently failed loudly instead.
+     *
+     * It also made the mutation evidence for the descendant-replace fix weaker
+     * than reported: that mutant reddened via this fatal rather than via the
+     * assertions, and a mutant killed by a crash proves the crash, not the
+     * guard.
+     *
+     * Driven directly, because the simple-phrase gate makes the fallback hard
+     * to reach from translatePage() - which is exactly why it went unnoticed.
+     */
+    public function testTheMarkupLosingFallbackLogsRatherThanFatals(): void
+    {
+        // A CONSTRUCTED translator, which is the contract that actually holds.
+        //
+        // An earlier version of this test said it was "deliberately NOT
+        // injecting a logger" and then injected one by reflection three lines
+        // later - the comment describing a stronger guarantee than the code
+        // tested. The property cannot default to a NullLogger, because PHP
+        // forbids `new` in a property initializer; the constructor supplies it.
+        // So the honest claim is that every constructed instance is safe, and
+        // that is what this asserts.
+        //
+        // The logger comes from the client exactly as it does in production, and
+        // it is a RecordingLogger so the log is OBSERVABLE: the test is named for
+        // logging, and an earlier version asserted only that the fallback ran -
+        // deleting the debug() call reddened nothing.
+        $recorder = new \Langsys\SDK\Tests\Format\RecordingLogger();
+        $client = new Client('test-api-key', 'test-project-id', [
+            'cache' => new NullCache(),
+            'logger' => $recorder,
+        ]);
+        $translator = new PageTranslator($client);
+
+        $reflection = new \ReflectionClass(PageTranslator::class);
+        $method = $reflection->getMethod('replaceTextContent');
+        $method->setAccessible(true);
+
+        $doc = new \DOMDocument();
+        libxml_use_internal_errors(true);
+        $doc->loadHTML('<?xml encoding="UTF-8"><p>Hello<b></b>World</p>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        libxml_clear_errors();
+
+        $element = $doc->getElementsByTagName('p')->item(0);
+
+        $method->invokeArgs($translator, [$element, 'HelloWorld', 'X']);
+
+        $this->assertSame('X', $element->textContent, 'the fallback still runs');
+
+        $logged = array_values(array_filter($recorder->records, function ($record) {
+            return $record[0] === 'debug' && strpos($record[1], 'markup inside it will be lost') !== false;
+        }));
+
+        $this->assertCount(1, $logged, 'the markup-losing fallback must log that it is losing markup');
+        $this->assertSame('p', $logged[0][2]['element']);
+        $this->assertSame('HelloWorld', $logged[0][2]['phrase']);
+    }
+
+    /**
+     * And a constructed translator has a usable logger without being given one.
+     */
+    public function testAConstructedTranslatorAlwaysHasALogger(): void
+    {
+        $translator = new PageTranslator($this->createMockClient());
+
+        $logger = (new \ReflectionClass($translator))->getProperty('logger');
+        $logger->setAccessible(true);
+
+        $this->assertNotNull($logger->getValue($translator));
+        $this->assertTrue(method_exists($logger->getValue($translator), 'debug'));
+    }
+
+    /**
+     * The own-attribute site, pinned with a PLACEHOLDER rather than whitespace.
+     *
+     * The first version of this test used `title="A long\n   title"`, which
+     * `Whitespace::collapse` handles too - so a collapse-only revert at that
+     * site passed. `%name%` is the discriminator: only `Canonical::phrase`
+     * rewrites it, so a site using the wrong normaliser still looks correct on
+     * whitespace and fails only on placeholders.
+     */
+    public function testATokenizedRunsOwnAttributeCanonicalisesPlaceholders(): void
+    {
+        $registered = $this->registeredTexts(
+            '<html><body><p data-ls-phrase title="Hello %name%">Hi</p></body></html>'
+        );
+
+        $this->assertContains('Hello {name}', $registered, 'the element\'s own attribute must canonicalise placeholders');
+    }
+
+    // =========================================================================
+    // TOK-6: what a unit registers as
+    // =========================================================================
+
+    /**
+     * Each unit's registration, in the wire's terms: a phrase's text, or a
+     * block's token list. Phrases and blocks flush as separate batches, so the
+     * shapes are compared per unit, not across queues.
+     */
+    private function registeredShapes($html): array
+    {
+        $shapes = [];
+        foreach ($this->registeredPayloadFor($html) as $item) {
+            if (isset($item['phrase'])) {
+                $shapes[] = ['phrase' => $item['phrase']];
+            }
+            if (isset($item['phrases'])) {
+                $shapes[] = ['block' => array_map(function ($nested) {
+                    return $nested['phrase'];
+                }, $item['phrases'])];
+            }
+        }
+
+        return $shapes;
+    }
+
+    /**
+     * @dataProvider unitShapeProvider
+     */
+    public function testAUnitIsAPhraseOnlyWhenItsOneTokenIsItsOneTextNode($body, array $expected): void
+    {
+        $this->assertSame($expected, $this->registeredShapes('<html><body>' . $body . '</body></html>'));
+    }
+
+    public function unitShapeProvider(): array
+    {
+        return [
+            'a text-only leaf is a phrase' => ['<p>Hello</p>', [['phrase' => 'Hello']]],
+            'a titled leaf is a block, title first' => ['<p title="Tooltip">Hello</p>', [['block' => ['Tooltip', 'Hello']]]],
+            'a top-level img is a block' => ['<img alt="Logo">', [['block' => ['Logo']]]],
+            'a top-level input is a block' => ['<input placeholder="Email">', [['block' => ['Email']]]],
+            'svg text alone is a phrase' => ['<p><svg><text>Label</text><path/></svg></p>', [['phrase' => 'Label']]],
+            'a standalone svg with one text is a phrase' => ['<svg><path/><text>Label</text></svg>', [['phrase' => 'Label']]],
+            'a confirming button is a block' => ['<button data-confirm="Are you sure?">Go</button>', [['block' => ['Are you sure?', 'Go']]]],
+            'a top-level inline element is a unit' => ['<span>Hi</span>', [['phrase' => 'Hi']]],
+            'a top-level titled link is a block' => ['<a href="/x" title="Home page">Home</a>', [['block' => ['Home page', 'Home']]]],
+            'control: two text nodes are a block' => ['<p>Hello <b>bold</b></p>', [['block' => ['Hello', 'bold']]]],
+            'inline markup around one text node stays a phrase' => ['<p><strong>Bold</strong></p>', [['phrase' => 'Bold']]],
+        ];
+    }
+
+    /**
+     * The units TOK-6 adds render translated, and the drawing and the element
+     * survive: a host's own attribute, a top-level void element, a button.
+     *
+     * @dataProvider newUnitApplyProvider
+     */
+    public function testNewUnitsRenderTranslated($body, array $expected): void
+    {
+        $html = '<html><body>' . $body . '</body></html>';
+        $rendered = $this->translatePageWithCatalog($html, $this->catalogFor($html));
+
+        foreach ($expected as $fragment) {
+            $this->assertStringContainsString($fragment, $rendered);
+        }
+    }
+
+    public function newUnitApplyProvider(): array
+    {
+        return [
+            'titled leaf' => ['<p title="Tooltip">Hello</p>', ['title="X:Tooltip"', '>X:Hello</p>']],
+            'top-level img' => ['<img alt="Logo">', ['alt="X:Logo"']],
+            'confirming button' => ['<button data-confirm="Are you sure?">Go</button>', ['data-confirm="X:Are you sure?"', '>X:Go</button>']],
+            'top-level span' => ['<span>Hi</span>', ['<span>X:Hi</span>']],
+        ];
+    }
+
+    /**
+     * TOK-3 on the page path: every row of the shared canonicalization fixture,
+     * run through translatePage(), registers exactly the fixture's tokens, and a
+     * row that is one block registers the fixture's id. A unit made only of
+     * value markers, or holding one whose name is outside the grammar,
+     * registers nothing by rule (VAR-3, VAR-7): a row that is one is
+     * checked to register nothing, its tokens read from the tokenizer, and a
+     * row whose page units include one is checked without that unit.
+     */
+    public function testThePagePathMatchesTheCanonicalizationFixture(): void
+    {
+        $fixture = json_decode(file_get_contents(dirname(__DIR__) . '/fixtures/canonicalization-reference.json'), true);
+        $this->assertCount(45, $fixture['cases']);
+
+        foreach ($fixture['cases'] as $case) {
+            $unit = (new HtmlParser())->fragmentUnit($case['html']);
+            $markerOnly = $unit['markers'] !== null
+                && ($unit['markers']->markerOnly($unit['tokens']) || $unit['markers']->unnamedWithin());
+
+            $this->setTranslations([]);
+            $this->mockHttp->setResponse('POST', 'translatable-items', ['status' => true]);
+
+            $client = $this->createMockClient();
+            $client->setLocale('es-es');
+            $client->translatePage('<html><body>' . $case['html'] . '</body></html>', $case['category']);
+
+            $this->mockHttp->clearRequests();
+            $client->flushPendingRegistrations();
+
+            $tokens = [];
+            $blocks = [];
+            foreach ($this->mockHttp->getRequests() as $request) {
+                foreach (isset($request['data']['translatable_items']) ? $request['data']['translatable_items'] : [] as $item) {
+                    if (isset($item['phrase'])) {
+                        $tokens[] = $item['phrase'];
+                    }
+                    if (isset($item['phrases'])) {
+                        $blocks[] = $item['custom_id'];
+                        foreach ($item['phrases'] as $nested) {
+                            $tokens[] = $nested['phrase'];
+                        }
+                    }
+                }
+            }
+
+            if ($markerOnly) {
+                $this->assertSame([], $tokens, $case['id'] . ': a unit of only markers, or holding one it cannot name, registers nothing');
+                $this->assertSame($case['expected_tokens'], $unit['tokens'], $case['id'] . ': tokens');
+                continue;
+            }
+
+            // The page walks each element as its own unit, so a marker alone in
+            // one registers nothing there, as any unit of only markers.
+            $expected = $case['expected_tokens'];
+            if ($unit['markers'] !== null && $blocks === []) {
+                $expected = array_values(array_filter($expected, function ($token) use ($unit) {
+                    return !$unit['markers']->markerOnly([$token]);
+                }));
+            }
+            sort($expected);
+            sort($tokens);
+            $this->assertSame($expected, $tokens, $case['id'] . ': registered tokens');
+
+            if (count($blocks) === 1 && count($case['expected_tokens']) === count($tokens) && count($tokens) > 1) {
+                $this->assertSame($case['expected_custom_id'], $blocks[0], $case['id'] . ': block id');
+            }
+        }
+    }
+
+    /**
+     * A marked content block holding one phrase still flushes as a block: the
+     * page queues it under its id, and a named block registers as one.
+     */
+    public function testAMarkedOnePhraseBlockFlushesAsABlock(): void
+    {
+        $items = $this->registeredPayloadFor('<html><body><div data-ls-contentblock><p>Hello</p></div></body></html>');
+
+        $this->assertCount(1, $items);
+        $this->assertSame('content_block', $items[0]['type']);
+        $this->assertSame([['phrase' => 'Hello']], $items[0]['phrases']);
+    }
+
+    /**
+     * CID-4 on the page path: a declared block whose legacy id holds different
+     * content is a miss - not rendered from, and registered under its own id.
+     */
+    public function testALegacyIdHoldingDifferentContentIsAMissOnThePagePath(): void
+    {
+        $legacyId = md5(implode('|', ['Marketing', 'Hello there', 'Bye']));
+        $this->setTranslations(['Marketing' => [$legacyId => ['Some entirely other phrase' => 'Otra frase']]]);
+        $this->mockHttp->setResponse('POST', 'translatable-items', ['status' => true]);
+
+        $client = $this->createMockClient();
+        $client->setLocale('es-es');
+        $rendered = $client->translatePage('<html><body><div data-langsys-contentblock><p>Hello there</p><p>Bye</p></div></body></html>', 'Marketing');
+
+        $this->assertStringNotContainsString('Otra frase', $rendered);
+        $this->assertStringContainsString('Hello there', $rendered);
+        $this->assertTrue($client->hasPendingRegistrations(), 'a rejected match is a genuine miss');
     }
 }

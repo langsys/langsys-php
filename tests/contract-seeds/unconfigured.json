@@ -1,0 +1,156 @@
+{
+    "projects": [
+        {
+            "id": "77000b00-0001-4000-8000-000000000000",
+            "title": "php unconfigured hello#1 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "125001|4d735a6e83c563d80882d83141c7217ae551fe30",
+                "device_id": "php-unconfigured-1"
+            }
+        },
+        {
+            "id": "77000b00-0002-4000-8000-000000000000",
+            "title": "php unconfigured hello#2 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "125002|fb7f261cbda6523439f256ee9048d15b4fbb70d5",
+                "device_id": "php-unconfigured-2"
+            }
+        },
+        {
+            "id": "77000b00-0003-4000-8000-000000000000",
+            "title": "php unconfigured hello#3 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "125003|bf464fd6bdc208aac55b2feb22b6c05c28c33387",
+                "device_id": "php-unconfigured-3"
+            }
+        },
+        {
+            "id": "77000b00-0004-4000-8000-000000000000",
+            "title": "php unconfigured hello#4 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "125004|645abb68fed72f10b9164a3c2809c6f6ef492197",
+                "device_id": "php-unconfigured-4"
+            }
+        },
+        {
+            "id": "77000b00-0005-4000-8000-000000000000",
+            "title": "php unconfigured hello#5 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "125005|4c7d95a9cb5428212cda5533e3a08642667858f0",
+                "device_id": "php-unconfigured-5"
+            }
+        },
+        {
+            "id": "77000b00-0006-4000-8000-000000000000",
+            "title": "php unconfigured hello#6 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "phrase": "Hello",
+                    "translations": {
+                        "es-es": "Hola"
+                    }
+                }
+            ],
+            "user": {
+                "token": "125006|7bf9c5941715e3142888d17d860713c935055bc2",
+                "device_id": "php-unconfigured-6"
+            }
+        }
+    ],
+    "keys": [
+        {
+            "id": "77000b01-0001-4000-8000-000000000000",
+            "key": "php-unconfigured-1-write",
+            "type": "write",
+            "project": "77000b00-0001-4000-8000-000000000000"
+        },
+        {
+            "id": "77000b01-0002-4000-8000-000000000000",
+            "key": "php-unconfigured-2-write",
+            "type": "write",
+            "project": "77000b00-0002-4000-8000-000000000000"
+        },
+        {
+            "id": "77000b01-0003-4000-8000-000000000000",
+            "key": "php-unconfigured-3-write",
+            "type": "write",
+            "project": "77000b00-0003-4000-8000-000000000000"
+        },
+        {
+            "id": "77000b01-0004-4000-8000-000000000000",
+            "key": "php-unconfigured-4-write",
+            "type": "write",
+            "project": "77000b00-0004-4000-8000-000000000000"
+        },
+        {
+            "id": "77000b01-0005-4000-8000-000000000000",
+            "key": "php-unconfigured-5-write",
+            "type": "write",
+            "project": "77000b00-0005-4000-8000-000000000000"
+        },
+        {
+            "id": "77000b01-0006-4000-8000-000000000000",
+            "key": "php-unconfigured-6-write",
+            "type": "write",
+            "project": "77000b00-0006-4000-8000-000000000000"
+        }
+    ]
+}

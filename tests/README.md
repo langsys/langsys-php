@@ -1,8 +1,65 @@
 # Testing notes
 
-Run the suite with `vendor/bin/phpunit`. Run it a second time without `ext-intl`
-(`php -n vendor/bin/phpunit`) — several behaviours only exist on that path, and
-CI has a dedicated job for it.
+`phpunit.xml` lists two suites. `no-clone` is everything but `tests/Contract`
+and needs nothing but this repository; CI runs it alone
+(`vendor/bin/phpunit --testsuite no-clone`). `clone` is `tests/Contract`, which
+runs against an SDK test clone (below) and fails without one. `vendor/bin/phpunit`
+runs both. Run the no-clone suite a second time without `ext-intl`
+(`php -n vendor/bin/phpunit --testsuite no-clone`) — several behaviours only
+exist on that path, and CI has a dedicated job for it. `-n` removes intl only
+where PHP loads it as a shared extension; Homebrew's PHP builds it in, so there
+the CI job is the check.
+
+CI runs every job on `ubuntu-24.04` (libxml2 2.9) and `ubuntu-latest` (Ubuntu
+26.04, libxml2 2.15), and each job prints the libxml2 version it ran on. The two
+parse HTML differently; `Html\Document::readsRawBodies()` is how the SDK tells
+them apart, and every test passes on both. PHP 7.4 to 8.2 run
+locally from the `shivammathur/php` Homebrew tap
+(`/opt/homebrew/opt/php@7.4/bin/php vendor/bin/phpunit --testsuite no-clone`).
+
+## Contract tests
+
+The contract tier (spec CONF-2) runs against a real Langsys API on an **SDK test
+clone**: a local langsys instance running the product's code, with a langsys-ai
+of its own, seeded before the run (langsys `docs/sdk-test-clone.md`). Every test
+reaches it through `tests/contract-fixture/forwarder.mjs`, vendored byte for byte
+from langsys-js-typescript and cited by git tree in `CONFORMANCE.md`; never edit
+it, and re-vendor it with
+`git -C ../langsys-js-typescript archive <sha> contract-fixture | tar -x -C tests`
+after removing the old files.
+
+- **The world.** `tests/contract-seeds/<slug>.php` declares each test file's
+  worlds; `<slug>.json` beside it is what the clone seeds, rendered from it.
+  `tests/CloneSeedFilesTest.php` fails when the two differ or an id leaves this
+  SDK's ranges on the clone (ids `7700xxxx-…`, raw keys `php-…`, user token ids
+  120000–129999, addresses 10.77.0.0/16), and
+  `LANGSYS_WRITE_SEEDS=1 vendor/bin/phpunit tests/CloneSeedFilesTest.php` writes
+  the JSON again. The clone's `SDK_TEST_SEED_PATHS` names this folder, and one
+  file its seeder refuses stops the reseed for every SDK, so a changed file goes
+  to the clone's owner for a dry run before the next reseed.
+- **One run per reseed.** What a test writes stays until the next reseed. Each
+  case takes a world instance of its own, and a module's `runs` sets how many
+  runs one reseed serves; `LANGSYS_CONTRACT_RUN` (from 0) picks the run, so a
+  mutant runs on instances no earlier run wrote to. Before a case acts it reads
+  its world back through the API and fails as `seed not landed` if anything
+  differs, a run's leftovers included.
+- **Running it.** A reseed rebuilds the clone for every SDK sharing it, so it
+  runs, with the suite after it, under `test-suite-lock run -- …`:
+
+```sh
+php ~/Documents/dev/langsys5/tests/Sdk/reseed.php
+(cd ~/Documents/dev/langsys-ai-5 && php artisan migrate:fresh --seed --force)
+
+LANGSYS_CONTRACT_TARGET=https://api.langsys5.test \
+LANGSYS_CONTRACT_CLONE_ROOT=~/Documents/dev/langsys5 \
+NODE_EXTRA_CA_CERTS=~/.config/valet/CA/LaravelValetCASelfSigned.pem \
+vendor/bin/phpunit
+```
+
+`LANGSYS_CONTRACT_LOG` names a file the forwarder logs to. A test asserts on what
+the API holds afterwards — the catalog, a block's stored content as the
+project's owner reads it, and the hints the clone stored, the one result no route
+returns — never on what the SDK sent.
 
 ## Pair every absence assertion with a positive one
 

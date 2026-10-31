@@ -114,12 +114,29 @@ class TranslatableItems
     /**
      * Set the batch limit for chunking API requests.
      *
+     * Ignores a non-positive limit and keeps the default. The value arrives
+     * from the project's server-side settings, so a 0 (an unset column, a
+     * misconfigured project) is a value this SDK will actually be handed - and
+     * array_chunk() raises a ValueError on it, from inside the shutdown
+     * handler, where it is a fatal error after the response has been sent.
+     * Registration is best-effort; a bad setting must not take the page down.
+     *
      * @param int $limit
      * @return $this
      */
     public function setBatchLimit($limit)
     {
-        $this->batchLimit = (int) $limit;
+        $limit = (int) $limit;
+
+        if ($limit < 1) {
+            $this->logger->warning('Ignoring non-positive batch limit; keeping default', [
+                'requested' => $limit,
+                'batch_limit' => $this->batchLimit,
+            ]);
+            return $this;
+        }
+
+        $this->batchLimit = $limit;
         return $this;
     }
 
@@ -146,8 +163,8 @@ class TranslatableItems
         foreach ($phrases as $phrase) {
             $items[] = [
                 'type' => 'phrase',
-                'phrase' => is_string($phrase) ? $phrase : $phrase['phrase'],
-                'category' => is_string($phrase) ? null : (isset($phrase['category']) ? $phrase['category'] : null),
+                'phrase' => \Langsys\SDK\Html\Canonical::codePhrase(is_string($phrase) ? $phrase : $phrase['phrase']),
+                'category' => is_string($phrase) ? null : $this->normalizeCategory(isset($phrase['category']) ? $phrase['category'] : null),
                 'translatable' => is_string($phrase) ? true : (isset($phrase['translatable']) ? $phrase['translatable'] : true),
             ];
         }
@@ -168,6 +185,80 @@ class TranslatableItems
     }
 
     /**
+     * Register phrases with the translations already made for them (MIG-9).
+     *
+     * Each item is ['phrase', 'category', 'translations' => [locale => text]],
+     * sent as the API takes it: a list of {locale, translation} entries, since
+     * the API refuses a map keyed by locale. It stores them as human
+     * translations, which the
+     * machine translation queue then skips for those locales; past the plan's
+     * human-translated words for the period the rest are left for machine
+     * translation, and the counts say so.
+     *
+     * @param array $items
+     * @return array{human_translations_saved: int, human_translations_skipped: int}
+     */
+    public function importPhrases(array $items)
+    {
+        $wire = [];
+
+        foreach ($items as $item) {
+            $entry = [
+                'type' => 'phrase',
+                'phrase' => \Langsys\SDK\Html\Canonical::codePhrase($item['phrase']),
+                'category' => $this->normalizeCategory(isset($item['category']) ? $item['category'] : null),
+                'translatable' => true,
+            ];
+
+            if (!empty($item['translations'])) {
+                $entry['translations'] = [];
+                foreach ($item['translations'] as $locale => $translation) {
+                    $entry['translations'][] = ['locale' => $locale, 'translation' => $translation];
+                }
+            }
+
+            $wire[] = $entry;
+        }
+
+        $outcome = ['human_translations_saved' => 0, 'human_translations_skipped' => 0];
+
+        foreach (array_chunk($wire, $this->batchLimit) as $chunk) {
+            $response = $this->http->post('translatable-items', [
+                'project_id' => $this->projectId,
+                'translatable_items' => $chunk,
+            ]);
+
+            $data = (is_array($response) && isset($response['data']) && is_array($response['data'])) ? $response['data'] : [];
+            foreach (array_keys($outcome) as $field) {
+                $outcome[$field] += isset($data[$field]) ? (int) $data[$field] : 0;
+            }
+        }
+
+        return $outcome;
+    }
+
+    /**
+     * Normalize a category for the wire.
+     *
+     * '__uncategorized__' is a local sentinel used to key the catalog; the API
+     * expects an absent category instead. Sending the sentinel creates a literal
+     * category with that name. createContentBlocks() stripped it and
+     * createContentBlock() did not, so the same block registered through the two
+     * paths landed with two different stored categories.
+     *
+     * @param string|null $category
+     * @return string|null Null when there is no category
+     */
+    protected function normalizeCategory($category)
+    {
+        if ($category === null || $category === '' || $category === '__uncategorized__') {
+            return null;
+        }
+
+        return $category;
+    }
+
+    /**
      * Normalize HTML content by trimming and collapsing whitespace.
      *
      * @param string $html
@@ -175,11 +266,10 @@ class TranslatableItems
      */
     protected function normalizeHtmlContent($html)
     {
-        // Trim leading/trailing whitespace
-        $html = trim($html);
-
-        // Collapse multiple whitespace (spaces, tabs, newlines) to single space
-        $html = preg_replace('/\s+/', ' ', $html);
+        // Collapse and trim exactly as the tokenizer does (TOK-2) - this text
+        // becomes a content block's stored HTML, and a mismatch here against
+        // HtmlParser is a mismatch between what we send and what we look up.
+        $html = \Langsys\SDK\Html\Canonical::phrase($html);
 
         // Clean up space around tags
         $html = preg_replace('/>\s+</', '><', $html);
@@ -202,8 +292,21 @@ class TranslatableItems
     {
         $parser = new HtmlParser($this->translatableAttributes);
 
+        $category = $this->normalizeCategory($category);
+
         // Normalize HTML content
         $content = $this->normalizeHtmlContent($content);
+
+        // A fragment whose one token is its one text node is a phrase
+        // (TOK-6), unless the caller named a block by its custom id.
+        if ($customId === null && ($phraseItem = $this->phraseItemFor($parser, $content, $category)) !== null) {
+            $this->logger->debug('A one-phrase fragment registers as a phrase', ['phrase' => $phraseItem['phrase']]);
+
+            return $this->http->post('translatable-items', [
+                'project_id' => $this->projectId,
+                'translatable_items' => [$phraseItem],
+            ]);
+        }
 
         // Extract phrases from HTML content
         $phrases = $parser->extractPhrases($content);
@@ -263,12 +366,17 @@ class TranslatableItems
 
         foreach ($contentBlocks as $block) {
             $html = isset($block['html']) ? $block['html'] : '';
-            $category = isset($block['category']) ? $block['category'] : null;
+            $category = $this->normalizeCategory(isset($block['category']) ? $block['category'] : null);
             $customId = isset($block['customId']) ? $block['customId'] : null;
             $label = isset($block['label']) ? $block['label'] : null;
 
             // Normalize HTML content
             $html = $this->normalizeHtmlContent($html);
+
+            if ($customId === null && ($phraseItem = $this->phraseItemFor($parser, $html, $category)) !== null) {
+                $requestItems[] = $phraseItem;
+                continue;
+            }
 
             // Extract phrases from HTML content
             $phrases = $parser->extractPhrases($html);
@@ -291,7 +399,7 @@ class TranslatableItems
                 'phrases' => $formattedPhrases,
             ];
 
-            if ($category !== null && $category !== '__uncategorized__') {
+            if ($category !== null) {
                 $item['category'] = $category;
             }
 
@@ -317,6 +425,31 @@ class TranslatableItems
         }
 
         return $lastResponse;
+    }
+
+    /**
+     * The phrase item a fragment registers as, when its one token is its one
+     * text node (TOK-6); null when the fragment is a content block.
+     *
+     * @param HtmlParser $parser
+     * @param string $html
+     * @param string|null $category Already normalized for the wire
+     * @return array|null
+     */
+    protected function phraseItemFor(HtmlParser $parser, $html, $category)
+    {
+        $unit = $parser->fragmentUnit($html);
+
+        if (!HtmlParser::isPhraseUnit($unit)) {
+            return null;
+        }
+
+        return [
+            'type' => 'phrase',
+            'phrase' => $unit['tokens'][0],
+            'category' => $category,
+            'translatable' => true,
+        ];
     }
 
     /**

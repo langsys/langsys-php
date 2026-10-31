@@ -76,6 +76,23 @@ class ClientInterpolationTest extends TestCase
     }
 
     /**
+     * ICU-5: a plural Langsys promoted for a target locale renders its
+     * singular at a count of 1 through the translate call.
+     */
+    public function testAPromotedPluralRendersItsSingularThroughTranslate()
+    {
+        $client = $this->makeClient([
+            '__uncategorized__' => [
+                'You have {count} new messages.' => '{count, plural, one {Tienes # mensaje nuevo.} other {Tienes # mensajes nuevos.}}',
+            ],
+        ]);
+        $client->setLocale('es-es');
+
+        $this->assertSame('Tienes 1 mensaje nuevo.', $client->translate('You have {count} new messages.', null, '__uncategorized__', null, ['count' => 1]));
+        $this->assertSame('Tienes 3 mensajes nuevos.', $client->translate('You have {count} new messages.', null, '__uncategorized__', null, ['count' => 3]));
+    }
+
+    /**
      * A brand-new phrase must still render with placeholders resolved,
      * otherwise end users see raw {name} until registration round-trips.
      */
@@ -166,7 +183,7 @@ class ClientInterpolationTest extends TestCase
         $client->setLocale('es-es');
 
         $result = $client->translateContentBlock(
-            '<p>Welcome back, {name}</p>',
+            '<p>Welcome back, {name}</p><p>Your cart</p>',
             '__uncategorized__',
             ['name' => 'Sarah']
         );
@@ -195,7 +212,7 @@ class ClientInterpolationTest extends TestCase
         $client->setLocale('es-es');
 
         $client->translateContentBlock(
-            '<p>Welcome back, {name}</p>',
+            '<p>Welcome back, {name}</p><p>Your cart</p>',
             '__uncategorized__',
             ['name' => 'Sarah']
         );
@@ -211,7 +228,7 @@ class ClientInterpolationTest extends TestCase
         $client = $this->makeClient(['__uncategorized__' => []]);
         $client->setLocale('es-es');
 
-        $result = $client->translateContentBlock('<p>Welcome back, {name}</p>');
+        $result = $client->translateContentBlock('<p>Welcome back, {name}</p><p>Your cart</p>');
 
         $this->assertStringContainsString('{name}', $result);
     }
@@ -303,5 +320,39 @@ class ClientInterpolationTest extends TestCase
 
         $this->assertStringNotContainsString('Sarah', $second);
         $this->assertStringContainsString('{name}', $second);
+    }
+
+    /**
+     * The shared interpolation fixture, driven through the public route.
+     *
+     * InterpolatorTest runs these rows against the interpolator directly, which
+     * cannot see a short-circuit in front of it: Client::interpolate() once
+     * returned early on empty params and shipped raw MessageFormat source with
+     * every interpolator test green. A row without params calls translate() with
+     * the argument genuinely omitted.
+     */
+    public function testInterpolationFixtureHoldsThroughTranslate()
+    {
+        $cases = json_decode(file_get_contents(dirname(__DIR__) . '/fixtures/interpolation-reference.json'), true);
+        $this->assertNotEmpty($cases);
+
+        $ran = 0;
+        foreach ($cases as $case) {
+            if (!empty($case['requires_intl']) && !extension_loaded('intl')) {
+                continue;
+            }
+
+            $client = $this->makeClient(['UI' => ['Fixture phrase' => $case['template']]]);
+            $client->setLocale($case['locale']);
+
+            $rendered = array_key_exists('params', $case)
+                ? $client->translate('Fixture phrase', $case['locale'], 'UI', null, $case['params'])
+                : $client->translate('Fixture phrase', $case['locale'], 'UI');
+
+            $this->assertSame($case['expected'], $rendered, $case['description'] . ' — ' . $case['template']);
+            $ran++;
+        }
+
+        $this->assertGreaterThan(0, $ran, 'at least one row must run through the client');
     }
 }

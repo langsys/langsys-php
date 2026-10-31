@@ -45,12 +45,12 @@ class MarkupTokenizerTest extends TestCase
 
     protected function open($i)
     {
-        return self::OPEN_START . $i . self::OPEN_END;
+        return $this->tokenizer->tokenParams($i + 1)['m' . $i . 'o'];
     }
 
     protected function close($i)
     {
-        return self::CLOSE_START . $i . self::CLOSE_END;
+        return $this->tokenizer->tokenParams($i + 1)['m' . $i . 'c'];
     }
 
     /**
@@ -147,14 +147,22 @@ class MarkupTokenizerTest extends TestCase
         $this->assertEquals('Hello {m0o}world{m0c}', $result['text']);
     }
 
+    /**
+     * Each token maps to a sentinel carrying its index and the tokenizer's
+     * own nonce: the same for every token of one tokenizer, another for the
+     * next tokenizer.
+     */
     public function testTokenParamsMapToSentinels()
     {
         $params = $this->tokenizer->tokenParams(2);
+        $this->assertSame(['m0o', 'm0c', 'm1o', 'm1c'], array_keys($params));
+        $this->assertSame(1, preg_match('/^\xEE\x80\x80([0-9a-f]{32})0\xEE\x80\x81$/', $params['m0o'], $nonce));
+        $this->assertSame(self::CLOSE_START . $nonce[1] . '0' . self::CLOSE_END, $params['m0c']);
+        $this->assertSame(self::OPEN_START . $nonce[1] . '1' . self::OPEN_END, $params['m1o']);
+        $this->assertSame(self::CLOSE_START . $nonce[1] . '1' . self::CLOSE_END, $params['m1c']);
+        $this->assertSame($params, $this->tokenizer->tokenParams(2));
 
-        $this->assertEquals($this->open(0), $params['m0o']);
-        $this->assertEquals($this->close(0), $params['m0c']);
-        $this->assertEquals($this->open(1), $params['m1o']);
-        $this->assertEquals($this->close(1), $params['m1c']);
+        $this->assertNotSame($params['m0o'], (new MarkupTokenizer())->tokenParams(1)['m0o']);
     }
 
     public function testDetectsTokens()
@@ -286,6 +294,24 @@ class MarkupTokenizerTest extends TestCase
         $this->assertStringNotContainsString('E000', $html);
     }
 
+    /**
+     * Text holding invalid UTF-8 - a caller's param, say - still rebuilds
+     * its markup, and stripping removes each whole sentinel, digits and all.
+     */
+    public function testInvalidUtf8KeepsTheMarkupAndLeavesNoDigits()
+    {
+        $slots = [$this->element('<b>x</b>')->firstChild->cloneNode(false)];
+        $text = "Hello " . $this->open(0) . "Zo\xffe" . $this->close(0);
+
+        $nodes = $this->tokenizer->render($text, $slots, $slots[0]->ownerDocument);
+        $this->assertCount(2, $nodes);
+        $this->assertSame('Hello ', $nodes[0]->nodeValue);
+        $this->assertSame('b', $nodes[1]->nodeName);
+        $this->assertSame("Zo\xffe", $nodes[1]->textContent);
+
+        $this->assertSame("Hello Zo\xffe", $this->tokenizer->stripSentinels($text));
+    }
+
     public function testStripSentinelsHandlesInvalidUtf8()
     {
         $text = "abc\xC3\x28 " . $this->open(0) . 'x' . $this->close(0);
@@ -394,5 +420,202 @@ class MarkupTokenizerTest extends TestCase
             'Основано на 5 <strong>отзывах</strong>',
             $this->renderToHtml($withSentinels, $encoded['slots'])
         );
+    }
+
+    // =========================================================================
+    // Parse model — libxml2 against the JS family
+    // =========================================================================
+
+    /**
+     * Where libxml2 and the JS family build DIFFERENT DOMs from the same bytes.
+     *
+     * A tokenized phrase's key IS its encoded string, so a disagreement about
+     * how the tree is BUILT changes the key before canonicalisation is reached.
+     * No amount of TOK-1/TOK-2 work can close one of these: the tokenizer is
+     * faithfully encoding a different tree.
+     *
+     * The JS-family expectations are langsys-js-server @ 8105faa, where real
+     * Chromium 153 was measured against parse5 over these same families and
+     * agreed 9 of 9 - so they are the family's answer, not one engine's.
+     *
+     * This is a CHARACTERISATION of libxml2. The divergent rows assert what
+     * this SDK actually produces, so that a change in libxml2, in our load
+     * flags, or in the tokenizer shows up here rather than as mismatched ids in
+     * production. Agreement rows assert agreement and would fail if it were
+     * lost. A libxml2 that reads raw bodies as text (2.14 and later) is held
+     * to the row's `libxml2_raw_bodies` column where it has one.
+     *
+     * @dataProvider parseModelProvider
+     */
+    public function testParseModelAgreementIsWhatWeMeasured($case): void
+    {
+        $column = \Langsys\SDK\Html\Document::readsRawBodies() && isset($case['libxml2_raw_bodies']) ? 'libxml2_raw_bodies' : 'libxml2';
+        $agrees = $column === 'libxml2' ? $case['agrees'] : $case[$column] === $case['js_family'];
+
+        $doc = new \DOMDocument();
+        libxml_use_internal_errors(true);
+        $doc->loadHTML(
+            '<?xml encoding="UTF-8"><div id="lsroot">' . $case['html'] . '</div>',
+            LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD
+        );
+        libxml_clear_errors();
+
+        $root = $doc->getElementById('lsroot');
+        $this->assertNotNull($root, 'the fragment must parse');
+
+        $encoded = (new \Langsys\SDK\Html\MarkupTokenizer())->encode($root);
+
+        $this->assertSame(
+            $case[$column],
+            $encoded['text'],
+            $case['id'] . ' — ' . $case['why']
+        );
+
+        if ($agrees) {
+            $this->assertSame(
+                $case['js_family'],
+                $encoded['text'],
+                $case['id'] . ' agreed with the JS family when measured; it must still agree'
+            );
+        } else {
+            $this->assertNotSame(
+                $case['js_family'],
+                $encoded['text'],
+                $case['id'] . ' is recorded as a divergence; if it now AGREES, the record is '
+                    . 'stale and the conformance row must be rewritten'
+            );
+        }
+    }
+
+    /**
+     * What the SDK itself reads, through the loader every path parses with:
+     * libxml2's tree, or the JS family's where Document::load() reads the
+     * page as a browser does - a textarea's or a title's body as text.
+     *
+     * @dataProvider parseModelProvider
+     */
+    public function testTheSdkReadsEachRowAsItsRecordSays($case): void
+    {
+        $doc = new \DOMDocument();
+        libxml_use_internal_errors(true);
+        \Langsys\SDK\Html\Document::loadFragment($doc, $case['html']);
+        libxml_clear_errors();
+
+        $encoded = (new \Langsys\SDK\Html\MarkupTokenizer())->encode(\Langsys\SDK\Html\Document::fragmentRoot($doc));
+
+        $this->assertSame($case[$case['sdk']], $encoded['text'], $case['id'] . ' through the SDK\'s loader');
+    }
+
+    public function parseModelProvider(): array
+    {
+        $fixture = json_decode(
+            file_get_contents(dirname(__DIR__) . '/fixtures/parse-model-reference.json'),
+            true
+        );
+
+        $out = [];
+        foreach ($fixture['cases'] as $case) {
+            $out[$case['family'] . ': ' . $case['id']] = [$case];
+        }
+
+        return $out;
+    }
+
+    /**
+     * The measurement's own control: the comparison can report both outcomes.
+     *
+     * Four of the seven rows above assert a divergence and three assert
+     * agreement, so neither answer is the only one this test can produce. A
+     * measurement that can only say one thing has measured nothing - which is
+     * the failure the JS lane guarded with its own control.
+     */
+    public function testTheParseModelFixtureRecordsBothOutcomes(): void
+    {
+        $fixture = json_decode(
+            file_get_contents(dirname(__DIR__) . '/fixtures/parse-model-reference.json'),
+            true
+        );
+
+        $agree = array_filter($fixture['cases'], function ($c) { return $c['agrees']; });
+        $diverge = array_filter($fixture['cases'], function ($c) { return !$c['agrees']; });
+
+        $this->assertCount(3, $agree, 'implied close agreed on all three');
+        $this->assertCount(4, $diverge, 'raw text and foster parenting diverged on all four');
+
+        $families = array_unique(array_column($fixture['cases'], 'family'));
+        sort($families);
+        $this->assertSame(['foster parenting', 'implied close', 'raw text'], $families);
+    }
+
+    /**
+     * The two identity paths do NOT have the same exposure, and the difference
+     * is the opposite of this lane's first reading.
+     *
+     * A `<Phrase>` key is a MARKER STRING: it encodes nesting, so any tree
+     * difference moves it. A content block's `custom_id` is a flat ORDERED
+     * TOKEN ARRAY: it survives a tree difference that preserves document order.
+     *
+     * So foster parenting splits the phrase key only - hoisting the stray
+     * element out of the table does not reorder anything - while a raw-text
+     * body carrying markup splits BOTH, and its block half is an ARITY change
+     * (3 tokens against 2), which per CID-1 re-keys every block containing one.
+     *
+     * Raised by the TypeScript lane against this fixture; measured here.
+     *
+     * @dataProvider parseModelProvider
+     */
+    public function testContentBlockIdsSurviveOnlyOrderPreservingTreeDifferences($case): void
+    {
+        $fixture = json_decode(
+            file_get_contents(dirname(__DIR__) . '/fixtures/parse-model-reference.json'),
+            true
+        );
+
+        // The category is part of the hash, so it comes from the fixture rather
+        // than being hard-coded here - otherwise the ids in the file are not
+        // reproducible from the file, which is the whole point of recording them.
+        $category = explode('.', $fixture['block_id_category'])[0];
+
+        $parser = new \Langsys\SDK\Html\HtmlParser();
+        $tokens = array_values($parser->extractPhrases($case['html']));
+        $block = $case['content_block'];
+
+        // The SDK reads a row as the fixture says: as libxml2 builds it, or,
+        // where Document::load() reads it as a browser does, as the JS family.
+        $side = $case['sdk'] === 'js_family' && isset($block['js_family_tokens']) ? 'js_family' : 'libxml2';
+        if (isset($block[$side . '_tokens'])) {
+            $this->assertSame($block[$side . '_tokens'], $tokens, $case['id'] . ' token array');
+            $this->assertSame(
+                $block[$side . '_block_id'],
+                $parser->generateCustomId($category, $tokens),
+                $case['id'] . ' block id'
+            );
+        }
+
+        if (!isset($block['js_family_tokens']) || $side === 'js_family') {
+            return;
+        }
+
+        $jsId = $parser->generateCustomId($category, $block['js_family_tokens']);
+        $ourId = $parser->generateCustomId($category, $tokens);
+
+        // Pin the recorded JS-family id too. It was in the file and read by
+        // nothing, which makes it decoration rather than a record.
+        $this->assertSame(
+            $block['js_family_block_id'],
+            $jsId,
+            $case['id'] . ': the recorded JS-family block id must be reproducible from this file'
+        );
+
+        if ($block['splits_block_id']) {
+            $this->assertNotSame($jsId, $ourId, $case['id'] . ': ' . $block['note']);
+            $this->assertNotSame(
+                count($block['js_family_tokens']),
+                count($tokens),
+                $case['id'] . ' is recorded as an ARITY split; equal arity would make it a value split'
+            );
+        } else {
+            $this->assertSame($jsId, $ourId, $case['id'] . ': ' . $block['note']);
+        }
     }
 }

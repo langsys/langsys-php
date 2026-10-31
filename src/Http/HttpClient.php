@@ -5,6 +5,7 @@ namespace Langsys\SDK\Http;
 use Langsys\SDK\Config;
 use Langsys\SDK\Exception\ApiException;
 use Langsys\SDK\Exception\AuthenticationException;
+use Langsys\SDK\Exception\ConfigurationException;
 use Langsys\SDK\Exception\ValidationException;
 use Langsys\SDK\Log\LoggerInterface;
 use Langsys\SDK\Log\NullLogger;
@@ -107,6 +108,12 @@ class HttpClient
     /**
      * Get the default headers for requests.
      *
+     * `X-Langsys-Capabilities: icu` asks for raw ICU MessageFormat. Langsys turns a
+     * flat phrase into a plural or select in the target locales that need one, and
+     * without the header the API flattens it to its `other` branch, so a count of 1
+     * would render the plural ("Tienes 1 mensajes nuevos."). The Interpolator
+     * formats ICU, so every request asks for it.
+     *
      * @return array
      */
     protected function getHeaders()
@@ -114,6 +121,7 @@ class HttpClient
         $headers = [
             'Content-Type: application/json',
             'Accept: application/json',
+            'X-Langsys-Capabilities: icu',
         ];
 
         if ($this->config->hasApiKey()) {
@@ -136,6 +144,12 @@ class HttpClient
      */
     protected function request($method, $url, $data = null)
     {
+        // A client without an API key or project id sends nothing, by any
+        // route (WIRE-4), including the resources a Client exposes.
+        if (!$this->config->hasApiKey() || !$this->config->hasProjectId()) {
+            throw new ConfigurationException('Cannot call the Langsys API: the client is not configured. Set LANGSYS_API_KEY and LANGSYS_PROJECT_ID, or pass them to the constructor.');
+        }
+
         $startTime = microtime(true);
 
         // Encode POST body and track size
@@ -258,7 +272,22 @@ class HttpClient
      */
     protected function handleResponse($response, $httpCode)
     {
-        $data = json_decode($response, true);
+        $body = is_string($response) ? trim($response) : '';
+
+        if ($body === '') {
+            // Some endpoints answer 204 with no content-type and a zero-length
+            // body. Decoding that unconditionally raises a parse error on a
+            // SUCCESSFUL response, so branch on the status before parsing.
+            $data = [];
+
+            if ($httpCode >= 200 && $httpCode < 300) {
+                return $data;
+            }
+
+            return $this->raiseForStatus($data, $httpCode);
+        }
+
+        $data = json_decode($body, true);
 
         if (json_last_error() !== JSON_ERROR_NONE) {
             throw new ApiException(
@@ -267,22 +296,74 @@ class HttpClient
             );
         }
 
+        return $this->raiseForStatus($data, $httpCode);
+    }
+
+    /**
+     * Raise the exception matching an error status, or return the payload.
+     *
+     * Shared by the parsed and empty-body paths so an error status produces the
+     * same exception type either way - an empty-bodied 401 is still an
+     * authentication failure, not a parse failure.
+     *
+     * @param mixed $data Decoded payload, or [] when the body was empty
+     * @param int $httpCode
+     * @return array
+     * @throws ApiException
+     * @throws AuthenticationException
+     * @throws ValidationException
+     */
+    protected function raiseForStatus($data, $httpCode)
+    {
         if ($httpCode === 401) {
-            $message = isset($data['error']) ? $data['error'] : 'Unauthorized';
-            throw new AuthenticationException($message, $data);
+            throw new AuthenticationException($this->errorMessage($data, 'Unauthorized'), $data);
         }
 
         if ($httpCode === 422) {
-            $message = isset($data['error']) ? $data['error'] : 'Validation failed';
-            $errors = isset($data['errors']) ? $data['errors'] : [];
-            throw new ValidationException($message, $errors, $data);
+            $errors = [];
+
+            if (is_array($data) && isset($data['errors']) && is_array($data['errors'])) {
+                $errors = $data['errors'];
+            } elseif (is_array($data) && isset($data['error']) && is_array($data['error']) && isset($data['error']['errors']) && is_array($data['error']['errors'])) {
+                $errors = $data['error']['errors'];
+            }
+
+            throw new ValidationException($this->errorMessage($data, 'Validation failed'), $errors, $data);
         }
 
         if ($httpCode >= 400) {
-            $message = isset($data['error']) ? $data['error'] : 'API error';
-            throw new ApiException($message, $httpCode, $data);
+            throw new ApiException($this->errorMessage($data, 'API error'), $httpCode, $data);
         }
 
         return $data;
+    }
+
+    /**
+     * The human-readable message of an error body.
+     *
+     * The langsys error envelope carries `error` as an object with its own
+     * `message` (MSG-1); older bodies carry `error` as the text itself. Reading
+     * `error` as text alone handed an array to the exception on the newer shape,
+     * which is a TypeError instead of the API error it was reporting.
+     *
+     * @param mixed $data
+     * @param string $default
+     * @return string
+     */
+    protected function errorMessage($data, $default)
+    {
+        if (!is_array($data) || !isset($data['error'])) {
+            return $default;
+        }
+
+        if (is_string($data['error'])) {
+            return $data['error'];
+        }
+
+        if (is_array($data['error']) && isset($data['error']['message']) && is_string($data['error']['message'])) {
+            return $data['error']['message'];
+        }
+
+        return $default;
     }
 }

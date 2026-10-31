@@ -1,0 +1,142 @@
+{
+    "projects": [
+        {
+            "id": "77000700-0001-4000-8000-000000000000",
+            "title": "php migration writer#1 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "123001|edecaa8ddab3b9fbf1184cb98812aa926eb3248d",
+                "device_id": "php-migration-1"
+            }
+        },
+        {
+            "id": "77000700-0002-4000-8000-000000000000",
+            "title": "php migration writer#2 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "123002|ae575ce68043c7842a1df4432d3f6658941180de",
+                "device_id": "php-migration-2"
+            }
+        },
+        {
+            "id": "77000700-0003-4000-8000-000000000000",
+            "title": "php migration writer#3 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "123003|53eaa50420d7fb0994571051425c8c6cfcf25ddc",
+                "device_id": "php-migration-3"
+            }
+        },
+        {
+            "id": "77000700-0004-4000-8000-000000000000",
+            "title": "php migration writer#4 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "123004|5afabc4e7898050f74798478e8da09d391d72e3f",
+                "device_id": "php-migration-4"
+            }
+        },
+        {
+            "id": "77000700-0005-4000-8000-000000000000",
+            "title": "php migration writer#5 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "123005|ffb47fc8a072473b7b3c5f449a6cd0c857d9a7d5",
+                "device_id": "php-migration-5"
+            }
+        },
+        {
+            "id": "77000700-0006-4000-8000-000000000000",
+            "title": "php migration writer#6 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "123006|f756128aaacf2fdd600b1efa84fe20f15887bec3",
+                "device_id": "php-migration-6"
+            }
+        },
+        {
+            "id": "77000700-0007-4000-8000-000000000000",
+            "title": "php migration writer#7 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "123007|77efb5124a151062033f1da011a740a845a042d4",
+                "device_id": "php-migration-7"
+            }
+        },
+        {
+            "id": "77000700-0008-4000-8000-000000000000",
+            "title": "php migration writer#8 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "user": {
+                "token": "123008|0b0e150c9a59118be278c607df19627f3757aed8",
+                "device_id": "php-migration-8"
+            }
+        }
+    ],
+    "keys": [
+        {
+            "id": "77000701-0001-4000-8000-000000000000",
+            "key": "php-migration-1-write",
+            "type": "write",
+            "project": "77000700-0001-4000-8000-000000000000"
+        },
+        {
+            "id": "77000701-0002-4000-8000-000000000000",
+            "key": "php-migration-2-write",
+            "type": "write",
+            "project": "77000700-0002-4000-8000-000000000000"
+        },
+        {
+            "id": "77000701-0003-4000-8000-000000000000",
+            "key": "php-migration-3-write",
+            "type": "write",
+            "project": "77000700-0003-4000-8000-000000000000"
+        },
+        {
+            "id": "77000701-0004-4000-8000-000000000000",
+            "key": "php-migration-4-write",
+            "type": "write",
+            "project": "77000700-0004-4000-8000-000000000000"
+        },
+        {
+            "id": "77000701-0005-4000-8000-000000000000",
+            "key": "php-migration-5-write",
+            "type": "write",
+            "project": "77000700-0005-4000-8000-000000000000"
+        },
+        {
+            "id": "77000701-0006-4000-8000-000000000000",
+            "key": "php-migration-6-write",
+            "type": "write",
+            "project": "77000700-0006-4000-8000-000000000000"
+        },
+        {
+            "id": "77000701-0007-4000-8000-000000000000",
+            "key": "php-migration-7-write",
+            "type": "write",
+            "project": "77000700-0007-4000-8000-000000000000"
+        },
+        {
+            "id": "77000701-0008-4000-8000-000000000000",
+            "key": "php-migration-8-write",
+            "type": "write",
+            "project": "77000700-0008-4000-8000-000000000000"
+        }
+    ]
+}

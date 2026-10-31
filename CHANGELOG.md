@@ -5,6 +5,199 @@ All notable changes to the Langsys PHP SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-10-31
+
+### Upgrading from 1.x
+
+[UPGRADING.md](UPGRADING.md) says what to do about each of these.
+
+- **Laravel apps stay on 1.x for now.** `langsys/langsys-php-laravel` 1.0.0 requires
+  `langsys/langsys-php` `^1.3`, so an app that uses it stays on langsys-php 1.x until
+  the Laravel package releases a version built on 2.0.0.
+- **More extensions are declared.** `composer.json` requires `ext-dom`, `ext-libxml`,
+  `ext-filter` and `ext-tokenizer` beside `ext-curl`, `ext-json` and `ext-intl`, so a
+  host without one is refused at install rather than failing inside a render.
+- **Some content registers under a new id.** The SDK now reads text the way the other
+  Langsys SDKs do, so the same content gets the same id on every SDK. Content whose id
+  moves:
+  - text holding a non-breaking space, a line or paragraph separator, or an invisible
+    control character;
+  - a phrase written with `%name%`, now stored as `{name}`;
+  - a content block holding `<script>`, `<style>`, `<template>`, `<noscript>`,
+    `<plaintext>` or `<math>`, whose contents are no longer part of it;
+  - a block holding text inside `<svg>`, which is translated now;
+  - a block holding a `<textarea>` or `<title>` with markup in it;
+  - a fragment that ends inside a start tag, such as `…<a title="Read more`, whose
+    unfinished tag is left out, as a browser leaves it out;
+  - a block holding an element marked `data-ls-phrase` or `data-ls-contentblock`,
+    which is a unit of its own;
+  - a one-phrase fragment such as `translateContentBlock('<p>Hello</p>')`, which is the
+    phrase `Hello`;
+  - on a page, a paragraph with a translatable attribute (`title`, `alt`, …), one block
+    of the attribute and the text, and an `<img alt>`, `<input placeholder>` or inline
+    element outside a paragraph, which registers now;
+  - a `data-langsys-contentblock` whose value is not `true`, `1`, `yes`, `false` or
+    `0`, which is the block's id;
+  - a `data-langsys-phrase` run made only of `translate="no"` or `data-notrans`
+    elements, which registers nothing;
+  - a `<title>` or a translated `<meta>` `content` holding a line break, a run of
+    spaces or a non-breaking space, or a `<meta>` `content` with an edge space, now
+    collapsed and trimmed as page text is.
+
+  Each such item registers once under its new id and is machine translated again; the
+  page shows the source until then. Translations stay under the old entry, so re-apply
+  human translations in the Translation Manager. Content filed under the older
+  pipe-form ids is still found and is never registered again.
+- **Whether a request registers is the API's decision.** `canWrite()` and every
+  registration follow the `write_enabled` the API answers for that request; 1.x went by
+  the key's type alone. An `ip_write` key registers from an address on its allow-list,
+  where 1.x never registered with one, and registers nothing from any other address. A
+  `write` key registers nothing when the API answers `write_enabled: false` or leaves
+  the field out, where 1.x registered with it. A `write` or `ip_write` key the API answers
+  without write permission (`write_enabled` false or absent) is reported once, as a warning. A request that writes asks the
+  API once for its decision, when it flushes after the response, since a cached
+  authorization holds none. `canWrite()` asks on its first call in a request and throws
+  when the API cannot answer.
+- **`flushPendingRegistrations()` reports `success: false` for work it did not do**,
+  and names a `reason`: `not_write_enabled`, `catalog_unavailable`, `backing_off`,
+  `decision_unavailable` or `send_failed`. A read key reports `not_write_enabled` on
+  every request by design.
+- **`getTranslations()` and `Translations::getTranslationMap()` throw** a
+  `LangsysException` for a response that is not a catalog, where they returned `[]`;
+  `getTranslations()` also throws while a failed fetch's backoff window is open. They return a plural Langsys generated for
+  a target locale as ICU MessageFormat, where they returned its `other` branch.
+- **`new Client()` without an API key or project ID no longer throws**: it builds an
+  unconfigured client. Pass `'require_credentials' => true` to throw at first use.
+- **Rendered HTML carries more.** `translatePage()` and `translateContentBlock()` mark
+  each rendered block with `data-ls-contentblock="<id>"`, and a page rendered in a
+  locale other than the base carries `data-ls-resolved="<locale>"` on `<html>`. A
+  response whose locale the SDK chose carries a `Vary` naming every request field the
+  choice read, unless `send_vary` is `false`.
+- **Warnings and errors go to PHP's error log** when no `log_path` is set;
+  `'error_log' => false` turns that off.
+- **Subclasses**: several protected methods take new optional parameters,
+  `Interpolator::formatIcu()` returns `false` when the formatter fails on a pattern,
+  `PageTranslator::markItemsAsRegistered()` and `markItemsAsRegisteredWithCategory()`
+  are gone, and `Client` has a destructor.
+
+### What's new
+
+- **Long-lived workers.** `resetRequestState()` clears what belongs to one request:
+  the write decision, the queue, the catalogs read and the locale, one set with
+  `setLocale()` included.
+- **A client without credentials renders source text**, with its values filled, and
+  sends nothing; an explicit write throws `ConfigurationException`, and
+  `isConfigured()` reports the state.
+- **The request locale is chosen for you**: from the URL, then a `locale` cookie or
+  session value, then `Accept-Language`, always one the project serves, else the base
+  locale. A locale the framework already resolved, passed as `framework`, wins.
+  `resolveRequestLocale()` exposes the decision.
+- **Reference lists on the client.** `getCurrencies()`, `getCountries()`,
+  `getDialCodes()` and `getLocalesFormat($format)` answer each list named in a display
+  locale, the current one by default. A list is held per display locale, in memory and
+  in the cache for the catalog's lifetime, so later requests send nothing for it. A
+  locale list answers the display locale's own entry, every code written `es-cr`. A
+  display locale not shaped as a locale is refused and nothing is sent. A list the API
+  cannot give is empty, with the cause logged, never an exception, and is not asked for
+  again for a window of 3 seconds, doubling to 5 minutes. A cache that fails is a miss.
+- **Values marked as variables.** `<!--ls:NAME-->VALUE<!--/ls-->` and
+  `<span data-ls-param="NAME">VALUE</span>` read as `{NAME}`, so a sentence registers
+  once for every user, and render back inside their marker, with every attribute it
+  was written with. A plural or select chooses on the value. Each unit takes only the
+  values of the text it registered from. A line rendered as a string, such as a
+  language file's, writes a value back escaped, and inside an attribute as the value
+  alone, so a value never opens an attribute.
+- **Enum params.** A backed enum renders as its value and a plain enum as its name, in
+  a placeholder and as an ICU argument.
+- **Migrating from key-based translation files.** The `migration` option resolves a
+  `translate()` argument as a key in your source-language files (`laravel`,
+  `vue-i18n`, `i18next` or `plain`), converting placeholders and plurals. A key reads
+  as Laravel reads it: a group file's key with a dot in it as written, and text as a
+  package key only when shaped `namespace::group.item`. A file in a format this SDK
+  does not read is refused when the configuration loads, however it is given, and a
+  PHP file that fails to load is reported by `problems()` and resolves nothing.
+  `importLegacyTranslations()` registers every key as `translate()` looks it up, with
+  the translations you already have, stored as human translations.
+- **Behind a framework's translate function**: `planSync()`/`applySync()` register
+  from your source and language files, `runtime_registration => false` turns off
+  registering at runtime, `useMissFallback()` answers a miss from your language files,
+  given the line as the caller wrote it, `resolve()` says where text came from,
+  `translateRich()` renders a line with links and emphasis without letting a
+  translation add markup, declared value sets (string- or int-backed enums included)
+  register a sentence once per value, and `markResolved()` marks a server-rendered
+  page.
+- **Server messages.** Validation errors and system messages register and translate
+  ahead of time: `translateMessage()`, `emitMessage()`, `vendor/bin/langsys-messages`,
+  and rule and app-message classes that state their own sentence.
+- **Catalog snapshots.** `vendor/bin/langsys-snapshot` exports a catalog every Langsys
+  SDK loads, and `'snapshot' => $snapshot` or `useSnapshot()` renders from it without
+  calling the API. A snapshot made for another project is not used, and says so.
+- **Excluded elements inside a phrase** (`translate="no"`, `data-notrans`) render as
+  you wrote them, a value inside them included.
+- **A marked element inside other content** is translated as its own unit, its marker
+  written in any case.
+- **Text inside `<svg>`** is translated; the drawing is left alone.
+- **Stamped block ids are honoured**, and both the `data-ls-*` and `data-langsys-*`
+  spellings are read.
+
+### Fixed
+
+- **Links and emphasis survive translation.** A phrase wrapped in a link, `<strong>`,
+  `<span>` or a `<br>` keeps that markup.
+- **A page is read and written as a browser reads it.** It is decoded by its byte-order
+  mark, its declared charset or its bytes, by the browser's own decoders; written out
+  in UTF-8; a page without `<html>`, `<head>` or `<body>` is translated whole; its
+  scripts and styles come back byte for byte; a `<` that starts no tag is text; and
+  `<!-->` is an empty comment. Each of these lost or mangled part of a page. On libxml2
+  2.9 and 2.15 (Ubuntu 26.04's) alike, a page starts with its own first bytes, never a
+  stray `<!--?xml encoding="UTF-8"-->`, and one that opens with an XML declaration
+  starts at its first element; a title, textarea, xmp, iframe, noembed or noframes body
+  is read as a browser reads it, inside svg, math or a select too, and written back
+  never escaped twice; and a page's own escaped text never becomes markup.
+- **HTML cut off inside a tag reads as a browser reads it**, as an excerpt trimmed to a
+  length often is: the unfinished tag is left out and registers nothing, and a comment
+  left open runs to the end of the input.
+- **Script, style and excluded text are never rewritten** by a translation. Text inside
+  `<plaintext>`, which a browser shows as written, is neither translated nor registered.
+- **A plural Langsys generates for a target locale renders its singular** at a count
+  of 1. Every request asks the API for ICU.
+- **ICU renders on every path.** A page translated without params, and a translation
+  that fails to format, render their branch for the value, not the raw pattern; a
+  missing `{v, number}`, `{d, date}` or `{t, time}` shows as `{v}`.
+- **`#` in a select's branch is text**, as ICU reads it, where the SDK's own renderer
+  wrote the select's value.
+- **A date in a plain `{d}` of a phrase with ICU in it renders as a date**, not as a
+  Unix timestamp.
+- **One catalog per locale, whatever its spelling** (`es-ES`, `es_ES`, `es-es`), and
+  `sync()` clears it in any spelling.
+- **An empty or null category is one category**, in a call, a page's
+  `data-langsys-category`, a default category or a selector, so an uncategorised phrase
+  stops re-registering on every request.
+- **A registered but untranslated phrase is known**, renders its source and is not
+  registered again.
+- **An outage costs one failed request, not one per phrase.** A failed catalog fetch
+  is remembered for 3 seconds, doubling to 5 minutes, and nothing is queued meanwhile.
+  A malformed or empty response is never cached.
+- **A failing registration endpoint is backed off**, its items kept queued, and a
+  refused send records nothing that stops the next request registering.
+- **One key's authorization never answers for another.** The cached authorization is
+  kept per API key as well as per project, so a read key's answer never stops a write
+  key registering, nor the other way round.
+- **Every cache key is namespaced by project**, so two projects sharing a cache no
+  longer suppress each other's registrations.
+- **Registrations are chunked to the batch limit the API advertises**, and a bad limit
+  cannot take the request down.
+- **An API error in the error envelope** raises its message, with `getErrorCode()` and
+  `getServerMessages()`, instead of a `TypeError`.
+- **A cache that throws never takes a page down**: the page renders, in its source
+  where the catalog cannot be read.
+- **A worker that builds a `Client` per request no longer grows** with every request.
+  A `Client` its framework lets go is freed at once and sends what it still has
+  queued.
+- **A display locale cannot steer a request.** The `utilities()` resource throws
+  `InvalidArgumentException` for one that names no path segment (empty, `.` or `..`).
+- **A truncated phrase ending in `…` is not registered beside its full text.**
+
 ## [1.3.1] - 2026-08-16
 
 ### Fixed
@@ -373,3 +566,12 @@ First tagged release.
   $name))` — registers a new catalog phrase for every distinct runtime value and
   pollutes the catalog shared with every other Langsys SDK. Use `$params`
   instead. This cannot be detected at runtime; see README.
+
+[2.0.0]: https://github.com/langsys/langsys-php/compare/v1.3.1...v2.0.0
+[1.3.1]: https://github.com/langsys/langsys-php/compare/v1.3.0...v1.3.1
+[1.3.0]: https://github.com/langsys/langsys-php/compare/v1.2.0...v1.3.0
+[1.2.0]: https://github.com/langsys/langsys-php/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/langsys/langsys-php/compare/v1.0.2...v1.1.0
+[1.0.2]: https://github.com/langsys/langsys-php/compare/v1.0.1...v1.0.2
+[1.0.1]: https://github.com/langsys/langsys-php/compare/v1.0.0...v1.0.1
+[1.0.0]: https://github.com/langsys/langsys-php/releases/tag/v1.0.0

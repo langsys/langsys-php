@@ -2,6 +2,7 @@
 
 namespace Langsys\SDK\Tests\Resources;
 
+use Langsys\SDK\Exception\LangsysException;
 use Langsys\SDK\Resources\Translations;
 use Langsys\SDK\Tests\Mock\MockHttpClient;
 use PHPUnit\Framework\TestCase;
@@ -98,13 +99,33 @@ class TranslationsTest extends TestCase
         $this->assertEquals($response['data'], $result);
     }
 
-    public function testGetTranslationMapEmptyResponse()
+    /**
+     * A response with no `data` key is rejected, not read as an empty catalog.
+     *
+     * This test previously asserted the opposite - that the absent key yields
+     * [] - which is what let an empty-bodied 2xx from a proxy blank a project's
+     * translations for the whole cache TTL. The backend never omits `data`:
+     * every translations response goes through resourceResponse(), which
+     * assigns it unconditionally, so an empty catalog arrives WITH the key.
+     */
+    public function testGetTranslationMapRejectsAResponseWithNoDataKey()
     {
         $this->http->setResponse('GET', 'translations', ['status' => true]);
 
-        $result = $this->translations->getTranslationMap('es-es');
+        $this->expectException(LangsysException::class);
+        $this->translations->getTranslationMap('es-es');
+    }
 
-        $this->assertEquals([], $result);
+    /**
+     * The shape the backend actually sends for a project with no translations:
+     * the key is present and empty. That IS an empty catalog and is returned as
+     * one, so it can be cached normally.
+     */
+    public function testGetTranslationMapAcceptsAnEmptyCatalogWithTheKeyPresent()
+    {
+        $this->http->setResponse('GET', 'translations', ['status' => true, 'data' => []]);
+
+        $this->assertSame([], $this->translations->getTranslationMap('es-es'));
     }
 
     public function testGetAllPhrases()

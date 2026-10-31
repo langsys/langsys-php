@@ -182,13 +182,13 @@ class HtmlParser
 
         $doc = new DOMDocument();
         // Wrap in a div to handle fragments, use UTF-8 encoding
-        $wrapped = '<?xml encoding="UTF-8"><div>' . $html . '</div>';
-        $doc->loadHTML($wrapped, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        Document::loadFragment($doc, $html);
 
         libxml_clear_errors();
         libxml_use_internal_errors($internalErrors);
 
-        // Walk through all nodes
+        // Value markers read as placeholders (VAR-3), then walk every node.
+        ValueMarkers::read($doc->documentElement);
         $this->walkNode($doc->documentElement, $phrases);
 
         return $phrases;
@@ -207,9 +207,17 @@ class HtmlParser
         // to the same custom_id across every Langsys SDK. JS computes:
         //   md5(JSON.stringify([category, tokens]))
         //
-        // - JSON-encode the [category, phrases] tuple. JSON_UNESCAPED_SLASHES +
-        //   JSON_UNESCAPED_UNICODE make json_encode match JS JSON.stringify
-        //   byte-for-byte (JS escapes neither slashes nor non-ASCII).
+        // - JSON-encode the [category, phrases] tuple. THREE flags are required
+        //   to match JS JSON.stringify byte-for-byte, not two:
+        //     JSON_UNESCAPED_SLASHES         JS does not escape '/'
+        //     JSON_UNESCAPED_UNICODE         JS does not escape non-ASCII
+        //     JSON_UNESCAPED_LINE_TERMINATORS  JS does not escape U+2028/U+2029
+        //   The third is not implied by the second. JSON_UNESCAPED_UNICODE
+        //   leaves the line terminators escaped as \u2028 / \u2029, while
+        //   JSON.stringify emits them raw and has no flag to do otherwise - so
+        //   the same block hashed to two different ids across the SDKs. Measured
+        //   across a 78-codepoint sweep: those two are the only disagreement,
+        //   non-BMP included. Row 13 of the reference fixture locks it.
         // - Treat the reserved '__uncategorized__' sentinel (and null) as "no
         //   category" - hashed as '' - matching the JS side, which passes the raw
         //   category ('' when none) and never the sentinel. This also makes the
@@ -217,7 +225,10 @@ class HtmlParser
         //   createContentBlock default null) agree with each other.
         $cat = ($category === null || $category === '__uncategorized__') ? '' : $category;
 
-        $encoded = json_encode([$cat, array_values($phrases)], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $encoded = json_encode(
+            [$cat, array_values($phrases)],
+            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS
+        );
 
         // json_encode returns false on invalid UTF-8, and md5(false) is md5('') -
         // which would collapse EVERY such content block onto one id. Fall back to
@@ -227,6 +238,220 @@ class HtmlParser
         }
 
         return md5($encoded);
+    }
+
+    /**
+     * The pre-fix JS hash: md5 fed UTF-16 code units instead of UTF-8 bytes.
+     *
+     * Not a hashing choice — a defect. The JS SDKs packed code units into byte
+     * slots with an UNMASKED shift, so it coincides with a byte hash across all
+     * of ASCII and diverges above it. A block registered by a JS SDK before its
+     * fix is keyed by this value, and nothing else can reproduce it.
+     *
+     * This is a READ path. CID-3 binds anything that reads catalogs, not only
+     * the implementation that produced the ids: a PHP page rendering content a
+     * JS SDK registered must resolve it, or it re-registers under the current id
+     * and strands the translations. That is why a byte-hash SDK still ports the
+     * broken hash — the asymmetry is the argument. Failing to tolerate it costs
+     * real translations; tolerating it costs a lookup that misses, and every
+     * attach is gated by the CID-4 content guard regardless.
+     *
+     * @param string $input The canonical JSON string
+     * @return string
+     */
+    protected function codeUnitMd5($input)
+    {
+        // UTF-16 code units of the input, as the JS engine would see them.
+        $units = [];
+        foreach (preg_split('//u', $input, -1, PREG_SPLIT_NO_EMPTY) as $char) {
+            $cp = self::codePoint($char);
+            if ($cp > 0xFFFF) {
+                // Non-BMP becomes a surrogate pair, exactly as in JS.
+                $cp -= 0x10000;
+                $units[] = 0xD800 + ($cp >> 10);
+                $units[] = 0xDC00 + ($cp & 0x3FF);
+            } else {
+                $units[] = $cp;
+            }
+        }
+
+        // Pack into 32-bit words with the SAME unmasked shift the JS used:
+        // a unit above 0xFF at lane 3 loses its high byte off the top.
+        $n = count($units);
+        $nblk = (($n + 8) >> 6) + 1;
+        $blks = array_fill(0, $nblk * 16, 0);
+        for ($i = 0; $i < $n; $i++) {
+            $blks[$i >> 2] |= ($units[$i] << (($i % 4) * 8)) & 0xFFFFFFFF;
+        }
+        $blks[$n >> 2] |= 0x80 << (($n % 4) * 8);
+        $blks[$nblk * 16 - 2] = $n * 8;
+
+        return self::md5Rounds($blks);
+    }
+
+    /**
+     * The code point of one UTF-8 character, read from its bytes so no
+     * extension is needed.
+     *
+     * @param string $char One character of valid UTF-8
+     * @return int
+     */
+    private static function codePoint($char)
+    {
+        $bytes = array_values(unpack('C*', $char));
+        switch (count($bytes)) {
+            case 1:
+                return $bytes[0];
+            case 2:
+                return (($bytes[0] & 0x1F) << 6) | ($bytes[1] & 0x3F);
+            case 3:
+                return (($bytes[0] & 0x0F) << 12) | (($bytes[1] & 0x3F) << 6) | ($bytes[2] & 0x3F);
+            default:
+                return (($bytes[0] & 0x07) << 18) | (($bytes[1] & 0x3F) << 12) | (($bytes[2] & 0x3F) << 6) | ($bytes[3] & 0x3F);
+        }
+    }
+
+    /**
+     * The MD5 compression rounds over a pre-built message schedule.
+     *
+     * Separated from codeUnitMd5() so the schedule-building defect stays visible
+     * as its own step: the rounds here are ordinary MD5, and the divergence is
+     * entirely in how the schedule was filled.
+     *
+     * @param array $x
+     * @return string
+     */
+    private static function md5Rounds(array $x)
+    {
+        $ad = function ($a, $b) {
+            $l = ($a & 0xFFFF) + ($b & 0xFFFF);
+            $m = (($a >> 16) & 0xFFFF) + (($b >> 16) & 0xFFFF) + ($l >> 16);
+            return (($m << 16) | ($l & 0xFFFF)) & 0xFFFFFFFF;
+        };
+        $rl = function ($n, $c) {
+            $n &= 0xFFFFFFFF;
+            return (($n << $c) | ($n >> (32 - $c))) & 0xFFFFFFFF;
+        };
+        $cm = function ($q, $a, $b, $xk, $sh, $t) use ($ad, $rl) {
+            return $ad($rl($ad($ad($a, $q), $ad($xk, $t)), $sh), $b);
+        };
+
+        $S = [7,12,17,22, 5,9,14,20, 4,11,16,23, 6,10,15,21];
+        $K = [];
+        for ($i = 0; $i < 64; $i++) {
+            $K[$i] = (int) floor(abs(sin($i + 1)) * 4294967296) & 0xFFFFFFFF;
+        }
+
+        $a0 = 0x67452301; $b0 = 0xefcdab89; $c0 = 0x98badcfe; $d0 = 0x10325476;
+
+        for ($chunk = 0; $chunk < count($x); $chunk += 16) {
+            $A = $a0; $B = $b0; $C = $c0; $D = $d0;
+            for ($i = 0; $i < 64; $i++) {
+                if ($i < 16)      { $f = ($B & $C) | (~$B & $D);          $g = $i; }
+                elseif ($i < 32)  { $f = ($D & $B) | (~$D & $C);          $g = (5 * $i + 1) % 16; }
+                elseif ($i < 48)  { $f = $B ^ $C ^ $D;                    $g = (3 * $i + 5) % 16; }
+                else              { $f = $C ^ ($B | (~$D & 0xFFFFFFFF));  $g = (7 * $i) % 16; }
+
+                $tmp = $D; $D = $C; $C = $B;
+                $B = $cm($f & 0xFFFFFFFF, $A, $B, $x[$chunk + $g], $S[intdiv($i, 16) * 4 + ($i % 4)], $K[$i]);
+                $A = $tmp;
+            }
+            $a0 = $ad($a0, $A); $b0 = $ad($b0, $B); $c0 = $ad($c0, $C); $d0 = $ad($d0, $D);
+        }
+
+        $out = '';
+        foreach ([$a0, $b0, $c0, $d0] as $word) {
+            for ($j = 0; $j < 4; $j++) {
+                $out .= sprintf('%02x', ($word >> ($j * 8)) & 0xFF);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * The id shapes this SDK produced BEFORE the JSON-form change, for lookup
+     * only.
+     *
+     * Content registered by an older SDK is stored under an id computed as
+     * md5(implode('|', [category, ...phrases])). The current form is not
+     * compatible with it, so a block registered before the change resolves to
+     * nothing under its new id - its translations are still in the catalog,
+     * just filed under the old key.
+     *
+     * Two variants, because the old code disagreed with itself about the
+     * category slot: one path sent the '__uncategorized__' sentinel literally
+     * and another omitted it, so the same uncategorised block exists under
+     * either spelling depending on which path registered it.
+     *
+     * NEVER emit these. They are a read path for content that predates the
+     * change; anything newly registered uses generateCustomId().
+     *
+     * @param string|null $category
+     * @param array $phrases
+     * @return array Legacy ids, most likely first, de-duplicated
+     */
+    public function legacyCustomIds($category, array $phrases)
+    {
+        $values = array_values($phrases);
+
+        $slots = [];
+        if ($category === null || $category === '__uncategorized__' || $category === '') {
+            // Uncategorised: both spellings the old paths could have written.
+            $slots[] = '';
+            $slots[] = '__uncategorized__';
+        } else {
+            $slots[] = $category;
+        }
+
+        $ids = [];
+
+        // An untyped JS caller could pass null straight through: the legacy JS
+        // generator did not coalesce it, so the block was registered under
+        // md5codeunit('[null,[...]]'). Nothing in the slot list can produce
+        // that - every slot is a string - so without this the block is
+        // stranded. Only for a genuine null; '' and the sentinel are the PHP
+        // spellings and are covered below.
+        if ($category === null) {
+            $encodedNull = json_encode(
+                [null, $values],
+                JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS
+            );
+
+            if ($encodedNull !== false) {
+                $ids[] = $this->codeUnitMd5($encodedNull);
+            }
+        }
+
+        foreach ($slots as $slot) {
+            // This SDK's own pre-change form: md5 over a pipe-joined string.
+            $ids[] = md5(implode('|', array_merge([$slot], $values)));
+
+            // And the JS SDKs' pre-fix form: the code-unit hash over the SAME
+            // canonical JSON the current id uses. CID-3 binds anything that
+            // READS catalogs, so a PHP page rendering content a JS SDK
+            // registered has to resolve it too - otherwise it re-registers
+            // under the current id and strands those translations.
+            //
+            // The sentinel collapses to '' here, so the two uncategorised slots
+            // yield ONE code-unit id, not two. That is deliberate:
+            // '__uncategorized__' is this SDK's own spelling and only ever went
+            // out on the pipe-join form. A JS caller reached the code-unit form
+            // with '' (its default) or with null (handled above), never with
+            // the sentinel - so md5codeunit('["__uncategorized__",[...]]') is an
+            // id nothing ever wrote, and emitting it would only add a lookup.
+            $hashCat = ($slot === '__uncategorized__') ? '' : $slot;
+            $encoded = json_encode(
+                [$hashCat, $values],
+                JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS
+            );
+
+            if ($encoded !== false) {
+                $ids[] = $this->codeUnitMd5($encoded);
+            }
+        }
+
+        return array_values(array_unique($ids));
     }
 
     /**
@@ -240,12 +465,10 @@ class HtmlParser
      * presence alone is intent, so the bare attribute works like any boolean
      * HTML attribute, and only an explicit off value opts out.
      *
-     * This previously tested the raw attribute string for PHP truthiness, which
-     * got both ends backwards: bare `data-notrans` is '' and therefore FALSY, so
-     * the natural form silently did nothing, while `data-notrans="false"` is a
-     * non-empty string and therefore TRUTHY, so the off value excluded. The
-     * failure direction was the dangerous one - content an author had marked to
-     * protect went into the shared catalog.
+     * The value is read as a word, never for PHP truthiness: bare
+     * `data-notrans`, whose value is '', excludes, and `data-notrans="false"`
+     * or `"0"`, non-empty strings, do not. An exclusion that silently failed
+     * would send content an author marked to protect into the shared catalog.
      *
      * @param DOMElement $element
      * @return bool
@@ -289,24 +512,49 @@ class HtmlParser
      * alone is intent, only an explicit off value opts out, values trimmed and
      * lowercased.
      *
-     * A bare attribute previously did NOTHING here, because the documented
-     * contract required a non-empty value - so `data-langsys-contentblock` on
-     * its own silently had no effect. That is the same failure shape as the
-     * data-notrans bug: a marker that looks applied and isn't. All three markers
-     * now behave identically, so there is one rule to learn rather than three.
+     * A bare `data-langsys-contentblock` marks a block, as a bare
+     * `data-notrans` excludes and a bare `data-langsys-phrase` marks a phrase:
+     * all three markers follow one rule, so none looks applied without being.
      *
      * @param DOMElement $element
      * @return bool
      */
     public static function isContentBlockMarked(DOMElement $element)
     {
-        if (!$element->hasAttribute('data-langsys-contentblock')) {
-            return false;
+        return self::markerIsTruthy($element, self::CONTENT_BLOCK_MARKERS);
+    }
+
+    /**
+     * Read a marker under either spelling (MARK-2).
+     *
+     * `data-ls-*` is what the TypeScript core writes; `data-langsys-*` is what
+     * this SDK has always written. A PHP page hosting a JS-rendered component
+     * is the ordinary case, not an exotic one, and a reader that knows only its
+     * own spelling walks into the other's markup, fails to see the marker, and
+     * re-splits a block that already has an identity - registering it a second
+     * time under a different id and stranding the translations filed under the
+     * first.
+     *
+     * Read accepts both; the first spelling present wins. What we WRITE is a
+     * separate decision (MARK-1) and is deliberately not widened here.
+     *
+     * @param DOMElement $element
+     * @param array $attributes
+     * @return bool
+     */
+    protected static function markerIsTruthy(DOMElement $element, array $attributes)
+    {
+        foreach ($attributes as $attribute) {
+            if (!$element->hasAttribute($attribute)) {
+                continue;
+            }
+
+            $value = strtolower(trim($element->getAttribute($attribute)));
+
+            return $value !== '0' && $value !== 'false';
         }
 
-        $value = strtolower(trim($element->getAttribute('data-langsys-contentblock')));
-
-        return $value !== '0' && $value !== 'false';
+        return false;
     }
 
     /**
@@ -327,13 +575,21 @@ class HtmlParser
      */
     public static function isPhraseMarked(DOMElement $element)
     {
-        if (!$element->hasAttribute('data-langsys-phrase')) {
-            return false;
-        }
+        return self::markerIsTruthy($element, self::PHRASE_MARKERS);
+    }
 
-        $value = strtolower(trim($element->getAttribute('data-langsys-phrase')));
-
-        return $value !== '0' && $value !== 'false';
+    /**
+     * Whether an element is a marked host - a phrase marker, or a content-block
+     * marker that is not an opt-out. A marked host inside a walked unit is
+     * excised from it (MARK-4): it contributes no tokens and is a unit of its
+     * own.
+     *
+     * @param DOMElement $element
+     * @return bool
+     */
+    public static function isMarkedHost(DOMElement $element)
+    {
+        return self::isPhraseMarked($element) || self::isContentBlockMarked($element);
     }
 
     /**
@@ -343,10 +599,244 @@ class HtmlParser
      * @param array &$phrases Array to collect phrases into
      * @return void
      */
-    protected function walkNode(DOMNode $node, array &$phrases)
+    /**
+     * Elements whose text content is code rather than prose (TOK-1).
+     *
+     * The five the spec names, and `plaintext`, which no two parsers read
+     * alike: libxml2 2.9 parses what follows it as markup, and 2.14 and
+     * later make its body one raw text node even inside svg or a select,
+     * where a browser reads markup, and write that node back unescaped.
+     * `svg` is deliberately ABSENT: SVG `<text>` is visible copy a reader is
+     * expected to read, so it is translated. MathML is notation rather than
+     * prose and is excluded.
+     */
+    const NON_PROSE_ELEMENTS = ['script', 'style', 'template', 'noscript', 'math', 'plaintext'];
+
+    /**
+     * Both spellings of the content-block marker, canonical form first (MARK-2).
+     */
+    const CONTENT_BLOCK_MARKERS = ['data-ls-contentblock', 'data-langsys-contentblock'];
+
+    /**
+     * Both spellings of the keep-together phrase marker (MARK-2).
+     */
+    const PHRASE_MARKERS = ['data-ls-phrase', 'data-langsys-phrase'];
+
+    /**
+     * The spelling this SDK WRITES when stamping a rendered block (MARK-1).
+     */
+    const CONTENT_BLOCK_STAMP = 'data-ls-contentblock';
+
+    /** Content-block marker values that declare a block (MARK-3), trimmed, case-insensitive. */
+    const DECLARATION_VALUES = ['', 'true', '1', 'yes'];
+
+    /** Content-block marker values that opt out (MARK-3). */
+    const OPT_OUT_VALUES = ['false', '0'];
+
+    /**
+     * What an element's content-block marker says (MARK-3): a declaration
+     * (register one block, deriving its id), an opt-out (walk it as ordinary
+     * markup), or an identity (the custom_id a renderer stamped, recognised
+     * rather than re-derived). Null when it carries no marker.
+     *
+     * @param DOMElement $element
+     * @return array{attribute: string, kind: string, id: string|null}|null
+     */
+    public static function contentBlockMarker(DOMElement $element)
+    {
+        foreach (self::CONTENT_BLOCK_MARKERS as $attribute) {
+            if (!$element->hasAttribute($attribute)) {
+                continue;
+            }
+
+            $raw = trim($element->getAttribute($attribute));
+            $value = strtolower($raw);
+
+            if (in_array($value, self::OPT_OUT_VALUES, true)) {
+                return ['attribute' => $attribute, 'kind' => 'opt-out', 'id' => null];
+            }
+
+            if (in_array($value, self::DECLARATION_VALUES, true)) {
+                return ['attribute' => $attribute, 'kind' => 'declaration', 'id' => null];
+            }
+
+            return ['attribute' => $attribute, 'kind' => 'identity', 'id' => $raw];
+        }
+
+        return null;
+    }
+
+    /**
+     * Stamp a rendered block host with the id it was rendered from (MARK-1).
+     * A declaration becomes that id; an identity - another writer's claim -
+     * and an opt-out are never overwritten.
+     *
+     * @param DOMElement $host
+     * @param string $customId
+     * @return void
+     */
+    public static function stampIdentity(DOMElement $host, $customId)
+    {
+        if ($customId === null || $customId === '') {
+            return;
+        }
+
+        $marker = self::contentBlockMarker($host);
+
+        if ($marker === null) {
+            $host->setAttribute(self::CONTENT_BLOCK_STAMP, $customId);
+        } elseif ($marker['kind'] === 'declaration') {
+            $host->setAttribute($marker['attribute'], $customId);
+        }
+    }
+
+    /**
+     * Both spellings of the resolved marker, canonical form first (GATE-10).
+     * Writers emit the first.
+     */
+    const RESOLVED_MARKERS = ['data-ls-resolved', 'data-langsys-resolved'];
+
+    /**
+     * Whether a node sits in a resolved subtree: text a server already output in
+     * a resolved locale, which is never source and is never registered.
+     *
+     * The nearest element carrying the marker decides, so the node itself and
+     * then each ancestor is read in turn. That is load-bearing: text a server
+     * prints inline has no element of its own, so the only place a producer can
+     * state the fact is an ancestor it owns, usually the document root. Presence
+     * is intent and only `false` or `0` opts a subtree back out - the same rule
+     * as every other marker here.
+     *
+     * @param \DOMNode|null $node
+     * @return bool
+     */
+    public static function isResolvedScope($node)
+    {
+        for (; $node !== null; $node = $node->parentNode) {
+            if (!$node instanceof DOMElement) {
+                continue;
+            }
+
+            foreach (self::RESOLVED_MARKERS as $attribute) {
+                if ($node->hasAttribute($attribute)) {
+                    return self::markerIsTruthy($node, self::RESOLVED_MARKERS);
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Tokenize one unit of a page walk (TOK-6): the element's own translatable
+     * attributes first, in TOK-3 order, then its content in document order.
+     *
+     * Walks the live node rather than a re-parsed copy, so the tokens are the
+     * ones the apply side will find. `textNodes` counts the non-whitespace
+     * text nodes that produced a token: a unit is a phrase only when it has
+     * one token and that token is its one text node.
+     *
+     * @param DOMElement $element
+     * @return array{tokens: string[], textNodes: int}
+     */
+    public function unitTokens(DOMElement $element)
+    {
+        $tokens = [];
+        $textNodes = 0;
+
+        $this->walkNode($element, $tokens, $textNodes);
+
+        return ['tokens' => $tokens, 'textNodes' => $textNodes];
+    }
+
+    /**
+     * Tokenize an HTML fragment as one unit (TOK-6): the unit a
+     * translateContentBlock() call or a registered fragment wraps. Value
+     * markers are read first (VAR-3), and returned so a caller can tell a
+     * unit made only of markers.
+     *
+     * @param string $html
+     * @return array{tokens: string[], textNodes: int, markers: ValueMarkers|null, root: \DOMElement|null}
+     */
+    public function fragmentUnit($html)
+    {
+        $tokens = [];
+        $textNodes = 0;
+        $markers = null;
+
+        if (is_string($html) && $html !== '') {
+            $internalErrors = libxml_use_internal_errors(true);
+
+            $doc = new DOMDocument();
+            Document::loadFragment($doc, $html);
+
+            libxml_clear_errors();
+            libxml_use_internal_errors($internalErrors);
+
+            $markers = ValueMarkers::read($doc->documentElement);
+            $this->walkNode($doc->documentElement, $tokens, $textNodes);
+        }
+
+        return ['tokens' => $tokens, 'textNodes' => $textNodes, 'markers' => $markers, 'root' => isset($doc) ? $doc->documentElement : null];
+    }
+
+    /**
+     * Whether a unit registers as a phrase (TOK-6): exactly one token, and that
+     * token is its one non-whitespace text node. Anything else - several
+     * tokens, or one token held in an attribute - is a content block.
+     *
+     * @param array{tokens: string[], textNodes: int} $unit
+     * @return bool
+     */
+    public static function isPhraseUnit(array $unit)
+    {
+        return count($unit['tokens']) === 1 && $unit['textNodes'] === 1;
+    }
+
+    /**
+     * The tokens an element carries on itself - its translatable attributes and
+     * a button's value - without its content.
+     *
+     * @param DOMElement $element
+     * @return string[]
+     */
+    public function ownTokens(DOMElement $element)
+    {
+        $tokens = [];
+
+        $this->extractAttributePhrases($element, $tokens);
+        $this->extractButtonValue($element, $tokens);
+
+        return $tokens;
+    }
+
+    /**
+     * @param DOMNode $node
+     * @param array &$phrases
+     * @param int|null &$textNodes Counts the text nodes that produced a token, when given
+     * @return void
+     */
+    protected function walkNode(DOMNode $node, array &$phrases, &$textNodes = null)
     {
         // Skip elements excluded from translation entirely.
         if ($node instanceof DOMElement && self::isTranslationExcluded($node)) {
+            return;
+        }
+
+        // Skip elements whose text content is CODE, not prose (TOK-1).
+        //
+        // The page path has always skipped these (PageTranslator::SKIP_ELEMENTS);
+        // this path never did, so a content block containing a <script> or
+        // <style> harvested its SOURCE as phrases - registering minified CSS in
+        // the shared catalog, sending it for translation, and, because the id is
+        // a hash of the token list, re-keying the whole block whenever that
+        // source changed. An analytics payload carrying a nonce or a timestamp
+        // changes on every render.
+        //
+        // TOK-1's list is script/style/template/noscript/math. `svg` is NOT on
+        // it - SVG <text> is visible copy - so every path tokenizes SVG text,
+        // matching the TS core.
+        if ($node instanceof DOMElement && in_array(strtolower($node->nodeName), self::NON_PROSE_ELEMENTS, true)) {
             return;
         }
 
@@ -355,23 +845,16 @@ class HtmlParser
             $text = $this->normalizeWhitespace($node->textContent);
             if ($text !== '') {
                 $phrases[] = $text;
+
+                if ($textNodes !== null) {
+                    $textNodes++;
+                }
             }
             return;
         }
 
         // Handle element nodes
         if ($node instanceof DOMElement) {
-            // NOTE: data-langsys-phrase is deliberately NOT honoured here.
-            //
-            // It is a translatePage() feature, applied by PageTranslator, which
-            // rebuilds the element's children from markup tokens. Content blocks
-            // are applied by a different path that has no tokenized branch, so
-            // honouring the marker here registered a tokenized catalog entry
-            // that could never be rendered - paying for an entry, and polluting
-            // the shared catalog, for no effect.
-            //
-            // Inside a content block a marked run therefore splits as usual.
-
             // Extract translatable attributes
             $this->extractAttributePhrases($node, $phrases);
 
@@ -382,10 +865,15 @@ class HtmlParser
             $this->extractSelectOptions($node, $phrases);
         }
 
-        // Recurse into child nodes
+        // Recurse into child nodes. A marked host below the walk's root is
+        // excised (MARK-4): its words belong to its own unit, not this one.
         if ($node->hasChildNodes()) {
             foreach ($node->childNodes as $child) {
-                $this->walkNode($child, $phrases);
+                if ($child instanceof DOMElement && self::isMarkedHost($child)) {
+                    continue;
+                }
+
+                $this->walkNode($child, $phrases, $textNodes);
             }
         }
     }
@@ -465,8 +953,7 @@ class HtmlParser
      */
     protected function normalizeWhitespace($text)
     {
-        // Replace multiple whitespace (including newlines) with single space, then trim
-        return trim(preg_replace('/\s+/', ' ', $text));
+        return Canonical::phrase($text);
     }
 
     /**
@@ -494,8 +981,7 @@ class HtmlParser
         $doc = new DOMDocument();
         $doc->encoding = 'UTF-8';
         // Wrap in a div to handle fragments
-        $wrapped = '<?xml encoding="UTF-8"><div>' . $html . '</div>';
-        $doc->loadHTML($wrapped, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        Document::loadFragment($doc, $html);
 
         libxml_clear_errors();
         libxml_use_internal_errors($internalErrors);
@@ -536,14 +1022,14 @@ class HtmlParser
         }
 
         // Extract inner HTML of the wrapper div
-        $wrapper = $doc->getElementsByTagName('div')->item(0);
+        $wrapper = Document::fragmentRoot($doc);
         if ($wrapper === null) {
             return $html;
         }
 
         $result = '';
         foreach ($wrapper->childNodes as $child) {
-            $result .= $doc->saveHTML($child);
+            $result .= Document::html($child);
         }
 
         return $result;

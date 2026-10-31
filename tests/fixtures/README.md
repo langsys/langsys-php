@@ -7,7 +7,12 @@ langsys-js-typescript as well as this SDK:
 |---|---|
 | `interpolation-reference.json` | template + params -> rendered string |
 | `tokenizer-reference.json` | HTML -> tokens -> canonical JSON -> custom_id |
+| `canonicalization-reference.json` | the cross-SDK TOK-1/TOK-2/TOK-4 vectors: HTML -> tokens -> custom_id, with **each lane's measured output** beside the expectation |
+| `parse-model-reference.json` | where libxml2 and the JS family build different DOMs from the same bytes, and what that does to the key |
 | `custom-id-reference.json` | category + tokens -> custom_id |
+| `mig-vectors.json` | key migration (MIG-2, MIG-4, MIG-7): value -> phrase by format, plural forms, entry-point calls, key -> resolution, unsupported formats -> refusal |
+| `snapshot-vectors.json` | catalog snapshots (SNAP-1): document -> canonical bytes -> checksum, and the loads refused by reason |
+| `server-message-vectors.json` | server messages (MSG-1, MSG-4): template -> markers, template + params -> filled text, response body -> entries, entry + catalog -> rendered text |
 
 **Why one per boundary rather than one suite.** Every cross-SDK defect found so
 far lived in a *gap between* checks that were each individually correct. The
@@ -42,8 +47,21 @@ the outcome while hiding *whether the two implementations agreed for the right
 reason* — two encoders could disagree on slash or unicode escaping and still
 collide onto the same id by luck. With it, another SDK can hash the exact same
 bytes rather than reimplementing our encoding choices
-(`JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE`, which is what
-`JSON.stringify` produces).
+(`JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS`,
+which is what `JSON.stringify` produces).
+
+**Three flags, not two.** The third is not implied by the second:
+`JSON_UNESCAPED_UNICODE` still escapes U+2028 and U+2029 as `\u2028` / `\u2029`,
+while `JSON.stringify` emits them raw and has no flag to do otherwise. Two flags
+therefore produce a *different id* for any block containing a line terminator.
+A 78-codepoint sweep found those two to be the only disagreement between the
+encoders, non-BMP included — narrow enough to miss, and permanent once content
+carrying one is registered. Row 13 exists to lock it: its `serialized_hex`
+carries the raw `e280a8` / `e280a9` bytes, so a two-flag implementation fails the
+byte comparison (`5c7532303238`) rather than quietly minting a second id.
+
+Rows 1–12 are unaffected — none contains a line terminator, so their bytes are
+identical under both forms.
 
 ### Who depends on this
 
@@ -118,44 +136,27 @@ attributes including ARIA, button and submit values, `translate="no"` and
 `data-notrans` exclusion, script/style handling, comments, void elements,
 duplicate ordering, and whitespace collapsing.
 
-### Case [12] records a defect, not a decision
+### Case [12] recorded a defect — RESOLVED by TOK-1
 
-That entry used to be described here as "script/style **opacity**", which reads
-as "they are skipped". They are not. The fixture records what the code does:
+This row once asserted `["Keep", "var a=1;", ".a{}"]` for
+`<div><p>Keep</p><script>var a=1;</script><style>.a{}</style></div>`, under a
+description saying script and style contents are never harvested. The data was
+right about the code at the time and the description was the intent: the
+content-block path had no skip list, so a `<script>` inside a content block was
+harvested as a translatable phrase and reached the registration list, while the
+page-walk path did skip it. One boundary, not a general blind spot.
 
-```
-html   : <div><p>Keep</p><script>var a=1;</script><style>.a{}</style></div>
-tokens : ["Keep", "var a=1;", ".a{}"]
-```
+It was left recording the defect rather than the intention because the row is a
+contract `langsys-js-typescript` asserts against, and fixing the tokenizer
+re-keys every content block containing a script or a style, so the direction
+needed a cross-SDK decision. That decision is TOK-1. The content-block path now
+skips `<script>`, `<style>`, `<template>`, `<noscript>` and `<math>`, the row
+asserts `["Keep"]` (corrected 2026-09-11), and the re-keying was measured on
+production as negligible.
 
-`HtmlParser::walkNode()` has no skip list. `PageTranslator::SKIP_ELEMENTS`
-(`src/Html/PageTranslator.php:45`, checked at `:322`) does, but the content-block
-path never reaches that check: `extractAsContentBlock()` hands the element's
-inner HTML straight to `extractPhrases()` (`:488-489`). So a `<script>` inside a
-content block is harvested as a translatable phrase, and it reaches the
-**registration list** — measured, on the documented public API:
-
-```
-$client->translateContentBlock($html, 'pricing');  ->  getPendingContentBlocks()
-  [0] Our pricing
-  [1] Choose a plan
-  [2] window.dataLayer.push({event:"view",sku:"ABC-123"});
-  [3] .plan{color:#fff}
-```
-
-Control, and it is what makes the diagnosis specific: the **same page** without
-`data-langsys-contentblock` queues only `["T","Plans","Pick one"]`. The skip list
-works on the page-walk path and is absent from the content-block path — this is
-one boundary, not a general blind spot.
-
-**Why it has not been fixed here.** This file is a contract
-`langsys-js-typescript` asserts against, so changing case [12] changes their
-build, and changing the tokenizer re-keys every existing content block that
-contains a script or a style. Which direction is correct depends on what the JS
-tokenizer does with the same input, which cannot be determined from this
-repository. Raised with the base SDK and with Darryl; until it is answered, the
-fixture records the behaviour honestly rather than describing an intention the
-code does not have.
+This section described the hazard in the present tense for a release after it
+was fixed — the same staleness later found in the CHANGELOG's release gate. The
+stale-phrase check in `CONFORMANCE.md` now reads this file too.
 
 **The prose was the wrong half to trust.** The word "opacity" and the token list
 sat four lines apart and contradicted each other, and the fixture passed
@@ -183,12 +184,59 @@ an argument explicitly `null`, and a genuine `0`. That last pair matters most �
 `null` to zero makes a data-fetch failure indistinguishable from an empty cart in
 the page, in a screenshot, and in a support ticket.
 
+Four cases call with **no params at all**: a select and a plural, each once with the
+`params` key omitted and once with an empty map. Every earlier case supplied a params
+object, and that is how three SDKs shipped a no-params short-circuit returning the raw
+pattern while every fixture run stayed green. Where a case omits `params`, a harness
+must call with the argument genuinely omitted, not with an empty map. Their
+`requires_intl` was measured on this SDK's own no-intl path (`hasIntl()` forced false,
+because the extension here loads even under `php -n`), controlled against the existing
+cases: all 15 marked independent matched without it, and all 4 marked dependent differed.
+
+Two cases pin a **formatter failure** (ICU-6): `You have {count, plural, one {{count}
+car} other {{count} cars}}` in `en`, with `count` 3 and 1. On PHP 8.3.19 with ICU 76.1
+the pattern parses and then fails to format (`U_ARGUMENT_TYPE_MISMATCH`, `{count}`
+declared both as a plural and as a plain argument), so here the rows exercise the SDK's
+own branch selection; a formatter that renders the pattern passes them directly. Both
+expect the chosen branch with the value filled in, never an empty string and never the
+raw construct, and both render identically without intl.
+
 Each case carries `requires_intl`, **measured** by generating the file twice —
 once with the extension and once without — rather than inferred from the
-template. Only 4 of 19 cases actually depend on it, and they are not the ones you
+template. Only 4 of 25 cases actually depend on it, and they are not the ones you
 would guess: the ICU missing-argument recoveries are intl-independent, while a
 plain `{id}` placeholder is not, because it needs CLDR number formatting.
 
 Dates are deliberately absent: `IntlDateFormatter` output depends on the runtime
 timezone and ICU version, so a date fixture pins the environment rather than the
 contract.
+
+## Shared fixtures, cited by blob
+
+Two files here are adopted byte-identically from sibling SDKs rather than
+authored in this repo. Cite them by blob, never by path: the path has moved
+once already, and a path citation cannot tell you whether the bytes changed.
+
+| File | Origin | Blob |
+|---|---|---|
+| `legacy-custom-id-reference.json` | `langsys-python` | `dc5556466dc54fe82e81ac9fdbf4549b2b76e7ce` |
+| `canonicalization-reference.json` | `langsys-js-typescript` @ `a418fe70` | `926e8b55d231fae8208e28c42380aacee7a0c98e` |
+| `mig-vectors.json` | `langsys-js-typescript` @ `a639ae8c` | `20f2bdd678cb33981e3064e42d43ca62783920ad` |
+| `snapshot-vectors.json` | `langsys-js-typescript` @ `a639ae8c` | `594bd77a0289abfdf608508ac93cc9f4c4f88459` |
+| `server-message-vectors.json` | `langsys-js-typescript` @ `239166a6` | `7333e3919dac43af81c6c20bfdba974efd79725b` |
+
+`tokenizer-reference.json` is authored here. Its blob is recorded as a VALUE, not
+as a command to run — a command tells you what the file is now, which is exactly
+what a silent edit also tells you:
+
+```
+5689f3c1425502f3a2c4afd4b48e9bdbfc25a32d
+```
+
+Re-derive with `git rev-parse HEAD:tests/fixtures/tokenizer-reference.json` and
+update this line deliberately when the file is meant to change.
+
+Its row "script and style contents are never harvested" was **corrected on
+2026-09-11** from `["Keep","var a=1;",".a{}"]` to `["Keep"]`. The name stated
+the intent and the data recorded the defect, so the row locked in the behaviour
+it was named for preventing.

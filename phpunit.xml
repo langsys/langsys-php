@@ -5,9 +5,22 @@
          colors="true"
          verbose="true"
          stopOnFailure="false">
+    <php>
+        <!-- A Client with no logger configured writes warnings and errors to
+             PHP's error log (REG-10). Tests that assert on it set their own. -->
+        <ini name="error_log" value="/dev/null"/>
+    </php>
+    <!-- The one list of what needs an SDK test clone: tests/Contract runs
+         against a real Langsys API through the contract fixture (spec CONF-2)
+         and fails without one. `vendor/bin/phpunit` runs both suites; CI, which
+         has no clone, runs the no-clone suite alone. -->
     <testsuites>
-        <testsuite name="Langsys SDK Test Suite">
+        <testsuite name="no-clone">
             <directory suffix="Test.php">tests</directory>
+            <exclude>tests/Contract</exclude>
+        </testsuite>
+        <testsuite name="clone">
+            <directory suffix="Test.php">tests/Contract</directory>
         </testsuite>
     </testsuites>
     <coverage>

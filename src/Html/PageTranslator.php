@@ -2,6 +2,10 @@
 
 namespace Langsys\SDK\Html;
 
+use Langsys\SDK\Locale\LocaleDetector;
+
+use Langsys\SDK\Log\LoggerInterface;
+use Langsys\SDK\Log\NullLogger;
 use DOMDocument;
 use DOMElement;
 use DOMNode;
@@ -40,10 +44,17 @@ class PageTranslator
     ];
 
     /**
-     * Elements to skip entirely (never translate contents).
+     * Elements the page walk does not descend into (TOK-1).
+     *
+     * `svg` is deliberately NOT here: SVG `<text>` is visible copy. It is not a
+     * block element either, so an icon inside a paragraph never makes the
+     * walker recurse past the paragraph's own text; an `<svg>` is part of the
+     * unit that holds it, or a unit of its own.
      */
     const SKIP_ELEMENTS = [
-        'script', 'style', 'noscript', 'template', 'svg', 'math',
+        'script', 'style', 'noscript', 'template', 'math', 'plaintext',
+        // The head handler's, and walked only on a page with no <body>.
+        'head',
     ];
 
     /**
@@ -82,6 +93,32 @@ class PageTranslator
     protected $currentLocale = null;
 
     /**
+     * @var ValueMarkers|null The value markers read from the current document.
+     */
+    protected $markers = null;
+
+    /**
+     * @var bool Whether the current page's <html> is one parseDocument() added
+     *           to a fragment, written back out as the fragment it was.
+     */
+    protected $fragmentRoot = false;
+
+    /** Elements a browser puts in the head a page leaves implied. */
+    const HEAD_CONTENT = ['base', 'link', 'meta', 'noscript', 'script', 'style', 'template', 'title'];
+
+    /**
+     * @var LoggerInterface|null Defaulted in the CONSTRUCTOR, not here.
+     *
+     * PHP cannot `new` in a property initializer, so this is null on any
+     * instance built WITHOUT running this constructor. That is a real limit,
+     * not a claim to round off, and reflection is not the only way in: a
+     * subclass whose constructor skips parent::__construct(), or a plain
+     * unserialize(), produces one too. Every instance that runs this
+     * constructor is safe.
+     */
+    protected $logger;
+
+    /**
      * Create a new PageTranslator instance.
      *
      * @param \Langsys\SDK\Client $client The Langsys client
@@ -93,6 +130,21 @@ class PageTranslator
         $this->htmlParser = new HtmlParser($translatableAttributes);
         $this->headHandler = new HeadHandler();
         $this->markupTokenizer = new MarkupTokenizer();
+
+        // Declared and defaulted, never assumed. A debug() call was added to
+        // this class against a $this->logger that did not exist: on the path
+        // that reaches it the warning became "Call to a member function
+        // debug() on null" and took the render down - a line whose entire
+        // purpose was to avoid failing silently, failing loudly instead, in
+        // the one fallback that exists for markup we are about to lose.
+        //
+        // NullLogger rather than null, so the property is always callable even
+        // when the client cannot supply one (a test double, a partially
+        // constructed client). This is the CONSTRUCTOR's default - the property
+        // declaration above cannot carry it, since PHP forbids `new` there.
+        $this->logger = (is_object($client) && method_exists($client, 'getLogger') && $client->getLogger() !== null)
+            ? $client->getLogger()
+            : new NullLogger();
     }
 
     /**
@@ -107,9 +159,19 @@ class PageTranslator
      */
     public function translate($html, $locale, $defaultCategory = null, array $selectorCategories = [], array $params = [])
     {
+        // Lowercase xx-yy on the wire and in every key, and in the lang attribute
+        // written from it (WIRE-3).
+        $locale = LocaleDetector::normalize($locale);
+
+        // An empty category is no category, as in Client::normalizeCategory().
+        if ($defaultCategory === '') {
+            $defaultCategory = null;
+        }
+
         // Per-call state; reset every time since the instance is reused.
         $this->params = $params;
         $this->currentLocale = $locale;
+        $this->markers = null;
 
         try {
             return $this->translateDocument($html, $locale, $defaultCategory, $selectorCategories, $params);
@@ -119,6 +181,7 @@ class PageTranslator
             // when it unwinds on an exception.
             $this->params = [];
             $this->currentLocale = null;
+            $this->markers = null;
         }
     }
 
@@ -136,40 +199,68 @@ class PageTranslator
             return $html;
         }
 
-        // Parse document
+        // Parse document. One with no element - whitespace, a comment, a
+        // doctype - has nothing to translate and comes back as given.
         $doc = $this->parseDocument($html);
-        if ($doc === null) {
-            return $html; // Return original on parse failure
-        }
-
-        // Create selector matcher if selector categories provided
-        $this->selectorMatcher = !empty($selectorCategories)
-            ? new SelectorMatcher($selectorCategories)
-            : null;
-
-        // Get translations (uses cache)
-        try {
-            $translations = $this->client->getTranslations($locale);
-        } catch (\Exception $e) {
-            // API unavailable - return original HTML
+        if ($doc === null || $doc->documentElement === null) {
             return $html;
         }
 
-        // Process head section (extract phrases + apply translations + set lang/charset)
-        // Placeholders must resolve here too, or <title> and meta description
-        // ship raw {name} to the browser while the body renders correctly.
+        // Value markers read as placeholders before anything is tokenized
+        // (VAR-3); finish() puts the values back before the page is saved.
+        $this->markers = ValueMarkers::read($doc->documentElement);
+
+        // Create selector matcher if selector categories provided
+        $this->selectorMatcher = !empty($selectorCategories)
+            ? $this->selectorMatcher($selectorCategories)
+            : null;
+
+        // Extract first: whether a seeded snapshot answers the page is decided
+        // by what the page holds.
         $headPhrases = $this->headHandler->extractPhrases($doc);
-        $this->headHandler->useInterpolation(
-            empty($params) ? null : $this->client->getInterpolator(),
-            $params,
-            $locale
-        );
-        $this->headHandler->process($doc, $locale, $translations, $defaultCategory);
 
         // Process body section (respects data-langsys-category attributes and selector categories)
         $bodyResult = $this->processBody($doc, $defaultCategory);
         $bodyPhrases = $bodyResult['phrases'];
         $contentBlocks = $bodyResult['contentBlocks'];
+
+        // SNAP-2: a seeded snapshot that holds every unit of the page answers it
+        // with no fetch. Otherwise the live catalog is read; if it cannot be,
+        // the snapshot still renders what it holds. Either way the snapshot
+        // never decides a registration (REG-13).
+        $seed = $this->client->seedCatalog($locale);
+        $fromSeed = $seed !== null && $this->seedHolds($seed, $this->addCategoryToPhrases($headPhrases, $defaultCategory), $bodyPhrases, $contentBlocks);
+
+        if ($fromSeed) {
+            $translations = $seed;
+        } else {
+            try {
+                $translations = $this->client->getTranslations($locale);
+            } catch (\Throwable $e) {
+                // \Throwable, not \Exception: an \Error from a wrong-shaped cache
+                // hit escaped this catch and took the whole page render down.
+                if ($seed === null) {
+                    return $html;
+                }
+
+                $translations = $seed;
+                $fromSeed = true;
+            }
+        }
+
+        // Head: apply translations and set lang/charset. Placeholders must
+        // resolve here too, or <title> and meta description ship raw {name}
+        // to the browser while the body renders correctly.
+        $this->headHandler->useInterpolation($this->client->getInterpolator(), $params, $locale);
+        $this->headHandler->process($doc, $locale, $translations, $defaultCategory);
+
+        if ($fromSeed) {
+            $this->applyBodyTranslations($doc, $bodyPhrases, $contentBlocks, $translations, $defaultCategory);
+            $this->markers->finish($doc->documentElement);
+            $this->markResolvedRoot($doc, $locale);
+
+            return $this->saveHtml($doc);
+        }
 
         // Collect all unique categories used
         $usedCategories = $this->collectUsedCategories($headPhrases, $bodyPhrases, $contentBlocks, $defaultCategory);
@@ -181,21 +272,24 @@ class PageTranslator
         }
 
         // Identify new items (not in translations AND not already registered)
-        // Head phrases use default category, body phrases use their own category
-        $newHeadPhrases = $this->findNewPhrasesWithCategory(
+        // Head phrases use default category, body phrases use their own category.
+        // A unit in a resolved subtree is translated like any other but is never a
+        // registration candidate: its text is output, not source (GATE-10).
+        $heads = $doc->getElementsByTagName('head');
+        $newHeadPhrases = ($heads->length > 0 && HtmlParser::isResolvedScope($heads->item(0))) ? [] : $this->findNewPhrasesWithCategory(
             $this->addCategoryToPhrases($headPhrases, $defaultCategory),
             $translations,
             $registeredItems
         );
         $newBodyPhrases = $this->findNewPhrasesWithCategory(
-            $bodyPhrases,
+            $this->withText($this->outsideResolvedScope($bodyPhrases)),
             $translations,
             $registeredItems
         );
         $newPhrases = array_merge($newHeadPhrases, $newBodyPhrases);
 
         $newContentBlocks = $this->findNewContentBlocksWithCategory(
-            $contentBlocks,
+            $this->withText($this->outsideResolvedScope($contentBlocks)),
             $translations,
             $registeredItems
         );
@@ -204,8 +298,17 @@ class PageTranslator
         if (!empty($newPhrases) || !empty($newContentBlocks)) {
             $this->registerNewItemsWithCategory($newPhrases, $newContentBlocks, $locale);
 
-            // Mark items as registered in cache (to avoid re-registration on next load)
-            $this->markItemsAsRegisteredWithCategory($newPhrases, $newContentBlocks);
+            // NOT marked as registered here. These items have only been QUEUED;
+            // the flush that would send them runs later and can skip (read-only
+            // key), fail, or never run at all on a hard timeout. Writing the
+            // marker now records an attempt as an acceptance, and the marker
+            // suppresses the item on every later render until the cache expires -
+            // so a single failed flush silently costs the content indefinitely.
+            //
+            // Without the marker a queued-but-unsent block is re-queued next
+            // render, which is cheap: the flush batches, and the API is
+            // idempotent per project. Re-doing cheap work beats recording work
+            // that never happened.
 
             // No refetch: registration is queued now, so nothing has been
             // created yet and the catalog cannot have changed. The flush clears
@@ -214,9 +317,169 @@ class PageTranslator
 
         // Apply body translations
         $this->applyBodyTranslations($doc, $bodyPhrases, $contentBlocks, $translations, $defaultCategory);
+        $this->markers->finish($doc->documentElement);
+
+        $this->markResolvedRoot($doc, $locale);
 
         // Return translated HTML
         return $this->saveHtml($doc);
+    }
+
+    /**
+     * Whether a snapshot's catalog holds every unit of a page: each phrase in
+     * its category, and each block under its id.
+     *
+     * @param array $seed category => entries
+     * @param array $headPhrases With categories
+     * @param array $bodyPhrases
+     * @param array $contentBlocks
+     * @return bool
+     */
+    protected function seedHolds(array $seed, array $headPhrases, array $bodyPhrases, array $contentBlocks)
+    {
+        foreach (array_merge($headPhrases, $bodyPhrases) as $phrase) {
+            $cat = isset($phrase['category']) ? $phrase['category'] : '__uncategorized__';
+            if (!isset($seed[$cat]) || !is_array($seed[$cat]) || !array_key_exists($phrase['text'], $seed[$cat]) || is_array($seed[$cat][$phrase['text']])) {
+                return false;
+            }
+        }
+
+        foreach ($contentBlocks as $block) {
+            $cat = isset($block['category']) ? $block['category'] : '__uncategorized__';
+            if (!isset($seed[$cat][$block['customId']]) || !is_array($seed[$cat][$block['customId']])) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * The units that may register: not one made only of value markers
+     * (VAR-3), nor one holding a value the reader cannot name (VAR-7).
+     *
+     * @param array $units Collected phrases or content blocks
+     * @return array
+     */
+    protected function withText(array $units)
+    {
+        $markers = $this->markers;
+        if ($markers === null || (!$markers->any() && !$markers->unnamedWithin())) {
+            return $units;
+        }
+
+        $logger = $this->logger;
+
+        return array_values(array_filter($units, function ($unit) use ($markers, $logger) {
+            // A value the reader cannot name is never registered (VAR-7).
+            if (isset($unit['element']) && $unit['element'] instanceof DOMNode && $markers->unnamedWithin($unit['element'])) {
+                if (ValueMarkers::firstNotice()) {
+                    $logger->debug('A value marker names its value outside [a-z][a-z0-9_]*, so text holding it is not registered');
+                }
+
+                return false;
+            }
+
+            return !$markers->markerOnly(isset($unit['phrases']) ? $unit['phrases'] : [$unit['text']]);
+        }));
+    }
+
+    /**
+     * The units whose text is source: those outside any resolved subtree.
+     *
+     * @param array $units Collected phrases or content blocks
+     * @return array
+     */
+    protected function outsideResolvedScope(array $units)
+    {
+        return array_values(array_filter($units, function ($unit) {
+            $scope = isset($unit['scope']) ? $unit['scope'] : (isset($unit['element']) ? $unit['element'] : null);
+
+            return !($scope instanceof \DOMNode && HtmlParser::isResolvedScope($scope));
+        }));
+    }
+
+    /**
+     * Mark the document root as resolved when this render is in a locale other
+     * than the project's base locale (GATE-10, producing).
+     *
+     * The page this returns is then output, not source: a later walk - a JS SDK
+     * hydrating it, a middleware translating the response again - registers
+     * none of it. A base-locale render is source and is left unmarked so it stays
+     * discoverable, and when the base locale is unknown nothing is marked, since
+     * the render cannot be shown to be anything but source. A fragment has no
+     * root of its own, so each of its top-level elements is marked. A marker
+     * already on one, in either spelling, is the page author's and is kept.
+     *
+     * @param DOMDocument $doc
+     * @param string $locale
+     * @return void
+     */
+    protected function markResolvedRoot(DOMDocument $doc, $locale)
+    {
+        $htmls = $doc->getElementsByTagName('html');
+        $root = $htmls->length > 0 ? $htmls->item(0) : $doc->documentElement;
+
+        // A fragment's markers go on its top-level elements, the <html> it
+        // was read in being the SDK's.
+        $roots = [];
+        foreach ($this->fragmentRoot && $root instanceof DOMElement ? $root->childNodes : [$root] as $node) {
+            if (!$node instanceof DOMElement) {
+                continue;
+            }
+            foreach (HtmlParser::RESOLVED_MARKERS as $attribute) {
+                if ($node->hasAttribute($attribute)) {
+                    continue 2;
+                }
+            }
+            $roots[] = $node;
+        }
+
+        if ($roots === []) {
+            return;
+        }
+
+        try {
+            $project = $this->client->getProject();
+        } catch (\Throwable $e) {
+            return;
+        }
+
+        $base = (is_array($project) && isset($project['base_locale']) && is_string($project['base_locale']))
+            ? LocaleDetector::normalize($project['base_locale'])
+            : null;
+
+        if ($base === null || $base === '' || $base === $locale) {
+            return;
+        }
+
+        foreach ($roots as $element) {
+            $element->setAttribute(HtmlParser::RESOLVED_MARKERS[0], $locale);
+        }
+    }
+
+    /**
+     * A matcher for the selector categories it can read. One it cannot - a
+     * pseudo-class, a combinator, an empty selector - is skipped with a
+     * warning, so the page still renders under the rest (WIRE-4).
+     *
+     * @param array $selectorCategories
+     * @return SelectorMatcher
+     */
+    protected function selectorMatcher(array $selectorCategories)
+    {
+        $readable = [];
+
+        foreach ($selectorCategories as $selector => $config) {
+            try {
+                new SelectorMatcher([$selector => $config]);
+                $readable[$selector] = $config;
+            } catch (\Exception $e) {
+                $this->logger->warning('A selector category is skipped: its selector cannot be matched', ['selector' => (string) $selector, 'error' => $e->getMessage()]);
+            }
+        }
+
+        return new SelectorMatcher($readable);
     }
 
     /**
@@ -232,15 +495,25 @@ class PageTranslator
         $doc = new DOMDocument();
         $doc->encoding = 'UTF-8';
 
-        // Use HTML5 doctype hint and preserve encoding
-        $htmlWithEncoding = $html;
-        if (stripos($html, '<meta charset') === false &&
-            stripos($html, 'http-equiv="Content-Type"') === false) {
-            // Add encoding hint for DOMDocument
-            $htmlWithEncoding = '<?xml encoding="UTF-8">' . $html;
+        // Decoded as a browser decodes it, then read as the UTF-8 it now is,
+        // whatever its metas say (Document ignores them).
+        $html = Charset::toUtf8($html);
+
+        // A page without an <html> is read inside one, as a browser reads it,
+        // opened after its doctype and never closed, so every top-level
+        // element is part of the page. One that is a document - a doctype, a
+        // head, a body or a title - keeps it; a fragment is written back as
+        // the fragment it was. Both are read from the page's tags, never from
+        // text that mentions one.
+        $this->fragmentRoot = false;
+        $tags = Document::startTags($html);
+        if ($tags !== [] && !in_array('html', $tags, true)) {
+            $prolog = substr($html, 0, Document::prologLength($html));
+            $this->fragmentRoot = stripos($prolog, '<!doctype') === false && array_intersect(['head', 'body', 'title'], $tags) === [];
+            $html = $prolog . '<html>' . substr($html, strlen($prolog));
         }
 
-        $loaded = $doc->loadHTML($htmlWithEncoding, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        $loaded = Document::load($doc, $html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
 
         libxml_clear_errors();
         libxml_use_internal_errors($internalErrors);
@@ -249,7 +522,58 @@ class PageTranslator
             return null;
         }
 
+        if (!$this->fragmentRoot) {
+            $this->impliedHead($doc);
+        }
+
         return $doc;
+    }
+
+    /**
+     * Give a page whose <html> has no <head> the one a browser implies: the
+     * head elements the page leads with - its title, metas, links, styles,
+     * scripts - or none, ahead of its body, so its title translates and its
+     * charset is declared there.
+     *
+     * @param DOMDocument $doc
+     * @return void
+     */
+    protected function impliedHead(DOMDocument $doc)
+    {
+        $html = $doc->getElementsByTagName('html')->item(0);
+        if (!$html instanceof DOMElement || $doc->getElementsByTagName('head')->length > 0) {
+            return;
+        }
+
+        $leading = [];
+        $elements = 0;
+        $body = null;
+        foreach ($html->childNodes as $child) {
+            if ($child instanceof DOMElement && in_array(strtolower($child->nodeName), self::HEAD_CONTENT, true)) {
+                $leading[] = $child;
+                $elements++;
+                continue;
+            }
+            if ($child instanceof \DOMComment || ($child instanceof \DOMText && trim($child->data) === '')) {
+                $leading[] = $child;
+                continue;
+            }
+            $body = $child;
+            break;
+        }
+
+        $head = $doc->createElement('head');
+
+        // Nothing to move: the comments it leads with stay in the <html>.
+        if ($elements === 0) {
+            $html->insertBefore($head, $body);
+            return;
+        }
+
+        $html->insertBefore($head, $html->firstChild);
+        foreach ($leading as $node) {
+            $head->appendChild($node);
+        }
     }
 
     /**
@@ -335,60 +659,140 @@ class PageTranslator
             // narrower, more explicit instruction ("this run is ONE phrase").
             if (HtmlParser::isPhraseMarked($child)) {
                 $this->extractAsTokenizedPhrase($child, $phrases, $effectiveCategory);
+                $this->extractNestedHosts($child, $phrases, $contentBlocks, $effectiveCategory);
                 continue;
             }
 
             // Check for data-langsys-contentblock - treat entire element as single content block
             if ($this->hasContentBlockAttribute($child)) {
                 $this->extractAsContentBlock($child, $contentBlocks, $effectiveCategory);
+                $this->extractNestedHosts($child, $phrases, $contentBlocks, $effectiveCategory);
                 continue;
             }
 
-            // Is this a block element?
-            if (in_array($tagName, self::BLOCK_ELEMENTS, true)) {
-                if ($this->containsNestedBlocks($child)) {
-                    // Container with nested blocks - recurse with effective category
-                    $this->walkForExtraction($child, $phrases, $contentBlocks, $effectiveCategory);
-                } else {
-                    // Smallest block element - determine if it's a phrase or content block
-                    // by counting how many phrases HtmlParser would extract
-                    $innerHtml = $this->getInnerHtml($child);
-                    $extractedPhrases = $this->htmlParser->extractPhrases($innerHtml);
-                    $textContent = $this->getTextContent($child);
-
-                    if (empty($extractedPhrases)) {
-                        // No translatable content
-                        continue;
-                    }
-
-                    // Determine the category for this item
-                    $itemCategory = $effectiveCategory !== null ? $effectiveCategory : '__uncategorized__';
-
-                    // If exactly 1 phrase and it matches the text content,
-                    // treat as simple phrase (even with inline formatting like <strong>)
-                    if (count($extractedPhrases) === 1 && $extractedPhrases[0] === $textContent) {
-                        $phrases[] = [
-                            'text' => $textContent,
-                            'element' => $child,
-                            'category' => $itemCategory,
-                        ];
-                    } else {
-                        // Multiple phrases or phrases from attributes -> content block
-                        $customId = $this->htmlParser->generateCustomId($itemCategory, $extractedPhrases);
-                        $contentBlocks[] = [
-                            'customId' => $customId,
-                            'phrases' => $extractedPhrases,
-                            'element' => $child,
-                            'html' => $innerHtml,
-                            'category' => $itemCategory,
-                        ];
-                    }
-                }
-            } else {
-                // Non-block element - recurse into it with effective category
+            // A container of blocks is walked; anything else is a unit
+            // (TOK-6), including a void or inline element directly under a
+            // container - an `<img alt>` or `<a title>` under `<body>`.
+            if ($this->containsNestedBlocks($child)) {
                 $this->walkForExtraction($child, $phrases, $contentBlocks, $effectiveCategory);
+                continue;
+            }
+
+            $this->extractUnit($child, $phrases, $contentBlocks, $effectiveCategory);
+            $this->extractNestedHosts($child, $phrases, $contentBlocks, $effectiveCategory);
+        }
+    }
+
+    /**
+     * Register each outermost marked host inside $element as a unit of its own
+     * (MARK-4): the walk that tokenized $element excised it, so its words are
+     * registered here, on its own terms, and nowhere else.
+     *
+     * @param DOMElement $element
+     * @param array &$phrases
+     * @param array &$contentBlocks
+     * @param string|null $category
+     * @return void
+     */
+    protected function extractNestedHosts(DOMElement $element, array &$phrases, array &$contentBlocks, $category)
+    {
+        foreach ($element->childNodes as $child) {
+            if (!$child instanceof DOMElement
+                || HtmlParser::isTranslationExcluded($child)
+                || in_array(strtolower($child->tagName), self::SKIP_ELEMENTS, true)) {
+                continue;
+            }
+
+            if (!HtmlParser::isMarkedHost($child)) {
+                $this->extractNestedHosts($child, $phrases, $contentBlocks, $category);
+                continue;
+            }
+
+            $hostCategory = $this->determineEffectiveCategory($child, $category);
+
+            if (HtmlParser::isPhraseMarked($child)) {
+                $this->extractAsTokenizedPhrase($child, $phrases, $hostCategory);
+            } else {
+                $this->extractAsContentBlock($child, $contentBlocks, $hostCategory);
+            }
+
+            $this->extractNestedHosts($child, $phrases, $contentBlocks, $hostCategory);
+        }
+    }
+
+    /**
+     * An element and its descendants, stopping at a marked host below it, and
+     * at an element its author excluded or one whose text is not prose, which
+     * is read for nothing.
+     *
+     * @param DOMElement $element
+     * @return DOMElement[]
+     */
+    protected function ownElements(DOMElement $element)
+    {
+        $elements = [$element];
+
+        foreach ($element->childNodes as $child) {
+            if ($child instanceof DOMElement && !HtmlParser::isMarkedHost($child) && !HtmlParser::isTranslationExcluded($child)
+                && !in_array(strtolower($child->nodeName), HtmlParser::NON_PROSE_ELEMENTS, true)) {
+                foreach ($this->ownElements($child) as $own) {
+                    $elements[] = $own;
+                }
             }
         }
+
+        return $elements;
+    }
+
+    /**
+     * Register one unit of the page walk (TOK-6).
+     *
+     * Its tokens are its own translatable attributes first, in TOK-3 order,
+     * then its content. It registers as a phrase only when it has one token and
+     * that token is its one text node, which is the only shape the phrase apply
+     * can write back into: the text node is replaced in place, so an svg
+     * drawing or inline markup around it survives. Anything else - several
+     * tokens, or a single token held in an attribute - is a content block.
+     *
+     * @param DOMElement $element
+     * @param array &$phrases
+     * @param array &$contentBlocks
+     * @param string|null $effectiveCategory
+     * @return void
+     */
+    protected function extractUnit(DOMElement $element, array &$phrases, array &$contentBlocks, $effectiveCategory)
+    {
+        $unit = $this->htmlParser->unitTokens($element);
+
+        if (empty($unit['tokens'])) {
+            return;
+        }
+
+        $itemCategory = $effectiveCategory !== null ? $effectiveCategory : '__uncategorized__';
+
+        if (HtmlParser::isPhraseUnit($unit)) {
+            $phrases[] = [
+                'text' => $unit['tokens'][0],
+                'element' => $element,
+                'category' => $itemCategory,
+            ];
+
+            return;
+        }
+
+        // The registered content must re-tokenize to the block's tokens, so a
+        // unit whose own attributes carry tokens registers with its tag.
+        $html = $this->htmlParser->ownTokens($element) === []
+            ? $this->getInnerHtml($element)
+            : Document::html($element);
+
+        $contentBlocks[] = [
+            'customId' => $this->htmlParser->generateCustomId($itemCategory, $unit['tokens']),
+            'phrases' => $unit['tokens'],
+            'element' => $element,
+            'html' => $html,
+            'category' => $itemCategory,
+        ];
     }
 
     /**
@@ -408,31 +812,33 @@ class PageTranslator
     protected function extractAsTokenizedPhrase(DOMElement $element, array &$phrases, $effectiveCategory)
     {
         $encoded = $this->markupTokenizer->encode($element);
-
-        if ($encoded['text'] === '') {
-            return; // Nothing translatable.
-        }
-
         $category = $effectiveCategory !== null ? $effectiveCategory : '__uncategorized__';
 
-        $phrases[] = [
-            'text' => $encoded['text'],
-            'element' => $element,
-            'category' => $category,
-            'slots' => $encoded['slots'],
-            'tokenized' => true,
-        ];
+        // A run with no text of its own - only elements kept whole - is no
+        // phrase (TOK-1), but its attributes still are.
+        $hasText = $this->markupTokenizer->hasText($encoded['text']);
+        if ($hasText) {
+            $phrases[] = [
+                'text' => $encoded['text'],
+                'element' => $element,
+                'category' => $category,
+                'slots' => $encoded['slots'],
+                'tokenized' => true,
+            ];
+        }
 
         // Translatable attributes are not part of the tokenized text, so without
         // this they would be silently dropped - adding the marker to keep a
         // sentence together would un-translate the element's title/alt/placeholder.
+        // A host with no phrase of its own has them applied on their own.
         foreach ($this->collectAttributePhrases($element) as $attributePhrase) {
             $phrases[] = [
                 'text' => $attributePhrase,
                 'element' => null,
+                'scope' => $element,
                 'category' => $category,
                 'attributeOnly' => true,
-            ];
+            ] + ($hasText ? [] : ['host' => $element]);
         }
     }
 
@@ -447,19 +853,15 @@ class PageTranslator
         $found = [];
         $attributes = $this->htmlParser->getTranslatableAttributes();
 
-        foreach ($attributes as $attr) {
-            if ($element->hasAttribute($attr)) {
-                $value = trim($element->getAttribute($attr));
-                if ($value !== '') {
-                    $found[] = $value;
-                }
-            }
-        }
-
-        foreach ($element->getElementsByTagName('*') as $descendant) {
+        // TOK-4, and a register/lookup pair: collection trimmed while the apply
+        // side looked up the RAW value, so an alt text wrapped across source
+        // lines registered collapsed and was never found again - a miss on
+        // plain spaces, not only on non-ASCII whitespace. A nested marked host's
+        // attributes are its own.
+        foreach ($this->ownElements($element) as $descendant) {
             foreach ($attributes as $attr) {
                 if ($descendant->hasAttribute($attr)) {
-                    $value = trim($descendant->getAttribute($attr));
+                    $value = Canonical::phrase($descendant->getAttribute($attr));
                     if ($value !== '') {
                         $found[] = $value;
                     }
@@ -494,14 +896,19 @@ class PageTranslator
         }
 
         $itemCategory = $effectiveCategory !== null ? $effectiveCategory : '__uncategorized__';
-        $customId = $this->htmlParser->generateCustomId($itemCategory, $extractedPhrases);
+
+        // MARK-3: a stamped id is the host's custom_id, recognised rather than
+        // re-derived; the host renders from it and is never registered.
+        $marker = HtmlParser::contentBlockMarker($element);
+        $stamped = $marker !== null && $marker['kind'] === 'identity';
 
         $contentBlocks[] = [
-            'customId' => $customId,
+            'customId' => $stamped ? $marker['id'] : $this->htmlParser->generateCustomId($itemCategory, $extractedPhrases),
             'phrases' => $extractedPhrases,
             'element' => $element,
             'html' => $innerHtml,
             'category' => $itemCategory,
+            'stamped' => $stamped,
         ];
     }
 
@@ -525,13 +932,13 @@ class PageTranslator
         if ($this->selectorMatcher !== null) {
             $selectorMatch = $this->selectorMatcher->matchElement($element);
             if ($selectorMatch !== null && $selectorMatch['override']) {
-                return $selectorMatch['category'];
+                return $this->categoryOrUncategorized($selectorMatch['category']);
             }
         }
 
         // Check for data-langsys-category attribute
         if ($element->hasAttribute('data-langsys-category')) {
-            return $element->getAttribute('data-langsys-category');
+            return $this->categoryOrUncategorized($element->getAttribute('data-langsys-category'));
         }
 
         // Use inherited category if set
@@ -543,12 +950,24 @@ class PageTranslator
         if ($this->selectorMatcher !== null) {
             $selectorMatch = $this->selectorMatcher->matchElement($element);
             if ($selectorMatch !== null && !$selectorMatch['override']) {
-                return $selectorMatch['category'];
+                return $this->categoryOrUncategorized($selectorMatch['category']);
             }
         }
 
         // Return null to let caller use default
         return null;
+    }
+
+    /**
+     * An empty category an author wrote is the uncategorised one, so its text
+     * reads and registers under '__uncategorized__' like any other.
+     *
+     * @param string|null $category
+     * @return string|null
+     */
+    private function categoryOrUncategorized($category)
+    {
+        return $category === '' ? '__uncategorized__' : $category;
     }
 
     /**
@@ -582,9 +1001,9 @@ class PageTranslator
      */
     protected function getTextContent(DOMElement $element)
     {
-        $text = $element->textContent;
-        // Normalize whitespace
-        return trim(preg_replace('/\s+/', ' ', $text));
+        // TOK-2: the page path registers phrases too, so it must canonicalise
+        // identically to the block path or the same text yields two phrases.
+        return Canonical::phrase($element->textContent);
     }
 
     /**
@@ -597,7 +1016,7 @@ class PageTranslator
     {
         $innerHTML = '';
         foreach ($element->childNodes as $child) {
-            $innerHTML .= $element->ownerDocument->saveHTML($child);
+            $innerHTML .= Document::html($child);
         }
         return $innerHTML;
     }
@@ -617,8 +1036,54 @@ class PageTranslator
      */
     protected function applyBodyTranslations(DOMDocument $doc, array $phrases, array $contentBlocks, array $translations, $defaultCategory = null)
     {
-        // Apply phrase translations (text-only blocks)
-        foreach ($phrases as $phraseData) {
+        // Content blocks first: they translate in place, so a block nested in a
+        // phrase host is translated before that phrase's markup is rebuilt.
+        foreach ($contentBlocks as $block) {
+            if (!isset($block['element']) || !($block['element'] instanceof DOMElement)) {
+                continue;
+            }
+
+            // Use block's category or fall back to default
+            $blockCategory = isset($block['category']) ? $block['category'] : $defaultCategory;
+            $cat = $blockCategory !== null ? $blockCategory : '__uncategorized__';
+
+            $customId = $block['customId'];
+            $categoryTranslations = isset($translations[$cat]) ? $translations[$cat] : [];
+            $blockTranslations = !empty($block['stamped'])
+                ? (isset($categoryTranslations[$customId]) && is_array($categoryTranslations[$customId]) ? $categoryTranslations[$customId] : null)
+                : $this->client->resolveContentBlockTranslations(
+                    $categoryTranslations, $cat, $block['phrases'], $customId, $this->htmlParser
+                );
+
+            if (!is_array($blockTranslations) || empty($blockTranslations)) {
+                // No translations for this content block, but placeholders in the
+                // original markup should still resolve.
+                if (!empty($this->params)) {
+                    $this->applyContentBlockTranslations($block['element'], []);
+                }
+            } else {
+                $this->applyContentBlockTranslations($block['element'], $blockTranslations);
+            }
+
+            // MARK-1: the rendered host carries the id it was rendered from.
+            HtmlParser::stampIdentity($block['element'], $customId);
+        }
+
+        // Then phrases, innermost first: a phrase host nested in another
+        // (MARK-4) is translated before the outer one rebuilds its markup from
+        // copies of its children.
+        $attributesApplied = new \SplObjectStorage();
+        foreach (array_reverse($phrases) as $phraseData) {
+            // A host with no phrase of its own still has its attributes
+            // translated, once (TOK-1).
+            if (isset($phraseData['host']) && $phraseData['host'] instanceof DOMElement) {
+                if (!$attributesApplied->contains($phraseData['host'])) {
+                    $attributesApplied->attach($phraseData['host']);
+                    $this->applyAttributeTranslations($phraseData['host'], isset($phraseData['category']) ? $phraseData['category'] : $defaultCategory, $translations);
+                }
+                continue;
+            }
+
             if (!isset($phraseData['element']) || !($phraseData['element'] instanceof DOMElement)) {
                 continue;
             }
@@ -633,38 +1098,12 @@ class PageTranslator
                 continue;
             }
 
-            $translated = $this->interp($this->lookupTranslation($originalText, $itemCategory, $translations));
+            $translated = $this->interp($this->lookupTranslation($originalText, $itemCategory, $translations), $phraseData['element']);
 
             if ($translated !== $originalText) {
                 // Replace text content while preserving structure (br tags, etc.)
                 $this->replaceTextContent($phraseData['element'], $originalText, $translated);
             }
-        }
-
-        // Apply content block translations
-        foreach ($contentBlocks as $block) {
-            if (!isset($block['element']) || !($block['element'] instanceof DOMElement)) {
-                continue;
-            }
-
-            // Use block's category or fall back to default
-            $blockCategory = isset($block['category']) ? $block['category'] : $defaultCategory;
-            $cat = $blockCategory !== null ? $blockCategory : '__uncategorized__';
-
-            $customId = $block['customId'];
-            $blockTranslations = isset($translations[$cat][$customId]) ? $translations[$cat][$customId] : null;
-
-            if (!is_array($blockTranslations) || empty($blockTranslations)) {
-                // No translations for this content block, but placeholders in the
-                // original markup should still resolve.
-                if (!empty($this->params)) {
-                    $this->applyContentBlockTranslations($block['element'], []);
-                }
-                continue;
-            }
-
-            // Apply translations within the content block
-            $this->applyContentBlockTranslations($block['element'], $blockTranslations);
         }
     }
 
@@ -684,12 +1123,28 @@ class PageTranslator
     protected function applyTokenizedPhrase(array $phraseData, $itemCategory, array $translations)
     {
         $element = $phraseData['element'];
-        $slots = isset($phraseData['slots']) ? $phraseData['slots'] : [];
+
+        // Slots are taken now, not at extraction: a marked host nested in this
+        // one (MARK-4) has been translated since, and the rebuild copies it.
+        $encoded = $this->markupTokenizer->encode($element, $this->markers);
+        $slots = $encoded['slots'];
 
         $translated = $this->lookupTranslation($phraseData['text'], $itemCategory, $translations);
 
+        // TOK-1: with no translation under its key, a phrase holding an
+        // excluded element renders one under the key an earlier reader gave
+        // it. Only the current key is ever registered.
+        $cat = $itemCategory !== null ? $itemCategory : '__uncategorized__';
+        $current = isset($translations[$cat][$phraseData['text']]) ? $translations[$cat][$phraseData['text']] : null;
+        if ($encoded['earlier'] !== null && !(is_string($current) && $current !== '')) {
+            $value = isset($translations[$cat][$encoded['earlier']['text']]) ? $translations[$cat][$encoded['earlier']['text']] : null;
+            if (is_string($value) && $value !== '') {
+                $translated = $this->markupTokenizer->fromEarlier($value, $encoded['earlier']);
+            }
+        }
+
         $tokenParams = $this->markupTokenizer->tokenParams(count($slots));
-        $merged = array_merge($this->params, $tokenParams);
+        $merged = array_merge($this->paramsFor($element, $translated), $tokenParams);
 
         $rendered = $this->client->getInterpolator()->interpolate($translated, $merged, $this->currentLocale);
 
@@ -703,7 +1158,7 @@ class PageTranslator
             $slots = [];
         }
 
-        $nodes = $this->markupTokenizer->render($rendered, $slots, $element->ownerDocument);
+        $nodes = $this->markupTokenizer->render($rendered, $slots, $element->ownerDocument, $encoded['opaque']);
 
         // Replace the element's children with the rebuilt nodes.
         while ($element->firstChild !== null) {
@@ -730,10 +1185,7 @@ class PageTranslator
     {
         $attributes = $this->htmlParser->getTranslatableAttributes();
 
-        $targets = [$element];
-        foreach ($element->getElementsByTagName('*') as $descendant) {
-            $targets[] = $descendant;
-        }
+        $targets = $this->ownElements($element);
 
         foreach ($targets as $target) {
             foreach ($attributes as $attr) {
@@ -741,8 +1193,10 @@ class PageTranslator
                     continue;
                 }
 
-                $value = $target->getAttribute($attr);
-                if (trim($value) === '') {
+                // The lookup side of the pair above: must canonicalise the
+                // same way, or the key we registered can never be found.
+                $value = Canonical::phrase($target->getAttribute($attr));
+                if ($value === '') {
                     continue;
                 }
 
@@ -765,23 +1219,82 @@ class PageTranslator
      */
     protected function replaceTextContent(DOMElement $element, $original, $translated)
     {
-        // For simple text-only elements, just replace textContent
-        // This handles cases like <p>Hello</p> -> <p>Hola</p>
+        // Find the text node carrying the phrase, at any depth, and replace it
+        // in place.
+        //
+        // This used to check DIRECT children only and then fall back to
+        // `$element->textContent = $translated`, which replaces every child
+        // with a string. A phrase wrapped in inline markup - <li><a>Label</a>
+        // </li>, <p><strong>Bold</strong></p> - has its text one level down,
+        // so the wrapper was DELETED on translation: links disappeared from
+        // translated pages, which for a nav item means the navigation stops
+        // working.
+        //
+        // The direct-child loop that stood here was kept at first and then
+        // removed: replaceDescendantText() checks direct children before it
+        // recurses, so the two were the same comparison written twice - and
+        // duplicating it made the first copy unmutable, since breaking it just
+        // let the second copy answer. Two copies of one rule drifting apart is
+        // the defect this whole lane keeps finding.
+        if ($this->replaceDescendantText($element, $original, $translated)) {
+            return;
+        }
+
+        // Last resort, and it loses markup. Reached only when no single text
+        // node carries the phrase - the text is split across several nodes, as
+        // in a tokenized run, which the tokenizer path handles instead. Logged
+        // rather than silent, because losing markup should be visible.
+        $this->logger->debug('Replacing an element\'s whole content; markup inside it will be lost', [
+            'element' => $element->nodeName,
+            'phrase' => $original,
+        ]);
+
+        $element->textContent = $translated;
+    }
+
+    /**
+     * Replace the first descendant text node carrying $original, in place.
+     *
+     * Depth-first so the innermost wrapper wins, and skipping subtrees that are
+     * excluded from translation or are not prose - a phrase must never be
+     * written into a <script> or a node the author opted out of.
+     *
+     * @param DOMElement $element
+     * @param string $original
+     * @param string $translated
+     * @return bool Whether a node was replaced
+     */
+    protected function replaceDescendantText(DOMElement $element, $original, $translated)
+    {
         foreach ($element->childNodes as $child) {
             if ($child instanceof DOMText) {
-                $normalizedText = trim(preg_replace('/\s+/', ' ', $child->textContent));
-                if ($normalizedText === $original) {
-                    // Preserve leading/trailing whitespace pattern
-                    $leadingSpace = preg_match('/^\s/', $child->textContent) ? ' ' : '';
-                    $trailingSpace = preg_match('/\s$/', $child->textContent) ? ' ' : '';
-                    $child->textContent = $leadingSpace . $translated . $trailingSpace;
-                    return;
+                if (Canonical::phrase($child->textContent) !== $original) {
+                    continue;
                 }
+
+                $leadingSpace = preg_match('/^' . Whitespace::JS_WHITESPACE . '/u', $child->textContent) ? ' ' : '';
+                $trailingSpace = preg_match('/' . Whitespace::JS_WHITESPACE . '$/u', $child->textContent) ? ' ' : '';
+                $child->textContent = $leadingSpace . $translated . $trailingSpace;
+
+                return true;
+            }
+
+            if (!$child instanceof DOMElement) {
+                continue;
+            }
+
+            if (HtmlParser::isTranslationExcluded($child)
+                || HtmlParser::isMarkedHost($child)
+                || in_array(strtolower($child->nodeName), HtmlParser::NON_PROSE_ELEMENTS, true)) {
+                continue;
+            }
+
+            if ($this->replaceDescendantText($child, $original, $translated)) {
+                return true;
             }
         }
 
-        // Fallback: just set textContent (may lose br tags)
-        $element->textContent = $translated;
+        return false;
     }
 
     /**
@@ -807,7 +1320,8 @@ class PageTranslator
     {
         // Handle text nodes
         if ($node instanceof DOMText) {
-            $normalizedText = trim(preg_replace('/\s+/', ' ', $node->textContent));
+            // Lookup side - must match what getElementText() registered.
+            $normalizedText = Canonical::phrase($node->textContent);
             if ($normalizedText !== '') {
                 $translated = isset($translations[$normalizedText]) ? $translations[$normalizedText] : null;
 
@@ -817,12 +1331,12 @@ class PageTranslator
                     $translated = $normalizedText;
                 }
 
-                $translated = $this->interp($translated);
+                $translated = $this->interp($translated, $node);
 
                 if ($translated !== $normalizedText) {
                     // Preserve whitespace pattern
-                    $leadingSpace = preg_match('/^\s/', $node->textContent) ? ' ' : '';
-                    $trailingSpace = preg_match('/\s$/', $node->textContent) ? ' ' : '';
+                    $leadingSpace = preg_match('/^' . Whitespace::JS_WHITESPACE . '/u', $node->textContent) ? ' ' : '';
+                    $trailingSpace = preg_match('/' . Whitespace::JS_WHITESPACE . '$/u', $node->textContent) ? ' ' : '';
                     $node->textContent = $leadingSpace . $translated . $trailingSpace;
                 }
             }
@@ -831,8 +1345,10 @@ class PageTranslator
 
         // Handle element nodes
         if ($node instanceof DOMElement) {
-            // Skip elements excluded from translation entirely.
-            if (HtmlParser::isTranslationExcluded($node)) {
+            // Skip elements excluded from translation entirely, and those
+            // registration reads no prose in: script, style, noscript,
+            // template and math.
+            if (HtmlParser::isTranslationExcluded($node) || in_array(strtolower($node->nodeName), HtmlParser::NON_PROSE_ELEMENTS, true)) {
                 return;
             }
 
@@ -856,9 +1372,13 @@ class PageTranslator
                 }
             }
 
-            // Recurse into children
+            // Recurse into children; a marked host is applied as its own unit.
             if ($node->hasChildNodes()) {
                 foreach ($node->childNodes as $child) {
+                    if ($child instanceof DOMElement && HtmlParser::isMarkedHost($child)) {
+                        continue;
+                    }
+
                     $this->walkAndTranslate($child, $translations);
                 }
             }
@@ -875,7 +1395,12 @@ class PageTranslator
      */
     protected function translateAttribute(DOMElement $node, $attr, array $translations)
     {
-        $value = $node->getAttribute($attr);
+        // Canonicalised, because this is a LOOKUP side. The collection side
+        // (collectAttributePhrases) registers the collapsed form, so looking up
+        // the raw value could never match - and it missed on plain spaces, not
+        // just on non-ASCII whitespace, so "attributes work" was never true for
+        // any alt written across two source lines.
+        $value = Canonical::phrase($node->getAttribute($attr));
 
         if ($value === '') {
             return;
@@ -900,13 +1425,35 @@ class PageTranslator
      * @param string $text
      * @return string
      */
-    protected function interp($text)
+    protected function interp($text, ?DOMNode $scope = null)
     {
-        if (empty($this->params) || !is_string($text) || $text === '') {
+        // No early return on empty params: a translation can hold ICU the caller
+        // knows nothing about - the backend promotes a plain {name} into a
+        // gendered select for locales that need one - and "no params" is the
+        // case that needs recovery. The interpolator's own fast path handles
+        // text with no construct in it.
+        if (!is_string($text) || $text === '') {
             return $text;
         }
 
-        return $this->client->getInterpolator()->interpolate($text, $this->params, $this->currentLocale);
+        return $this->client->getInterpolator()->interpolate($text, $this->paramsFor($scope, $text), $this->currentLocale);
+    }
+
+    /**
+     * The params a render of $text inside $scope uses: the caller's, over the
+     * values of any value markers read there (VAR-3).
+     *
+     * @param DOMNode|null $scope
+     * @param string $text
+     * @return array
+     */
+    protected function paramsFor(?DOMNode $scope = null, $text = '')
+    {
+        if ($scope === null || $this->markers === null || !$this->markers->any()) {
+            return $this->params;
+        }
+
+        return $this->markers->params($scope, $text, $this->params);
     }
 
     /**
@@ -953,13 +1500,57 @@ class PageTranslator
      */
     protected function saveHtml(DOMDocument $doc)
     {
-        // saveHTML can add extra wrapper elements, clean up
-        $html = $doc->saveHTML();
+        // Node by node, in UTF-8, which the page declares (HeadHandler). The
+        // whole-document serializer of libxml 2.9 takes its output encoding
+        // only from an http-equiv meta, and otherwise writes every character
+        // outside ASCII as an entity, inside a script, JSON-LD or style too,
+        // where an entity is not decoded.
+        $html = '';
 
-        // Remove the XML declaration we may have added
-        $html = preg_replace('/^<\?xml[^>]*>\s*/i', '', $html);
+        foreach ($doc->childNodes as $child) {
+            if ($child instanceof \DOMDocumentType) {
+                $html .= self::doctype($child) . "\n";
+                continue;
+            }
 
-        return $html;
+            // An XML declaration is not written back. libxml2 2.9 reads one
+            // as a processing instruction, and 2.14 and later as a comment.
+            if (($child instanceof \DOMProcessingInstruction && strtolower($child->target) === 'xml')
+                || ($child instanceof \DOMComment && preg_match('/^\?xml\s[^>]*\?$/i', $child->data))) {
+                continue;
+            }
+
+            // Nor is the <html> it read a fragment inside.
+            if ($this->fragmentRoot && $child instanceof DOMElement && $child->nodeName === 'html') {
+                foreach ($child->childNodes as $node) {
+                    $html .= Document::html($node);
+                }
+                continue;
+            }
+
+            $html .= Document::html($child);
+        }
+
+        return $html === '' ? '' : $html . "\n";
+    }
+
+    /**
+     * A doctype as libxml writes it.
+     *
+     * @param \DOMDocumentType $doctype
+     * @return string
+     */
+    private static function doctype(\DOMDocumentType $doctype)
+    {
+        $out = '<!DOCTYPE ' . $doctype->name;
+
+        if ($doctype->publicId !== '') {
+            $out .= ' PUBLIC "' . $doctype->publicId . '"' . ($doctype->systemId !== '' ? ' "' . $doctype->systemId . '"' : '');
+        } elseif ($doctype->systemId !== '') {
+            $out .= ' SYSTEM "' . $doctype->systemId . '"';
+        }
+
+        return $out . '>';
     }
 
     /**
@@ -971,7 +1562,11 @@ class PageTranslator
     protected function getRegisteredItemsCacheKey($category = null)
     {
         $cat = $category !== null ? $category : '__uncategorized__';
-        return 'registered_items_' . $cat;
+
+        // Namespaced by project like every other key in the SDK: this cache is
+        // shared by every request on the host, and by the fleet on Redis, so an
+        // un-namespaced key lets one project's record suppress another's.
+        return 'registered_items_' . $this->client->getConfig()->getProjectId() . '_' . $cat;
     }
 
     /**
@@ -988,7 +1583,12 @@ class PageTranslator
         $cacheKey = $this->getRegisteredItemsCacheKey($category);
         $cache = $this->client->getCache();
 
-        $cached = $cache->get($cacheKey);
+        // A cache that fails mid-render is a miss: the page still renders.
+        try {
+            $cached = $cache->get($cacheKey);
+        } catch (\Throwable $e) {
+            $cached = null;
+        }
         if ($cached !== null && is_array($cached)) {
             return $cached;
         }
@@ -999,41 +1599,6 @@ class PageTranslator
         ];
     }
 
-    /**
-     * Mark items as registered in cache.
-     *
-     * @param array $phrases Phrases that were registered
-     * @param array $contentBlocks Content blocks that were registered
-     * @param string|null $category Category
-     * @return void
-     */
-    protected function markItemsAsRegistered(array $phrases, array $contentBlocks, $category = null)
-    {
-        $cacheKey = $this->getRegisteredItemsCacheKey($category);
-        $cache = $this->client->getCache();
-
-        // Get existing registered items
-        $existing = $this->getRegisteredItems($category);
-
-        // Merge new items
-        $existing['phrases'] = array_unique(array_merge(
-            $existing['phrases'],
-            $phrases
-        ));
-
-        $contentBlockIds = [];
-        foreach ($contentBlocks as $block) {
-            $contentBlockIds[] = $block['customId'];
-        }
-        $existing['contentBlocks'] = array_unique(array_merge(
-            $existing['contentBlocks'],
-            $contentBlockIds
-        ));
-
-        // Store in cache (use a long TTL since these are permanent registrations)
-        // The cache will be invalidated when translations are updated
-        $cache->set($cacheKey, $existing);
-    }
 
     /**
      * Collect all unique categories used by phrases and content blocks.
@@ -1134,7 +1699,12 @@ class PageTranslator
 
             // Check if exists in translations
             $categoryTranslations = isset($translations[$cat]) ? $translations[$cat] : [];
-            if (array_key_exists($text, $categoryTranslations) && !is_array($categoryTranslations[$text])) {
+            // Presence alone means known: a nested map is a content block, never
+            // a missing phrase, so text colliding with a block id must not be
+            // registered as a phrase. Client::translate() branches the same way -
+            // the two checks have to agree, or the colliding text re-registers on
+            // every single render.
+            if (array_key_exists($text, $categoryTranslations)) {
                 continue;
             }
 
@@ -1169,9 +1739,27 @@ class PageTranslator
                 continue;
             }
 
-            // Check if content block exists in translations
+            // A stamped host outside a resolved scope registers under its
+            // stamped id when the catalog lacks that id; no other id is read
+            // for it (MARK-3).
+            if (!empty($block['stamped'])) {
+                $categoryTranslations = isset($translations[$cat]) ? $translations[$cat] : [];
+                if (!is_array($categoryTranslations) || !array_key_exists($customId, $categoryTranslations)) {
+                    $newBlocks[] = $block;
+                }
+                continue;
+            }
+
+            // Resolve through the client's single resolution path, so the page
+            // path sees the legacy (pre-JSON-form) ids too. Without this a block
+            // registered by an older SDK reads as new here, gets queued under the
+            // current id, and its translations are stranded on the old one - the
+            // exact damage the fallback exists to prevent, reached through the
+            // path a website most likely renders with.
             $categoryTranslations = isset($translations[$cat]) ? $translations[$cat] : [];
-            if (array_key_exists($customId, $categoryTranslations) && is_array($categoryTranslations[$customId])) {
+            if ($this->client->resolveContentBlockTranslations(
+                    $categoryTranslations, $cat, $block['phrases'], $customId, $this->htmlParser
+                ) !== null) {
                 continue;
             }
 
@@ -1221,50 +1809,6 @@ class PageTranslator
                 $block['customId'],
                 isset($block['phrases']) ? $block['phrases'] : []
             );
-        }
-    }
-
-    /**
-     * Mark items as registered with per-item categories.
-     *
-     * @param array $phrases Phrases with their categories
-     * @param array $contentBlocks Content blocks with their categories
-     * @return void
-     */
-    protected function markItemsAsRegisteredWithCategory(array $phrases, array $contentBlocks)
-    {
-        // Group items by category
-        $phrasesByCategory = [];
-        foreach ($phrases as $phrase) {
-            $cat = isset($phrase['category']) ? $phrase['category'] : '__uncategorized__';
-            if (!isset($phrasesByCategory[$cat])) {
-                $phrasesByCategory[$cat] = [];
-            }
-            $phrasesByCategory[$cat][] = $phrase['text'];
-        }
-
-        $blocksByCategory = [];
-        foreach ($contentBlocks as $block) {
-            $cat = isset($block['category']) ? $block['category'] : '__uncategorized__';
-            if (!isset($blocksByCategory[$cat])) {
-                $blocksByCategory[$cat] = [];
-            }
-            $blocksByCategory[$cat][] = $block;
-        }
-
-        // Mark items per category
-        $allCategories = array_unique(array_merge(
-            array_keys($phrasesByCategory),
-            array_keys($blocksByCategory)
-        ));
-
-        foreach ($allCategories as $cat) {
-            $catPhrases = isset($phrasesByCategory[$cat]) ? $phrasesByCategory[$cat] : [];
-            $catBlocks = isset($blocksByCategory[$cat]) ? $blocksByCategory[$cat] : [];
-
-            if (!empty($catPhrases) || !empty($catBlocks)) {
-                $this->markItemsAsRegistered($catPhrases, $catBlocks, $cat);
-            }
         }
     }
 }

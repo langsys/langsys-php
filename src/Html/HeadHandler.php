@@ -79,7 +79,9 @@ class HeadHandler
         // Extract title text
         $titles = $head->getElementsByTagName('title');
         if ($titles->length > 0) {
-            $titleText = trim($titles->item(0)->textContent);
+            // trim() alone left every internal run - and every U+00A0 - intact,
+            // because no collapse ever ran on this path at all (TOK-2).
+            $titleText = Canonical::phrase($titles->item(0)->textContent);
             if ($titleText !== '') {
                 $phrases[] = $titleText;
             }
@@ -88,7 +90,11 @@ class HeadHandler
         // Extract meta tags
         $metas = $head->getElementsByTagName('meta');
         foreach ($metas as $meta) {
-            $content = $meta->getAttribute('content');
+            // Raw, previously: meta content was pushed with no trim and no
+            // collapse at all, so a description carrying a non-breaking space or
+            // wrapped across source lines registered exactly as authored - and
+            // the apply side below had to match it byte for byte to render.
+            $content = Canonical::phrase($meta->getAttribute('content'));
             if ($content === '') {
                 continue;
             }
@@ -127,6 +133,10 @@ class HeadHandler
         // Set lang attribute on <html>
         $this->setLangAttribute($doc, $locale);
 
+        // The page is written out in UTF-8, so every charset it declares,
+        // in a head or not, says so.
+        $this->declareUtf8($doc);
+
         $head = $this->getHeadElement($doc);
         if ($head === null) {
             return;
@@ -158,7 +168,59 @@ class HeadHandler
     }
 
     /**
-     * Ensure <meta charset="utf-8"> exists in head.
+     * Elements a meta inside declares nothing in: text a browser reads up to
+     * the element's end (textarea, title, xmp, iframe, noembed, noframes) or
+     * the page's (plaintext), inert content (template, noscript, as this
+     * parser reads it), or another vocabulary (svg, math).
+     */
+    const NOT_DECLARING = ['textarea', 'title', 'xmp', 'iframe', 'noembed', 'noframes', 'plaintext', 'template', 'noscript', 'svg', 'math'];
+
+    /**
+     * Whether $meta is written where it declares nothing.
+     *
+     * @param DOMElement $meta
+     * @return bool
+     */
+    protected function declaresNothing(DOMElement $meta)
+    {
+        for ($at = $meta->parentNode; $at instanceof DOMElement; $at = $at->parentNode) {
+            if (in_array(strtolower($at->nodeName), self::NOT_DECLARING, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Make every charset the document declares UTF-8.
+     *
+     * @param DOMDocument $doc
+     * @return void
+     */
+    protected function declareUtf8(DOMDocument $doc)
+    {
+        foreach ($doc->getElementsByTagName('meta') as $meta) {
+            if ($this->declaresNothing($meta)) {
+                continue;
+            }
+
+            if ($meta->hasAttribute('charset')) {
+                $meta->setAttribute('charset', 'utf-8');
+            }
+
+            if (strtolower($meta->getAttribute('http-equiv')) === 'content-type') {
+                $meta->setAttribute('content', 'text/html; charset=utf-8');
+            }
+        }
+    }
+
+    /**
+     * Ensure the first charset the head declares, as a browser's prescan
+     * reads the page, is UTF-8: <meta charset="utf-8"> ahead of the rest when
+     * the head declares none, or when its first is a meta written where it
+     * declares nothing - a title's text - which the prescan, reading bytes,
+     * takes for one.
      *
      * @param DOMElement $head The head element
      * @param DOMDocument $doc The document (for creating new elements)
@@ -166,38 +228,19 @@ class HeadHandler
      */
     protected function ensureCharsetMeta(DOMElement $head, DOMDocument $doc)
     {
-        $metas = $head->getElementsByTagName('meta');
-        $hasCharset = false;
-
-        foreach ($metas as $meta) {
-            // Check for charset attribute
-            if ($meta->hasAttribute('charset')) {
-                $meta->setAttribute('charset', 'utf-8');
-                $hasCharset = true;
-                break;
+        foreach ($head->getElementsByTagName('meta') as $meta) {
+            if (!$meta->hasAttribute('charset') && strtolower($meta->getAttribute('http-equiv')) !== 'content-type') {
+                continue;
             }
-
-            // Check for http-equiv="Content-Type"
-            $httpEquiv = strtolower($meta->getAttribute('http-equiv'));
-            if ($httpEquiv === 'content-type') {
-                $hasCharset = true;
-                // Update content to use utf-8
-                $meta->setAttribute('content', 'text/html; charset=utf-8');
-                break;
+            if (!$this->declaresNothing($meta)) {
+                return;
             }
+            break;
         }
 
-        // If no charset found, insert <meta charset="utf-8"> at the beginning
-        if (!$hasCharset) {
-            $charsetMeta = $doc->createElement('meta');
-            $charsetMeta->setAttribute('charset', 'utf-8');
-
-            if ($head->firstChild) {
-                $head->insertBefore($charsetMeta, $head->firstChild);
-            } else {
-                $head->appendChild($charsetMeta);
-            }
-        }
+        $charsetMeta = $doc->createElement('meta');
+        $charsetMeta->setAttribute('charset', 'utf-8');
+        $head->insertBefore($charsetMeta, $head->firstChild);
     }
 
     /**
@@ -216,7 +259,16 @@ class HeadHandler
         }
 
         $titleElement = $titles->item(0);
-        $originalText = trim($titleElement->textContent);
+
+        // Canonical::phrase, not trim(), and this is the LOOKUP side.
+        //
+        // extractPhrases() collapses, so the catalog key is the collapsed form.
+        // Trimming only here meant looking up a key that was never registered
+        // while the key that WAS registered could never be found - the title
+        // silently stopped translating, and was not even re-registered, since
+        // the collapsed form was already in the catalog. Collapsing one side of
+        // a register/lookup pair is worse than collapsing neither.
+        $originalText = Canonical::phrase($titleElement->textContent);
 
         if ($originalText === '') {
             return;
@@ -242,7 +294,11 @@ class HeadHandler
         $metas = $head->getElementsByTagName('meta');
 
         foreach ($metas as $meta) {
-            $content = $meta->getAttribute('content');
+            // Raw, previously: meta content was pushed with no trim and no
+            // collapse at all, so a description carrying a non-breaking space or
+            // wrapped across source lines registered exactly as authored - and
+            // the apply side below had to match it byte for byte to render.
+            $content = Canonical::phrase($meta->getAttribute('content'));
             if ($content === '') {
                 continue;
             }
@@ -330,7 +386,7 @@ class HeadHandler
      */
     protected function interpolate($text)
     {
-        if ($this->interpolator === null || empty($this->params) || !is_string($text) || $text === '') {
+        if ($this->interpolator === null || !is_string($text) || $text === '') {
             return $text;
         }
 

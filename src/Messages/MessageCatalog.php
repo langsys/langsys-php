@@ -1,0 +1,273 @@
+<?php
+
+namespace Langsys\SDK\Messages;
+
+/**
+ * Every template an app can send, listed from its code, and every message that
+ * cannot be listed (MSG-7).
+ *
+ * A template is checked as it is added, because the checks are what make a
+ * listed template translatable at all: a brace that is not a marker, a label
+ * placeholder the framework never filled, or a label carried in a marker would
+ * each reach a translator as a broken sentence (MSG-3, MSG-11). Such a template
+ * is reported and not listed - registering it would put the defect into every
+ * language.
+ */
+final class MessageCatalog
+{
+    /**
+     * A framework placeholder left in the text (`:attribute`, `:min`, `:input`...).
+     * Each is text the framework was meant to replace, so one that survives
+     * reaches a translator, and then a reader, as a literal. The lookbehind keeps
+     * a time (`10:30`), a URL (`https://`) and `word:word` out of it.
+     */
+    const PLACEHOLDER_PATTERN = '/(?<![\w:]):[a-z][a-z_]*/';
+
+    /**
+     * Laravel's own label placeholders (MSG-11): where a sentence references a
+     * field, the label is written in, so one of these left in a template means
+     * the label never was.
+     */
+    const LABEL_PLACEHOLDERS = [':attribute', ':other', ':values'];
+
+    /** @var array<string, string> template => first source */
+    private $templates = [];
+
+    /** @var string[] */
+    private $problems = [];
+
+    /** @var string[] */
+    private $advice = [];
+
+    /** @var array<string, string> template => the code its first source gave it */
+    private $codes = [];
+
+    /**
+     * List a template, or report why it cannot be listed.
+     *
+     * @param string $template
+     * @param string $source The file, class or declaration it came from
+     * @param string|null $field The field it belongs to, when there is one
+     * @return bool Whether it was listed
+     */
+    public function add($template, $source, $field = null)
+    {
+        $source = (string) $source;
+        $where = $source . (($field === null || $field === '') ? '' : '.' . $field);
+
+        if (!is_string($template) || trim($template) === '') {
+            $this->problem($source, 'has an empty template', 'give it a whole sentence in the source language', $field);
+
+            return false;
+        }
+
+        $listable = true;
+
+        preg_match_all(self::PLACEHOLDER_PATTERN, $template, $placeholders);
+
+        foreach (array_unique($placeholders[0]) as $placeholder) {
+            if (in_array($placeholder, self::LABEL_PLACEHOLDERS, true)) {
+                $this->problem($source, "leaves the label placeholder $placeholder in \"$template\"", "write the field's label into the sentence, one template per field", $field);
+            } else {
+                $this->problem($source, "leaves the placeholder $placeholder unfilled in \"$template\"", 'write the value as a {' . substr($placeholder, 1) . '} marker', $field);
+            }
+            $listable = false;
+        }
+
+        $withoutMarkers = preg_replace(MessageTemplate::MARKER_PATTERN, '', $template);
+
+        if (strpos($withoutMarkers, '{') !== false || strpos($withoutMarkers, '}') !== false) {
+            $this->problem($source, "has a brace that is not a {name} marker in \"$template\"", 'markers are lowercase snake_case names in braces, like {min}; write anything else as text', $field);
+            $listable = false;
+        }
+
+        if ($listable && !array_key_exists($template, $this->templates)) {
+            $this->templates[$template] = $where;
+        }
+
+        return $listable;
+    }
+
+    /**
+     * List a validation rule object for one field (FRM-2). A rule implementing
+     * HasMessageTemplate is listed from its template, with the label written
+     * in and its markers kept; one without it is listed from the message it
+     * filled, and reported, naming the interface - a value filled into that
+     * message would otherwise be part of the phrase.
+     *
+     * @param object $rule
+     * @param string $label The field's label
+     * @param string $filledMessage The message the rule produced for the field
+     * @param string $source
+     * @param string|null $field
+     * @return bool Whether it was listed from a template
+     */
+    public function addRule($rule, $label, $filledMessage, $source, $field = null)
+    {
+        $stated = RuleTemplate::forField($rule, $label);
+
+        if ($stated === null) {
+            list($issue, $fix) = RuleTemplate::missingTemplateProblem($filledMessage);
+            $this->problem($source, $issue, $fix, $field);
+            $this->add($filledMessage, $source, $field);
+
+            return false;
+        }
+
+        foreach ($stated['missing'] as $marker) {
+            $this->problem($source, "uses the marker {{$marker}} but has no public \$$marker property to fill it", "add a public \$$marker property", $field);
+        }
+
+        return $this->add($stated['template'], $source, $field) && $stated['missing'] === [];
+    }
+
+    /**
+     * List a message the app defines itself (MSG-7) from its template, with
+     * its code, once. A listing has no runtime values, so a class name is
+     * instantiated without its constructor, and each `{name}` marker is
+     * checked against the class's declared public properties rather than
+     * their values; a `template()` that needs constructor state is reported.
+     * A class that is also a validation rule is listed per field by
+     * addRule(), never here.
+     *
+     * @param HasAppMessageTemplate|string $message An instance, or its class name
+     * @param string $source
+     * @return bool Whether it was listed cleanly
+     */
+    public function addMessage($message, $source)
+    {
+        $class = is_object($message) ? get_class($message) : ltrim((string) $message, '\\');
+
+        if (!is_object($message)) {
+            if (!class_exists($class) || !is_subclass_of($class, HasAppMessageTemplate::class)) {
+                $this->problem($source, 'is not a loadable class implementing ' . HasAppMessageTemplate::class, 'check the class name and its autoloading');
+
+                return false;
+            }
+
+            $message = (new \ReflectionClass($class))->newInstanceWithoutConstructor();
+        }
+
+        if ($message instanceof HasMessageTemplate) {
+            return false;
+        }
+
+        try {
+            $template = (string) $message->template();
+            $code = $message->code();
+        } catch (\Throwable $e) {
+            $this->problem($source, 'builds its template from constructor state, so it cannot be listed ahead of time (' . $e->getMessage() . ')', 'return the sentence from template() as a literal with {name} markers');
+
+            return false;
+        }
+
+        $declared = [];
+        foreach ((new \ReflectionClass($message))->getProperties(\ReflectionProperty::IS_PUBLIC) as $property) {
+            if (!$property->isStatic()) {
+                $declared[] = $property->getName();
+            }
+        }
+
+        $missing = array_values(array_diff(MessageTemplate::markers($template), $declared));
+        foreach ($missing as $marker) {
+            $this->problem($source, "uses the marker {{$marker}} but has no public \$$marker property to fill it", "add a public \$$marker property");
+        }
+
+        $listed = $this->add($template, $source);
+
+        if ($listed && $code !== null && $code !== '' && !isset($this->codes[$template])) {
+            $this->codes[$template] = (string) $code;
+        }
+
+        return $listed && $missing === [];
+    }
+
+    /**
+     * Report a message that cannot be listed: where it is, what is wrong, and the
+     * fix - one line an agent or a person can act on.
+     *
+     * @param string $source
+     * @param string $issue
+     * @param string $fix
+     * @param string|null $field
+     * @return void
+     */
+    public function problem($source, $issue, $fix, $field = null)
+    {
+        $where = (string) $source . (($field === null || $field === '') ? '' : '.' . $field);
+        $line = $where . ': ' . $issue . ' — ' . $fix;
+
+        if (!in_array($line, $this->problems, true)) {
+            $this->problems[] = $line;
+        }
+    }
+
+    /**
+     * The listed templates, sorted, each with the first source that declared it.
+     *
+     * @return array<int, array{template: string, source: string}>
+     */
+    public function templates()
+    {
+        $templates = $this->templates;
+        ksort($templates, SORT_STRING);
+
+        $out = [];
+
+        foreach ($templates as $template => $source) {
+            $entry = ['template' => (string) $template, 'source' => $source];
+            if (isset($this->codes[$template])) {
+                $entry['code'] = $this->codes[$template];
+            }
+            $out[] = $entry;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return string[]
+     */
+    public function problems()
+    {
+        return $this->problems;
+    }
+
+    /**
+     * Name something the app may want to change that is not a failure - a
+     * validated field with no declared label, which shows the name the
+     * framework derives (MSG-10). Formatted as a problem is, but never counted
+     * by hasProblems(), so it never fails a strict run.
+     *
+     * @param string $source
+     * @param string $issue
+     * @param string $fix
+     * @param string|null $field
+     * @return void
+     */
+    public function advise($source, $issue, $fix, $field = null)
+    {
+        $where = (string) $source . (($field === null || $field === '') ? '' : '.' . $field);
+        $line = $where . ': ' . $issue . ' — ' . $fix;
+
+        if (!in_array($line, $this->advice, true)) {
+            $this->advice[] = $line;
+        }
+    }
+
+    /**
+     * @return string[]
+     */
+    public function advice()
+    {
+        return $this->advice;
+    }
+
+    /**
+     * @return bool
+     */
+    public function hasProblems()
+    {
+        return $this->problems !== [];
+    }
+}

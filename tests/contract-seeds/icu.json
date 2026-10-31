@@ -1,0 +1,330 @@
+{
+    "projects": [
+        {
+            "id": "77000d00-0001-4000-8000-000000000000",
+            "title": "php icu plural#1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "{count} files",
+                    "translations": {
+                        "en": "{count, plural, one {# file} other {# files}}"
+                    }
+                }
+            ],
+            "user": {
+                "token": "126001|6e78a28306c4d06abb1dd14c5e651a465ea5e3b4",
+                "device_id": "php-icu-1"
+            }
+        },
+        {
+            "id": "77000d00-0002-4000-8000-000000000000",
+            "title": "php icu plural#2 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "{count} files",
+                    "translations": {
+                        "en": "{count, plural, one {# file} other {# files}}"
+                    }
+                }
+            ],
+            "user": {
+                "token": "126002|afce9309f37824f50c38ae9726180249a4bafae5",
+                "device_id": "php-icu-2"
+            }
+        },
+        {
+            "id": "77000d00-0003-4000-8000-000000000000",
+            "title": "php icu plural#3 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "{count} files",
+                    "translations": {
+                        "en": "{count, plural, one {# file} other {# files}}"
+                    }
+                }
+            ],
+            "user": {
+                "token": "126003|afa2147e8ac0134b596f3b992d329613a72b09fb",
+                "device_id": "php-icu-3"
+            }
+        },
+        {
+            "id": "77000d00-0004-4000-8000-000000000000",
+            "title": "php icu plural#4 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "{count} files",
+                    "translations": {
+                        "en": "{count, plural, one {# file} other {# files}}"
+                    }
+                }
+            ],
+            "user": {
+                "token": "126004|3018a8007194a9b79846b782bec40f5c169a08e4",
+                "device_id": "php-icu-4"
+            }
+        },
+        {
+            "id": "77000d00-0005-4000-8000-000000000000",
+            "title": "php icu plural#5 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "{count} files",
+                    "translations": {
+                        "en": "{count, plural, one {# file} other {# files}}"
+                    }
+                }
+            ],
+            "user": {
+                "token": "126005|11ca2aae8baa1d4a1c99a2397420f3e3c0ee4800",
+                "device_id": "php-icu-5"
+            }
+        },
+        {
+            "id": "77000d00-0006-4000-8000-000000000000",
+            "title": "php icu plural#6 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "{count} files",
+                    "translations": {
+                        "en": "{count, plural, one {# file} other {# files}}"
+                    }
+                }
+            ],
+            "user": {
+                "token": "126006|725b9168add9962ee19096f0fd18ed7765b96f8d",
+                "device_id": "php-icu-6"
+            }
+        },
+        {
+            "id": "77000d00-0007-4000-8000-000000000000",
+            "title": "php icu plural#7 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "{count} files",
+                    "translations": {
+                        "en": "{count, plural, one {# file} other {# files}}"
+                    }
+                }
+            ],
+            "user": {
+                "token": "126007|0fd4b4ce4fcd6892f71d748d6954bc64460418aa",
+                "device_id": "php-icu-7"
+            }
+        },
+        {
+            "id": "77000d00-0008-4000-8000-000000000000",
+            "title": "php icu plural#8 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "{count} files",
+                    "translations": {
+                        "en": "{count, plural, one {# file} other {# files}}"
+                    }
+                }
+            ],
+            "user": {
+                "token": "126008|d41e76d524f7b34bb4028cd26a064cc1cba51d3a",
+                "device_id": "php-icu-8"
+            }
+        },
+        {
+            "id": "77000d00-0009-4000-8000-000000000000",
+            "title": "php icu plural#9 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "{count} files",
+                    "translations": {
+                        "en": "{count, plural, one {# file} other {# files}}"
+                    }
+                }
+            ],
+            "user": {
+                "token": "126009|50d17b08b19ae048e4d4b13f321d370cc4680174",
+                "device_id": "php-icu-9"
+            }
+        },
+        {
+            "id": "77000d00-000a-4000-8000-000000000000",
+            "title": "php icu plural#10 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "{count} files",
+                    "translations": {
+                        "en": "{count, plural, one {# file} other {# files}}"
+                    }
+                }
+            ],
+            "user": {
+                "token": "126010|4bc44bc0a585c3e8bb575cd02ae8ee2b59790ce1",
+                "device_id": "php-icu-10"
+            }
+        },
+        {
+            "id": "77000d00-000b-4000-8000-000000000000",
+            "title": "php icu plural#11 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "{count} files",
+                    "translations": {
+                        "en": "{count, plural, one {# file} other {# files}}"
+                    }
+                }
+            ],
+            "user": {
+                "token": "126011|65a2528385315aaf9dc0aad8af5359986da1741d",
+                "device_id": "php-icu-11"
+            }
+        },
+        {
+            "id": "77000d00-000c-4000-8000-000000000000",
+            "title": "php icu plural#12 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "{count} files",
+                    "translations": {
+                        "en": "{count, plural, one {# file} other {# files}}"
+                    }
+                }
+            ],
+            "user": {
+                "token": "126012|f64a76ed3cdd4a40b8ac85b0a5aa7ec2a3b239e8",
+                "device_id": "php-icu-12"
+            }
+        }
+    ],
+    "keys": [
+        {
+            "id": "77000d01-0001-4000-8000-000000000000",
+            "key": "php-icu-1-read",
+            "type": "read",
+            "project": "77000d00-0001-4000-8000-000000000000"
+        },
+        {
+            "id": "77000d01-0002-4000-8000-000000000000",
+            "key": "php-icu-2-read",
+            "type": "read",
+            "project": "77000d00-0002-4000-8000-000000000000"
+        },
+        {
+            "id": "77000d01-0003-4000-8000-000000000000",
+            "key": "php-icu-3-read",
+            "type": "read",
+            "project": "77000d00-0003-4000-8000-000000000000"
+        },
+        {
+            "id": "77000d01-0004-4000-8000-000000000000",
+            "key": "php-icu-4-read",
+            "type": "read",
+            "project": "77000d00-0004-4000-8000-000000000000"
+        },
+        {
+            "id": "77000d01-0005-4000-8000-000000000000",
+            "key": "php-icu-5-read",
+            "type": "read",
+            "project": "77000d00-0005-4000-8000-000000000000"
+        },
+        {
+            "id": "77000d01-0006-4000-8000-000000000000",
+            "key": "php-icu-6-read",
+            "type": "read",
+            "project": "77000d00-0006-4000-8000-000000000000"
+        },
+        {
+            "id": "77000d01-0007-4000-8000-000000000000",
+            "key": "php-icu-7-read",
+            "type": "read",
+            "project": "77000d00-0007-4000-8000-000000000000"
+        },
+        {
+            "id": "77000d01-0008-4000-8000-000000000000",
+            "key": "php-icu-8-read",
+            "type": "read",
+            "project": "77000d00-0008-4000-8000-000000000000"
+        },
+        {
+            "id": "77000d01-0009-4000-8000-000000000000",
+            "key": "php-icu-9-read",
+            "type": "read",
+            "project": "77000d00-0009-4000-8000-000000000000"
+        },
+        {
+            "id": "77000d01-000a-4000-8000-000000000000",
+            "key": "php-icu-10-read",
+            "type": "read",
+            "project": "77000d00-000a-4000-8000-000000000000"
+        },
+        {
+            "id": "77000d01-000b-4000-8000-000000000000",
+            "key": "php-icu-11-read",
+            "type": "read",
+            "project": "77000d00-000b-4000-8000-000000000000"
+        },
+        {
+            "id": "77000d01-000c-4000-8000-000000000000",
+            "key": "php-icu-12-read",
+            "type": "read",
+            "project": "77000d00-000c-4000-8000-000000000000"
+        }
+    ]
+}

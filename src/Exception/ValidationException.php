@@ -24,7 +24,9 @@ class ValidationException extends LangsysException
     }
 
     /**
-     * Get validation errors.
+     * The failed rules, as the API's error envelope lists them: one entry per
+     * failed rule, each with its `field`, `code`, `message` and `template`,
+     * and `params` where the template has values.
      *
      * @return array
      */

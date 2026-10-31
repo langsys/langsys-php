@@ -39,7 +39,7 @@ class PhraseAttributeTest extends TestCase
     {
         $mock = new MockHttpClient();
         $this->mock = $mock;
-        $mock->setResponse('GET', 'authorize-project/p', ['data' => ['key_type' => $keyType]]);
+        $mock->setResponse('GET', 'authorize-project/p', ['data' => ['key_type' => $keyType, 'write_enabled' => $keyType === 'write']]);
         $mock->setResponse('GET', 'translations', ['data' => $translations]);
 
         $client = new Client('k', 'p', ['cache' => new NullCache()]);
@@ -118,15 +118,14 @@ class PhraseAttributeTest extends TestCase
     }
 
     /**
-     * The marker is a translatePage() feature. HtmlParser deliberately ignores
-     * it: content blocks are applied by a path with no tokenized branch, so
-     * honouring it there would register an entry that could never be rendered.
+     * A marked host inside a walked fragment is excised (MARK-4): it is its own
+     * unit, so the fragment's tokens are what remains around it.
      */
-    public function testHtmlParserIgnoresTheMarker()
+    public function testHtmlParserExcisesAMarkedHost()
     {
         $this->assertEquals(
-            ['Based on {n}', 'reviews'],
-            $this->parser->extractPhrases('<p data-langsys-phrase>Based on {n} <strong>reviews</strong></p>')
+            ['Intro', 'outro'],
+            $this->parser->extractPhrases('<p>Intro <span data-langsys-phrase>Based on {n} <strong>reviews</strong></span> outro</p>')
         );
     }
 
@@ -323,6 +322,25 @@ class PhraseAttributeTest extends TestCase
 
         $this->assertStringContainsString('title="Consejo"', $out);
         $this->assertStringContainsString('alt="Logotipo"', $out);
+    }
+
+    public function testAContentBlockTranslatesAttributesAtEveryDepthBelowAMarkedHost()
+    {
+        $client = $this->makeClient([
+            'home' => [
+                'Tooltip' => 'Consejo',
+                'Deep' => 'Profundo',
+            ],
+        ]);
+        $client->setLocale('es-es');
+
+        $out = $client->translateContentBlock(
+            '<div><p data-langsys-phrase>Read the <a href="/d" title="Tooltip"><b title="Deep">docs</b></a> now</p></div>',
+            'home'
+        );
+
+        $this->assertStringContainsString('title="Consejo"', $out);
+        $this->assertStringContainsString('title="Profundo"', $out);
     }
 
     public function testAttributesInsideAMarkedSubtreeAreRegistered()

@@ -9,8 +9,8 @@ on:
 
 jobs:
   test:
-    name: PHP ${{ matrix.php }}
-    runs-on: ubuntu-latest
+    name: PHP ${{ matrix.php }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
 
     # The Redis driver had never executed in CI. ext-redis IS present on the
     # runner, but nothing listened on 6379, so every RedisCacheTest skipped at
@@ -29,10 +29,14 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+    # libxml2 parses HTML differently by version: ubuntu-24.04 has 2.9, and
+    # ubuntu-latest a later one. The SDK reads a page the same way on both,
+    # and only a matrix with both shows it.
     strategy:
       fail-fast: false
       matrix:
         php: ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4']
+        os: ['ubuntu-24.04', 'ubuntu-latest']
 
     steps:
       - uses: actions/checkout@v4
@@ -52,6 +56,7 @@ jobs:
         run: |
           php -r 'if (!extension_loaded("intl")) { fwrite(STDERR, "ext-intl missing - ICU tests would skip\n"); exit(1); }'
           php -r 'printf("intl %s / ICU %s\n", phpversion("intl"), INTL_ICU_VERSION);'
+          php -r 'printf("libxml2 %s\n", LIBXML_DOTTED_VERSION);'
 
       - name: Validate composer.json
         run: composer validate --strict --no-check-lock
@@ -64,19 +69,27 @@ jobs:
       # still expected and correct - the missing-intl degradation tests skip
       # precisely BECAUSE intl is present - so a blanket "no skips" check would
       # be wrong in the other direction.
+      # The no-clone suite: everything but tests/Contract, which runs against
+      # an SDK test clone (a real Langsys API) and fails without one. The
+      # suites are listed once, in phpunit.xml.
       - name: Run test suite
         env:
           LANGSYS_REQUIRE_INTL: '1'
           LANGSYS_REQUIRE_REDIS: '1'
-        run: vendor/bin/phpunit
+        run: vendor/bin/phpunit --testsuite no-clone
 
   # The graceful-degradation path (missing ext-intl warns once, falls back to
   # simple substitution, and NEVER throws) is skipped on every matrix leg above,
   # because those all have intl. Without this job it is only ever exercised on a
   # developer laptop that happens to lack the extension.
   no-intl:
-    name: Degradation without ext-intl
-    runs-on: ubuntu-latest
+    name: Degradation without ext-intl (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ['ubuntu-24.04', 'ubuntu-latest']
 
     steps:
       - uses: actions/checkout@v4
@@ -95,6 +108,7 @@ jobs:
       - name: Assert ext-intl is absent
         run: |
           php -r 'if (extension_loaded("intl")) { fwrite(STDERR, "intl present - this job must run WITHOUT it\n"); exit(1); }'
+          php -r 'printf("libxml2 %s\n", LIBXML_DOTTED_VERSION);'
 
       # ext-intl is a hard composer requirement, so the platform check has to be
       # bypassed to simulate a host that lost intl after install.
@@ -104,7 +118,7 @@ jobs:
       # LANGSYS_REQUIRE_INTL is deliberately NOT set here: the ICU tests should
       # skip, and the degradation tests should run.
       - name: Run test suite
-        run: vendor/bin/phpunit
+        run: vendor/bin/phpunit --testsuite no-clone
 
   lint:
     name: Syntax check

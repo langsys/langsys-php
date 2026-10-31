@@ -16,6 +16,8 @@ Official PHP SDK for the [Langsys](https://langsys.dev) Translation API. Manage 
 - cURL extension
 - JSON extension
 - intl extension (for ICU plurals and locale-aware number/date formatting)
+- DOM, libxml, filter and tokenizer extensions (included in most PHP builds); tested on
+  libxml2 2.9 and 2.15 (CI runs both)
 - Redis extension (optional, for Redis caching)
 
 ## Installation
@@ -23,8 +25,15 @@ Official PHP SDK for the [Langsys](https://langsys.dev) Translation API. Manage 
 ### Via Composer (Recommended)
 
 ```bash
-composer require langsys/langsys-php
+composer require "langsys/langsys-php:^2.0"
 ```
+
+**Laravel:** `langsys/langsys-php-laravel` 1.0.0 requires `langsys/langsys-php` `^1.3`, so a
+Laravel app that uses it stays on langsys-php 1.x until the Laravel package releases a
+version built on 2.0.0.
+
+Coming from 1.x? [UPGRADING.md](UPGRADING.md) lists what an existing app notices.
+[tests/README.md](tests/README.md) says how to run this SDK's tests.
 
 ### Manual Installation (Without Composer)
 
@@ -66,15 +75,16 @@ Set these environment variables to configure the SDK:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `LANGSYS_API_KEY` | Yes | - | Your Langsys API key |
-| `LANGSYS_PROJECT_ID` | Yes | - | Your project UUID |
+| `LANGSYS_API_KEY` | Yes | - | Your Langsys API key. Without it the client is unconfigured (see *Without credentials*) |
+| `LANGSYS_PROJECT_ID` | Yes | - | Your project UUID. Without it the client is unconfigured |
 | `LANGSYS_API_URL` | No | `https://api.langsys.dev/api` | API base URL |
 | `LANGSYS_CACHE_DRIVER` | No | `file` | Cache driver: `file`, `redis`, or `none` |
-| `LANGSYS_CACHE_PATH` | No | System temp dir | Directory for file cache |
+| `LANGSYS_CACHE_PATH` | No | `langsys-cache` in the system temp dir | Directory for file cache |
 | `LANGSYS_CACHE_TTL` | No | `3600` | Cache TTL in seconds |
 | `LANGSYS_BASE_URL` | No | Auto-detect | Base URL for resolving relative URLs in content blocks |
-| `LANGSYS_LOG_PATH` | No | - | Path to log file (logging disabled if not set) |
+| `LANGSYS_LOG_PATH` | No | - | Path to log file (without it, warnings and errors go to PHP's error log) |
 | `LANGSYS_LOG_LEVEL` | No | `info` | Minimum log level: `debug`, `info`, `warning`, `error` |
+| `LANGSYS_MESSAGES_CATEGORY` | No | `Errors` | Category server message templates are registered and looked up under |
 
 ### Constructor Options
 
@@ -93,38 +103,69 @@ $client = new Client(
         'base_url' => 'https://example.com',  // For resolving relative URLs
         'log_path' => '/var/log/langsys.log', // Enable logging
         'log_level' => 'info',                // Minimum level to log
+        'messages_category' => 'Errors',      // Category for server message templates
+        'require_credentials' => false,       // Throw at first use when the key or project ID is missing
+        // 'logger' => $logger,               // A Langsys\SDK\Log\LoggerInterface, used instead of log_path
+        'warn_runtime_requirements' => true,  // Write setup warnings straight to PHP's error log too
     ]
 );
 ```
 
-## API Key Types
+### Without credentials
 
-Langsys supports two types of API keys:
-
-- **Read**: Can only fetch translations
-- **Write**: Can fetch translations AND register new phrases/content blocks
-
-Check your key type:
+A client built without an API key or a project ID is *unconfigured*, so an app's tests, CI
+and a fresh clone run without secrets. Every phrase and content block renders as its source
+text with its values filled, a page comes back as given, nothing is fetched or queued, and
+one warning per process names the missing settings. The miss fallback, a loaded snapshot
+and the migration mode's language files still answer. An explicit write
+(`registerPhrases()`, `registerContentBlock()`, a sync or an import) throws a
+`ConfigurationException` saying the client is not configured, and `isConfigured()` reports
+the state:
 
 ```php
-if ($client->canWrite()) {
-    // Can register phrases
-} else {
-    // Read-only access
+$client = new Client();           // LANGSYS_API_KEY and LANGSYS_PROJECT_ID unset
+$client->isConfigured();          // false
+$client->translate('Hello, {name}', 'es-es', null, null, ['name' => 'Ana']); // "Hello, Ana"
+```
+
+For production, pass `'require_credentials' => true`. The client still builds, so a
+framework can create it while it boots without secrets, and its first use throws the
+`ConfigurationException` naming the missing setting.
+
+## API Key Types
+
+Langsys has three types of API keys:
+
+- **Read**: fetches translations
+- **Write**: fetches translations and registers new phrases and content blocks
+- **IP write**: writes only from the addresses on its allow-list, and reads from anywhere
+
+Whether a request may register is the API's decision for that request, `write_enabled`,
+which depends on the key, the caller's address and any write grant. The SDK never decides
+it from the key's type, and an answer without the field is read-only. A cached
+authorization holds no decision, so a request that writes asks the API once, when it
+first needs to. `canWrite()` asks on its first call in a request and throws a
+`LangsysException` when the API cannot answer:
+
+```php
+try {
+    $writable = $client->canWrite(); // This request may register phrases, or is read-only
+} catch (\Langsys\SDK\Exception\LangsysException $e) {
+    $writable = false; // The API could not be asked
 }
 
-// Or get the type directly
-echo $client->getKeyType(); // "read" or "write"
+echo $client->getKeyType(); // "read", "write" or "ip_write": the key's type, not the decision
 ```
 
 ## Full Page Translation
 
 The `translatePage()` method translates an entire HTML document in one pass. It automatically:
 - Sets the `lang` attribute on `<html>`
-- Ensures `<meta charset="utf-8">` exists
+- Ensures `<meta charset="utf-8">` exists, in the `<head>` a browser implies when the
+  document has none (a fragment is given no head)
 - Translates `<title>`, meta description, OpenGraph tags, Twitter cards
 - Extracts and translates body content (phrases and content blocks)
-- Registers new phrases automatically (if write key)
+- Registers new phrases automatically (when the API lets the request write)
 - Falls back to original content when translations are missing
 
 ### Basic Usage
@@ -146,14 +187,48 @@ echo $client->translatePage($html, 'homepage');
 
 ### Locale Detection
 
-The SDK can auto-detect the visitor's locale from the browser:
+A locale your framework or app already resolved is the one served: pass it as
+`framework` in the request data to `resolveRequestLocale()` (a framework integration
+passes `App::getLocale()` and the like). It is mapped to the project's form, `es_ES` to
+`es-es` and a bare `es` to the project's default Spanish locale, and served as the base
+locale when the project doesn't serve it; the SDK adds no `Vary` for it.
+
+Where nothing resolved it, `getLocale()` (with no locale set) chooses the request's
+locale once per request, from the first usable source in this order:
+
+1. **The URL**: a `?locale=` query parameter, the first path segment (`/fr/pricing`)
+   or the subdomain (`fr.example.com`).
+2. **A cookie or session value** named `locale`.
+3. **`Accept-Language`**, negotiated against the project's locales.
+4. Otherwise the project's base locale.
+
+Every candidate is checked against the locales the project serves (its base and
+target locales); an unsupported one is skipped, never served. `fr` or `fr-be`
+matches a project serving `fr-fr`. The response's `Vary` names every request field the
+choice read: none when the URL decided, `Cookie` when a cookie or session value did, and
+`Accept-Language, Cookie` when the header or the base locale did (`Accept-Language` alone
+when the cookie and session lookups are off and no resolver is set), so a CDN never serves
+one visitor's language to the next. The SDK never writes a cookie.
 
 ```php
 // Explicit locale
 $client->setLocale('fr-ca');
 
-// Or let it auto-detect from HTTP_ACCEPT_LANGUAGE
-$locale = $client->getLocale(); // Returns detected locale or project's base_locale
+// Or let the request decide
+$locale = $client->getLocale();
+
+// Where your app keeps the value: parameter and cookie names, or your own resolver
+// for the URL and cookie steps (its answer is checked like any other)
+$client = new Client($key, $project, ['request_locale' => [
+    'query_param' => 'lang',
+    'cookie' => 'site_lang',      // null turns the cookie lookup off
+    'session_key' => 'site_lang', // null turns the session lookup off
+    // 'path' => false,           // don't read the first path segment
+    // 'subdomain' => false,      // don't read the first label of a host with three or more
+    // 'resolver' => fn (array $request) => ['locale' => $request['query']['l'] ?? null, 'from' => 'url'],
+    // A framework that sets Vary on its own response: take it from the result instead
+    // 'send_vary' => false,
+]]);
 
 // Chained usage
 echo (new Client())
@@ -163,19 +238,28 @@ echo (new Client())
 
 ### How It Works
 
-1. **Single-phrase blocks** are registered as simple phrases:
+The page is walked into **units**: every element that does not contain block
+elements of its own — a paragraph, a list item, a heading, and equally an `<img>`,
+`<input>`, `<button>` or `<a>` sitting directly under a container. A unit's phrases
+are its own translatable attributes first (`title`, `alt`, `placeholder`, … in a
+fixed order), then its text in document order.
+
+1. **A unit whose one phrase is its one text node** registers as a simple phrase:
    - `<p>Hello</p>` → phrase "Hello"
    - `<p><strong>Hello World</strong></p>` → phrase "Hello World" (inline formatting preserved)
    - `<p><a href="#">Click here</a></p>` → phrase "Click here"
-2. **Multi-phrase blocks** are registered as content blocks:
+   - `<p><svg>…<text>Label</text></svg></p>` → phrase "Label" (the drawing is kept)
+2. **Any other unit** registers as a content block:
    - `<p><strong>Hello</strong> World</p>` → content block with phrases ["Hello", "World"]
    - `<nav><a>Home</a><a>About</a></nav>` → content block with phrases ["Home", "About"]
-   - `<p><input placeholder="Email"></p>` → content block (phrase from attribute)
+   - `<p title="Tooltip">Hello</p>` → content block with phrases ["Tooltip", "Hello"]
+   - `<img alt="Logo">` → content block with phrases ["Logo"] (an attribute has no text node to write into)
 3. **Head section** is processed for translatable meta tags
 4. **`translate="no"`** attribute is respected to skip elements
 5. **Script/style** tags are never processed
 
-The key distinction: if a block element contains exactly **one phrase** that matches its text content, it's a simple phrase. Multiple phrases (from text nodes or attributes) = content block.
+The same content yields the same shape in every Langsys SDK, because a phrase and
+a block holding the same words are two catalog entries with two ids.
 
 ### Example Output
 
@@ -198,7 +282,7 @@ echo $client->translatePage($html, 'homepage');
 
 // Output (with translations available):
 // <!DOCTYPE html>
-// <html lang="es-es">
+// <html lang="es-es" data-ls-resolved="es-es">
 // <head>
 //     <meta charset="utf-8">
 //     <title>Bienvenido</title>
@@ -267,17 +351,21 @@ For more flexible category assignment, use CSS selectors to map elements to cate
 ```php
 $client->setLocale('es-es');
 echo $client->translatePage($html, 'homepage', [
-    // Navigation links get their own category
-    'nav li' => ['category' => 'Navigation'],
-
-    // Multiple selectors for the same category
-    '.action, .btn' => ['category' => 'UI Elements'],
-
-    // Override even parent's data-langsys-category
-    'section.contact' => [
-        'category' => 'Contact Form',
+    // Navigation links get their own category, under the page's
+    'nav li' => [
+        'category' => 'Navigation',
         'overrideParentElementCategory' => true,
     ],
+
+    // Multiple selectors for the same category
+    '.action, .btn' => [
+        'category' => 'UI Elements',
+        'overrideParentElementCategory' => true,
+    ],
+
+    // Without the override, a rule applies only where no category reaches
+    // the element, so under 'homepage' this one never does
+    '.promo' => ['category' => 'Promotions'],
 ]);
 ```
 
@@ -294,13 +382,13 @@ echo $client->translatePage($html, 'homepage', [
 **Priority order (highest to lowest):**
 1. Selector with `overrideParentElementCategory: true`
 2. Element's `data-langsys-category` attribute
-3. Inherited category from parent
+3. The category inherited from a parent element; at the top of the page, the category
+   passed to `translatePage()`
 4. Selector with `overrideParentElementCategory: false`
-5. Default category parameter
-6. `__uncategorized__`
+5. `__uncategorized__`
 
 **About `overrideParentElementCategory`:**
-This option is most often desired to be `true`, ensuring selector-matched elements always use their assigned category. The default is `false` to require an explicit decision for each selector, since enabling it overrides any `data-langsys-category` attributes set in the HTML. When `false`, the HTML attribute takes precedence over the selector rule.
+This option is most often desired to be `true`, ensuring selector-matched elements always use their assigned category. The default is `false` to require an explicit decision for each selector, since enabling it overrides any `data-langsys-category` attributes set in the HTML. When `false`, the HTML attribute and the inherited category both take precedence over the selector rule, and every element inherits the category passed to `translatePage()`: a selector without the override applies only when `translatePage()` is given no category and no ancestor carries one.
 
 **Recommended starting configuration:**
 
@@ -345,12 +433,33 @@ By default, `translatePage()` decomposes nested content into individual phrases 
 </section>
 ```
 
-**Truthy values:** `"true"`, `"1"`, `"yes"`, or any non-empty string (but not `"false"`, `"0"`, or `""`)
+**What the value means** (either spelling, `data-langsys-contentblock` or `data-ls-contentblock`;
+trimmed, case-insensitive):
+
+- **No value, `""`, `"true"`, `"1"` or `"yes"`** declares a block. The SDK registers the element
+  as one content block and, when it renders it, sets the attribute to the block's id.
+- **`"false"` or `"0"`** opts out: the element is walked as ordinary markup.
+- **Any other value** is the block's id, stamped by a renderer or supplied by your app. The
+  element renders from the catalog entry under that id, or stays in the source language if the
+  catalog holds none. When the catalog lacks the id, the element's content is registered under
+  it, unless the element or an ancestor carries `data-ls-resolved`: a server rendered that
+  markup from the catalog, so nothing is registered for it.
+
+Every rendered block host carries `data-ls-contentblock="<id>"`, the id it was rendered from, so
+the block can be identified from the page in a browser inspector.
 
 **Use cases:**
 - Complex widgets that should be translated as a unit
 - Content where phrase order and context is critical
 - Reusable components with interdependent text
+
+**A marked element inside other content is its own unit.** An element carrying
+`data-langsys-contentblock` or `data-langsys-phrase` inside a paragraph, a content
+block or another marked element contributes none of its words to what surrounds
+it: it is registered and translated on its own, on `translatePage()` and
+`translateContentBlock()` alike. So `<p>See <span data-langsys-phrase>our <b>new</b>
+plans</span> today</p>` registers the block `["See", "today"]` and the phrase
+`our {m0o}new{m0c} plans`, and the same words never register twice.
 
 ## Fetching Translations
 
@@ -401,7 +510,7 @@ $text = $client->translate('Hello, {name}!', null, 'UI', null, ['name' => 'Sarah
 ```
 
 If the phrase doesn't exist in translations, it will be:
-1. Queued for registration (if write key)
+1. Queued for registration (when the API lets the request write)
 2. Returned as-is (fallback to original)
 3. Added to in-memory cache to prevent re-queueing in same request
 
@@ -440,10 +549,9 @@ In `translateContentBlock()`, placeholders resolve in text nodes **and** in
 translatable attributes (`placeholder`, `alt`, `title`, …).
 
 In `translatePage()`, placeholders resolve in text nodes, in the `<head>`
-(`<title>`, meta description, `og:*`, `twitter:*`), and in attributes on elements
-that are classified as content blocks. An attribute on an element that is *not*
-part of a content block — for example a lone `<input placeholder="Search {site}">`
-beside a paragraph — is currently neither extracted nor interpolated.
+(`<title>`, meta description, `og:*`, `twitter:*`), and in translatable
+attributes, including a lone `<input placeholder="Search {site}">` beside a
+paragraph.
 
 #### Behaviour
 
@@ -455,6 +563,7 @@ beside a paragraph — is currently neither extracted nor interpolated.
 | String value | Passed through untouched — the **opt-out** from number formatting (IDs, codes) |
 | Int / float | Formatted for the locale (`1234.5` → `1.234,5` in de-DE) |
 | Bool | `"true"` / `"false"` |
+| Enum | A backed enum by its value, a plain enum by its name |
 | `DateTimeInterface` | Locale-formatted, medium date style |
 | Phrase not translated yet | Fallback text still interpolates, so users never see raw `{name}` |
 
@@ -528,6 +637,11 @@ Notes:
 - Element attributes (classes, `href`) are preserved — only the position is
   taken from the translation.
 - Presence alone enables it; `data-langsys-phrase="false"` (or `"0"`) opts out.
+- An element you excluded (`translate="no"`, `data-notrans`) is one empty token
+  pair, `Signed in as {m0o}{m0c} today`, whatever it holds, and renders exactly
+  as you wrote it, values included: a translator never sees its text, and a
+  translation cannot write into it. A run made only of excluded elements
+  registers nothing.
 - If a translation drops, unbalances or misnumbers the tokens, the text is
   rendered without the markup rather than failing. The rendered page never
   contains literal `{m0o}`/`{m0c}` tokens on any path.
@@ -542,6 +656,60 @@ exactly the content that needed it. This only applies when a JS tokenizer walks
 server-rendered nodes; a JS app rendering its own components from the catalog
 never sees this SDK's DOM.
 
+#### Translated pages are marked as resolved
+
+A page rendered in a language other than your project's base language is output,
+not source. `translatePage()` says so on the root element:
+
+```html
+<html lang="es-es" data-ls-resolved="es-es">
+```
+
+Anything that walks that page later — a Langsys JS SDK hydrating it, or a middleware
+translating the response again — registers none of its text, so Spanish never enters
+the catalog as a source phrase. The page still translates and keeps its content-block
+ids. A page rendered in the base language is source and carries no marker, so it stays
+discoverable. A marker you put on the root yourself, in either spelling
+(`data-ls-resolved` or `data-langsys-resolved`), is left as it is.
+
+**A client-side app mounted inside a translated page** renders source text of its own,
+which should still be discovered. Opt its mount point back out:
+
+```html
+<div id="app" data-ls-resolved="false"></div>
+```
+
+The nearest marked ancestor decides, and only `false` or `0` opt out.
+
+#### Values from variables
+
+A sentence that shows a value — a user's name, a count — is one phrase however many
+values it is shown with. Rendered text alone can't say which part was a variable, so a
+template integration marks each value it prints:
+
+```html
+<p>Hello <!--ls:name-->Ana<!--/ls-->, welcome back</p>
+<!-- or, where comments can't be written: -->
+<p>Hello <span data-ls-param="name">Ana</span>, welcome back</p>
+```
+
+`translatePage()` and `translateContentBlock()` read either form as the phrase
+`Hello {name}, welcome back` with `name` = `Ana`. Every user's render registers that one
+phrase, a translation places the value where its `{name}` is, and the output keeps the
+marker around the value. A plural or select in the translation chooses on the value
+itself:
+
+| Markup | Registers |
+|---|---|
+| `<p>Hello <!--ls:name-->Ana<!--/ls--></p>` | the phrase `Hello {name}` |
+| `<p>Hi <b><!--ls:name-->Ana<!--/ls--></b>, you have <!--ls:count-->3<!--/ls--> messages</p>` | one block, `Hi` · `{name}` · `, you have {count} messages` |
+| `<td><!--ls:total-->89.00<!--/ls--> <!--ls:currency-->EUR<!--/ls--></td>` | nothing: it has no text of its own |
+| `<p>Hello <!--ls:Name-->Ana<!--/ls--></p>` | nothing: a name must match `[a-z][a-z0-9_]*`, and a value that can't be named is never registered (one debug notice) |
+
+A param you pass yourself under the same name wins over the marked value. A pair with an
+element inside it, an unclosed pair and any other comment are ordinary markup. Text
+without markers registers what it renders.
+
 #### Plurals (ICU MessageFormat)
 
 Full ICU is supported, so plural categories are correct per language — Russian's
@@ -554,13 +722,21 @@ $client->translate(
 );
 ```
 
+Langsys also turns a flat phrase into a plural where a target locale needs one:
+`You have {count} new messages.` is stored for Spanish as
+`{count, plural, one {Tienes # mensaje nuevo.} other {Tienes # mensajes nuevos.}}`.
+The client asks the API for that ICU form (`X-Langsys-Capabilities: icu`) on every
+request, so a call that passes `count` renders the right form with no change.
+
 Requires the `intl` extension. If `intl` is disabled at runtime the SDK logs a
-warning naming the phrase and falls back to simple `{name}` substitution rather
-than failing the render. Malformed ICU also falls back rather than throwing.
+warning naming the phrase and renders without it rather than failing the render: a
+`select` still picks its branch, a plural picks an exact `=N` branch, else `one` at 1,
+else `other`, a number is written as given and a date as `Y-m-d`. Malformed ICU also falls back rather
+than throwing.
 
 ### Translate a Content Block
 
-The `translateContentBlock()` method translates HTML content AND automatically queues new content blocks for registration:
+The `translateContentBlock()` method translates HTML content AND automatically queues what is new for registration. The fragment is one unit, read the way the page walk reads one: a fragment whose one phrase is its one text node, such as `<p>Hello</p>`, is looked up, registered and rendered as the phrase "Hello", written back into that text node; anything else is a content block:
 
 ```php
 $client->setLocale('es-es');
@@ -577,7 +753,7 @@ $translated = $client->translateContentBlock($html, 'homepage');
 $translated = $client->translateContentBlock('<p>Hi {name}</p>', 'homepage', ['name' => 'Sarah']);
 ```
 
-This uses the same phrase extraction logic as `registerContentBlock()`, ensuring consistent behavior between translation and registration.
+This uses the same phrase extraction logic as `registerContentBlock()`, ensuring consistent behavior between translation and registration: `registerContentBlock('<p>Hello</p>')` registers the phrase "Hello". Passing a custom id names a content block explicitly, and it registers as one whatever its shape.
 
 ### Automatic Registration (Queuing)
 
@@ -591,11 +767,41 @@ $client->translate('New phrase');
 $client->translateContentBlock('<p>New content</p>');
 $client->translatePage($html);
 
-// Items are flushed automatically via PHP shutdown handler
-// Or flush manually:
+// Flush manually, or let the shutdown handler do it:
 $result = $client->flushPendingRegistrations();
-// Returns: ['phrases' => 5, 'content_blocks' => 2, 'success' => true]
+// Returns: ['phrases' => 5, 'content_blocks' => 2, 'success' => true, ...]
 ```
+
+The automatic flush is **best-effort**. A `Client` sends what it still has queued
+when it is freed, and one still alive when the process ends sends it from a shutdown
+function. Neither happens when the process is killed (out of memory, a hard timeout),
+and a long-lived worker (Octane, Swoole, a queue worker) that keeps one `Client` for
+its whole life reaches neither until it exits. Call `flushPendingRegistrations()`
+yourself at the end of each request or job, then `resetRequestState()`; the reset
+drops anything still queued, so one request's phrases never go out with another's, and
+clears the locale, one set with `setLocale()` included.
+
+**When a send fails** the items stay queued and the SDK backs off: the next flush
+waits 3 seconds, then 6, doubling up to 5 minutes, and the first successful send
+resets the wait. The wait belongs to the `Client`, so on a long-lived worker it
+carries across requests, and a failing endpoint is not asked again by every request.
+`retained` in the result counts what is still queued; `dropped` counts what nothing
+will send.
+
+**`reason` says why a flush did not succeed**, and is null when it did:
+
+| `reason` | Meaning |
+|---|---|
+| `not_write_enabled` | This request may not write; the queue is dropped. |
+| `catalog_unavailable` | The catalog could not be read, so no miss could be decided and nothing was queued. |
+| `backing_off` | Waiting after a failed send; the queue is kept. |
+| `decision_unavailable` | Whether this request may write could not be read; the queue is kept. |
+| `send_failed` | The API refused or never received the batch; the queue is kept. |
+
+**A phrase ending in an ellipsis** (`…` or `...`) is logged at debug level, since
+upstream code may have cut a longer text short. It is not registered only when a
+longer phrase starting with the same text is already known in its category, so
+`Loading…` registers normally.
 
 **Queue Management:**
 
@@ -613,7 +819,11 @@ $blocks = $client->getPendingContentBlocks();
 $client->clearPendingRegistrations();
 ```
 
-> **Note**: With a read-only API key, items are queued but silently skipped during flush (no errors).
+> **Note**: With a key that may not write, the flush sends nothing and reports the
+> items as `dropped`. A key whose type writes but that the server answers with
+> `write_enabled: false` (an `ip_write` key used from an address off its allow-list,
+> for example) is reported once, as a warning, so a misconfigured integration is
+> not silent.
 
 ### Get Translation Statistics
 
@@ -640,7 +850,8 @@ $response = $resource->getFlat('es-es');
 
 ## Registering Phrases
 
-> **Note**: Requires a write-type API key.
+> **Note**: Registers only when the API lets this request write (`canWrite()`); otherwise
+> `registerPhrases()` and `registerContentBlock()` throw a `LangsysException`.
 
 ### Register Simple Phrases
 
@@ -896,7 +1107,7 @@ $client = new Client('key', 'project', ['cache_clear' => true]);
 
 ## Logging
 
-The SDK includes optional file-based logging in JSON Lines format. Logging is disabled by default and only enabled when a valid writable file path is configured.
+The SDK logs to a file in JSON Lines format when a writable file path is configured. Without one, warnings and errors still go to PHP's error log, prefixed `[langsys]`, so a failed registration or an unreachable API is never recorded nowhere; nothing below warning is written there. Pass `'error_log' => false` to turn that off. The one-time warnings about the setup itself (a client without credentials, a missing `intl`, a PHP below 7.4) are written to PHP's error log even then; pass `'warn_runtime_requirements' => false` to turn those off too.
 
 ### Enable Logging
 
@@ -919,7 +1130,7 @@ $client = new Client();
 |-------|-------------|
 | `debug` | Detailed debugging info (cache hits/misses, request details) |
 | `info` | General operational events (API requests completed, authorization) |
-| `warning` | Non-critical issues (read-only key can't register phrases) |
+| `warning` | Non-critical issues (a key whose type writes but that the server refuses, a translation that fails to format) |
 | `error` | Errors (API request failures, exceptions) |
 
 ### What Gets Logged
@@ -951,20 +1162,21 @@ Each log entry includes a `context` object with relevant data. Here are the cont
 
 | Message | Level | Context Variables |
 |---------|-------|-------------------|
-| `Cache hit` | debug | `key`, `source` (`memory`, `file`, or `redis`) |
-| `Cache miss` | debug | `key`, `reason` (`not_found`, `expired`, `invalid`) |
-| `Translations cache hit` | debug | `locale`, `source` |
+| `Cache hit` | debug | `key` |
+| `Cache miss` | debug | `key`, `reason` (`not_found`; for the file cache also `expired`, `read_error`, `invalid_data`) |
+| `Translations cache hit` | debug | `locale`, `source` (`memory` or `persistent`) |
 | `Translations cache miss` | debug | `locale` |
 | `Cache set` | debug | `key`, `ttl` |
-| `Cache delete` | debug | `key` |
-| `Cache cleared` | debug | `keys_removed` |
+| `Cache delete` | debug | `key`, `success` |
+| `Cache cleared` | debug | `files_removed` (file cache) or `keys_removed` (Redis) |
 | `Cache cleared on initialization` | info | (none) |
 
 **Authorization:**
 
 | Message | Level | Context Variables |
 |---------|-------|-------------------|
-| `Project authorized` | info | `project_id`, `key_type` |
+| `Project authorized` | info | `project_id`, `key_type`, `write_enabled` |
+| `This key cannot register new text: …` | warning | `project_id`, `key_type` |
 
 **Translations:**
 
@@ -979,7 +1191,7 @@ Each log entry includes a `context` object with relevant data. Here are the cont
 | `Phrase queued for registration` | debug | `phrase`, `category` |
 | `Content block queued for registration` | debug | `custom_id`, `category`, `phrase_count` |
 | `Pending registrations flushed` | info | `phrases`, `content_blocks`, `success` |
-| `Cannot flush registrations: read-only key` | warning | (none) |
+| `Flush skipped - this request may not write` | debug | `pending_phrases`, `pending_content_blocks` |
 
 ### Log Entry Format
 
@@ -1044,6 +1256,423 @@ The log viewer includes:
 - Statistics cards showing counts by log level
 - Expandable context for each entry with close button
 
+## Server Messages
+
+Validation errors and other messages your server sends can be translated like any
+phrase, without changing how your framework reports them. Each message travels as an
+entry: `template`, your framework's own sentence before its values are filled, and
+`params`, those values; `message` is the filled sentence, shown until a translation
+exists. `code` and `field` are whatever your framework already reports - its rule
+name or error identifier, and its field path - carried unchanged, or absent. A
+translator sees one whole sentence, so gender and number come out right.
+
+### Build entries
+
+```php
+use Langsys\SDK\Messages\ServerMessage;
+
+$entry = ServerMessage::make('min', 'The password field must be at least {min} characters.', ['min' => 12], 'password');
+
+$entry->getMessage(); // "The password field must be at least 12 characters."
+$entry->toArray();    // field, code, message, template, params
+```
+
+The template is your framework's own sentence with the field's label written in where
+it references the field (Laravel's `The :attribute field is required.` becomes `The
+password field is required.`). Use a `{name}` marker only for a value that isn't
+translatable: a number, a date, what the user typed. Attach the entries to your
+framework's own error response under a key of your choosing; the response otherwise
+stays exactly as your framework writes it.
+
+### Render entries
+
+```php
+use Langsys\SDK\Messages\MessageSet;
+
+$messages = MessageSet::fromResponse($responseBody); // finds entries wherever they sit
+// or: MessageSet::fromResponse($responseBody, ['key' => 'translatable', 'pieces' => ['template' => 'msgid']]);
+
+foreach ($messages->forField('password') as $entry) {
+    echo $client->translateMessage($entry); // translated, or the server's message until it is
+}
+```
+
+`translateMessage()` looks the template up under the `Errors` category and never uses
+the filled message as a key. When your server sends an entry, pass it through
+`$client->emitMessage($entry)`: a template the catalog doesn't have yet is registered
+after the response.
+
+### Register every template ahead of time
+
+A message doesn't exist until something fails, so no page shows it for discovery. List
+them from your code instead:
+
+```php
+// langsys-messages.php
+use Langsys\SDK\Client;
+use Langsys\SDK\Messages\ErrorClassSource;
+
+return [
+    'sources' => [new ErrorClassSource([App\Errors\QuotaExceeded::class])],
+    'client' => function () { return new Client(); },
+];
+```
+
+```bash
+vendor/bin/langsys-messages             # counts the templates, and reports each one it can't list
+vendor/bin/langsys-messages -v          # lists each template and where it comes from
+vendor/bin/langsys-messages --register  # registers the ones the catalog doesn't have yet
+vendor/bin/langsys-messages --strict    # exits 1 when any message can't be listed
+vendor/bin/langsys-messages --config=path/to/langsys-messages.php  # default: ./langsys-messages.php
+```
+
+A message the command can't list still registers the first time your server sends it,
+so it is reported, not failed; add `--strict` in CI if no error should ever show
+untranslated. An error class declares a `MESSAGE` constant, a public property for
+each marker, and optionally a `CODE`, passed through as the entry's code. A template
+that still holds a Laravel label placeholder (`:attribute`, `:other`, `:values`) is
+refused: write the label in.
+
+A message your app defines itself — an API error, a system notice — declares its sentence
+and code by implementing `HasAppMessageTemplate`:
+
+```php
+use Langsys\SDK\Messages\HasAppMessageTemplate;
+use Langsys\SDK\Messages\ServerMessage;
+
+final class QuotaExceeded implements HasAppMessageTemplate
+{
+    public function __construct(public int $limit) {}
+
+    public function template() { return 'You have used all {limit} of this month\'s requests.'; }
+    public function code() { return 'quota_exceeded'; }
+}
+
+$catalog->addMessage(QuotaExceeded::class, 'app/Errors');  // listed once, with its code
+$entry = ServerMessage::fromApp(new QuotaExceeded(500));    // what you send at runtime
+```
+
+It is registered under the messages category with its code; each `{name}` marker is filled
+from the public property of the same name. Listing a class builds it without its
+constructor, so `template()` must return the sentence itself rather than build it from
+constructor arguments. A translate call inside `template()` belongs to that listing:
+`planSync()` lists it in `$plan->viaMessageListing` instead of registering it. Pass the
+classes your framework discovered as `['message_classes' => [...]]`, so one that inherits
+the interface is recognised too, and the listed templates as
+`['listed_templates' => array_column($catalog->templates(), 'template')]`, so a sentence the
+listing already registers isn't registered a second time, uncategorised, from wherever else
+it is called.
+
+Some findings are advice rather than problems — a validated field with no declared label,
+which shows the name the framework derives. A source reports those with
+`$catalog->advise($source, $issue, $fix, $field)`; the command prints them under
+"Advice", and they never fail it, `--strict` included.
+
+## Migrating from Key-Based Translation Files
+
+If your app calls translations by key (`checkout.submit`) and keeps its text in
+language files, you can move to Langsys without rewriting a single call. Keep only
+your source-language file, delete the others, and name it in the `migration` option:
+
+```php
+$client = new Client('your-api-key', 'your-project-id', [
+    'migration' => [
+        'files' => [
+            ['path' => 'lang/en.json', 'format' => 'laravel'],
+            'lang/en/checkout.php',
+        ],
+    ],
+]);
+
+echo $client->translate('checkout.submit'); // looks up "Place order" in your file
+```
+
+- **A key resolves to its text.** The text, not the key, is what gets registered and
+  translated, so you can later replace the key with the text and delete the file with
+  nothing else changing.
+- **The key's namespace becomes the category.** `checkout.submit` registers under
+  `checkout`, or under the category you pass.
+- **Anything that isn't a key is text.** `translate('Pay now')` works as always, and
+  registers exactly as written: `translate()` takes Langsys syntax.
+- **A framework's own call converts its own syntax.** Text that reaches Laravel's
+  `__()` or `trans_choice()` without being a key is written in Laravel's syntax, and
+  `LegacyValue::fromCall($text, $replace, '__')` (or `'trans_choice'` with the
+  number) turns it into the Langsys phrase and the params to render it with, the way
+  Laravel reads it: only the placeholders the call passes convert, a `|` is a plural
+  only through `trans_choice()`, and `:Name`/`:NAME` stay as written with a warning.
+  So `__('Hello :name', ['name' => $n])` and `translate('Hello {name}')` are one phrase.
+- **Placeholders are converted in every file.** `:name`, `{{name}}`, `{name}`, `%{name}`,
+  `%(name)s` and `%(name)d` all become `{name}`, and `%%` is a literal `%`. A placeholder
+  carrying number formatting (`%.2f`, `%(amount).2f`) or no name (`%s`) is registered as
+  written, with a warning.
+- **Plurals are converted by the file's format**: `laravel`, `vue-i18n`, `i18next` or
+  `plain`. The frameworks read the same characters differently (`car | cars` is a
+  plural in vue-i18n and plain text in Laravel), so each file says which one wrote it.
+  A PHP array file is `laravel` unless you say otherwise; a JSON file is `plain`, which
+  converts no plurals, so declare the format of any JSON file that holds them. Any other
+  format, such as a Rails YAML file or a gettext `.po`, is refused when the `Client` is
+  created, with an error naming the format and the file.
+- **A JSON file can sit under a namespace**: `['path' => 'locales/en/cart.json',
+  'namespace' => 'cart']` answers `cart.items.title` from `{"items": {"title": ...}}`, as
+  a PHP array file answers keys under its own name.
+- **Forms that can't be converted are registered as written, with a warning**: a
+  capitalising placeholder like `:Name`, or a plural range with no exact equivalent.
+- **A framework's own bundled strings go in `fallback_files`**, which answer only
+  keys your `files` don't define. Package keys (`courier::messages.welcome`) resolve
+  through `'namespaces' => ['courier' => ['files' => [...], 'fallback_files' => [...]]]`.
+
+With no `migration` option nothing is read and nothing is looked up.
+
+### Import the translations you already have
+
+Before deleting your target-language files, import them once, so the work already
+done shows in Langsys immediately instead of being machine translated again:
+
+```php
+$result = $client->importLegacyTranslations([
+    'es-es' => ['files' => ['lang/es.json', 'lang/es/checkout.php']],
+    'fr-fr' => ['files' => ['lang/fr.json', 'lang/fr/checkout.php']],
+]);
+// ['success' => true, 'phrases' => 214, 'translations' => 401,
+//  'human_translations_saved' => 401, 'human_translations_skipped' => 0, 'skipped' => [...]]
+```
+
+Each locale's configuration has the `migration` option's shape. Every key your source
+files define registers the phrase a lookup of that key registers, together with each
+locale's translation of the same key, converted the same way; Langsys stores those as
+human translations and does not machine translate them.
+
+- A locale your project doesn't target is refused before anything is sent.
+- A translation that is missing, empty, or can't be converted is not imported: the
+  phrase still registers, that locale is machine translated, and `skipped` lists the
+  key, the locale and why.
+- Past your plan's human-translated words for the period, the rest are machine
+  translated; `human_translations_skipped` counts them.
+- The import needs a request the API lets write; otherwise it returns `success: false`
+  and `reason: 'not_write_enabled'`, and a refused request returns
+  `reason: 'send_failed'`.
+
+List what can't be migrated as it stands by adding
+`new Langsys\SDK\Migration\LegacyKeysSource($client->getLegacyKeys())` to the sources
+in your `langsys-messages.php`: it names each value it can't convert and each key
+defined in more than one of your files.
+
+## Behind a Framework's Translate Function
+
+These are the pieces a framework binding (such as the Laravel binding) builds its own
+`__()` on. With them an app keeps calling its framework's function, its language files
+keep working, and phrases register from a sync command instead of at runtime.
+
+### Sync: register from source, not at runtime
+
+```php
+use Langsys\SDK\Sync\SourceScanner;
+
+$scanner = new SourceScanner(); // __, trans, t, trans_choice, Lang::get, Lang::choice
+$hits = [];
+foreach ($files as $path) {
+    $hits = array_merge($hits, $scanner->scan(file_get_contents($path), $path));
+}
+
+$plan = $client->planSync($hits, ['es-es' => ['files' => ['lang/es.json']]]);
+$plan->counts();      // ['in_catalog' => 120, 'with_translations' => 14, 'new' => 3]
+$plan->reported;      // calls whose argument isn't a literal, with file and line
+$plan->failsStrict(); // true when any call was reported
+
+$client->applySync($plan); // registers what the catalog lacks
+```
+
+In a CI gate with no API key, plan offline instead. Every phrase counts as new, and what
+a strict run would fail on is still reported:
+
+```php
+use Langsys\SDK\Sync\Planner;
+
+$plan = Planner::offline($hits, ['files' => ['lang/en.json']], [], ['covered_groups' => ['validation']]);
+exit($plan->failsStrict() ? 1 : 0);
+```
+
+Only a literal is a phrase: `__('Welcome back')` is collected, `__($message)` is reported
+and never registered. A key built inside a literal group, `__("validation.$key")`, is
+listed in `$plan->covered` instead: every line of that group in your base-language files
+registers anyway, so it doesn't fail `--strict`. A group whose lines register another way — Laravel's
+`validation` — is named with `planSync($hits, $targets, ['covered_groups' => ['validation']])`. A key your `migration` files hold registers as a lookup of it would,
+under its group; any other literal registers as its call converts it, so
+`__('Hello :name', ['name' => $n])` registers `Hello {name}`. Replacements the source
+doesn't spell out still count: `compact('name')` passes `name`, and a variable passes every
+placeholder in the text, as the running call would. A phrase the catalog lacks
+but your other languages' files translate registers with those translations, stored as
+human translations.
+
+A line a template prints raw — a `getHtml(...)` or `choiceHtml(...)` call on the translator,
+which the Laravel package's next release compiles `@lang`, `@t` and `@choice` to — registers with its inline markup as tokens, `Read our {m0o}terms{m0c}`, the phrase
+`translateRich()` looks up, and its translations from your other languages' files are
+tokenized the same way, each run on your source element it belongs to: a tag your line
+holds once is that element, and of a tag it holds more than once, each is the element with
+the same attributes, so a translation may reorder two links. One whose elements can't be
+matched so (another count or tag, or two links whose attributes tell neither apart) is
+listed in `$plan->skipped` as `not_converted`, and your language file keeps serving that
+line. Once the catalog answers, the page rebuilds your source's own
+elements, so an attribute a translated file changed, such as a localized `href`, gives way
+to the source's.
+
+With `'runtime_registration' => false`, `translate()`, `translateMessage()` and
+`emitMessage()` register nothing; `translatePage()` and `translateContentBlock()` still discover what they render.
+
+A line that still holds a label placeholder — `:attribute`, `:other`, `:values` — is
+never registered on its own: at runtime the field's label is written in, so the raw line
+is never looked up. `$plan->viaValidation` lists each one; it registers through your
+validation listing, once per field.
+
+### Validation rule objects
+
+A rule object hands the validator a finished message, values filled in. Let it state its
+sentence instead, so the value stays a marker:
+
+```php
+use Langsys\SDK\Messages\HasMessageTemplate;
+
+class MaxWords implements ValidationRule, HasMessageTemplate
+{
+    public function __construct(public int $max) {}
+
+    public function template()
+    {
+        return 'The :attribute may not have more than {max} words.';
+    }
+}
+```
+
+`MessageCatalog::addRule($rule, $label, $filledMessage, $source, $field)` lists it once per
+field with the label written in — `The summary may not have more than {max} words.` — and
+`RuleTemplate::forField($rule, $label)` gives the same template and `['max' => 50]` for the
+runtime entry. A rule without the interface is listed from its filled message and
+reported, which fails `--strict`.
+
+### Language files as the fallback
+
+```php
+$client->useMissFallback(function ($phrase, $locale, $category, $argument) {
+    return $myFramework->line($argument, $locale); // the line, unfilled, or null
+});
+
+$client->resolve('Welcome, {name}', 'es-es', null, ['name' => 'Ana']);
+// ['text' => 'Bienvenido, Ana', 'from' => 'catalog' | 'fallback' | 'source']
+```
+
+A phrase resolves to the catalog's translation, then to your language file's line, then
+to the source, filled with its params either way. When the catalog can't be read — the API
+unreachable, a failed load — `translate()` and `resolve()` carry on down that chain without
+throwing, and say so once, at debug. `from` says who wrote the text: print
+catalog text escaped wherever your framework prints raw.
+
+### Lines with links: `translateRich()`
+
+```php
+$client->translateRich('Read our <a href="/terms">terms</a>');
+// ['html' => 'Lee <a href="/terms">los términos</a>', 'from' => 'catalog']
+```
+
+The line registers as `Read our {m0o}terms{m0c}`. Rendering rebuilds only your source's
+elements, with their attributes as you wrote them, around the translated text: a tag or
+attribute in a translation comes out as text, so a translation can move your link but never
+add one, change its `href` or run script. An element you excluded is never translated: it
+renders as you wrote it, with the params you pass filled in, since the line is a template.
+A page or a block, by contrast, keeps excluded text exactly as written, so
+`<code translate="no">{name}</code>` can show the syntax itself. A line from your language
+files comes back as your framework prints it, with a marked value in it given back as its
+marker.
+
+### Declared value sets
+
+A sentence that names a status or a category is registered once per value, with the value
+written in — `The order is Shipped.` — so translators see the whole sentence. Declare the
+values:
+
+```php
+use Langsys\SDK\Messages\TranslatesAs;
+
+#[TranslatesAs('status')]
+enum OrderStatus: string
+{
+    case Shipped = 'shipped';
+
+    public function label(): string { return 'Shipped'; } // what readers see
+}
+
+class Category extends Model implements \Langsys\SDK\Messages\TranslatableValues
+{
+    public static function translatableValues()
+    {
+        return ['category' => static::pluck('name')->all()];
+    }
+}
+
+$client = new Client($key, $project, ['value_sets' => [OrderStatus::class, Category::class]]);
+$client->translate('The order is {status}.', null, null, null, ['status' => OrderStatus::Shipped]);
+// looks up "The order is Shipped."
+```
+
+A backed enum's word is its `label()`, else its `value` — define `label()` when the value is
+a slug. `planSync()` registers every sentence with every value. At runtime a value added
+since the last sync registers its sentence after the response; a value no declaration names
+for its placeholder never registers and renders as a placeholder.
+
+### Marking a server-rendered page
+
+```php
+$html = $client->markResolved($html, 'es-es');
+```
+
+Adds `data-ls-resolved="es-es"` to the page's `<html>` tag, or, for a fragment response with
+no `<html>`, to each of its top-level elements, and changes nothing else, so a browser SDK
+hydrating the page registers none of its translated text. A page in your base language, or
+an element already marked, is left as it was.
+
+## Catalog Snapshots
+
+A snapshot is your catalog for chosen languages and categories, saved to a file, for
+setups that shouldn't call the API while rendering: a mobile bundle, a first paint,
+an offline or air-gapped deploy.
+
+```bash
+vendor/bin/langsys-snapshot --locale=es-es --locale=fr-fr --category=UI --category=Errors --out=catalog.snapshot.json
+```
+
+The command reads `LANGSYS_API_KEY` and `LANGSYS_PROJECT_ID`, or a `--config` file
+returning `['client' => ...]`. It keeps exactly what the API returns for the
+categories you name.
+
+```php
+use Langsys\SDK\Snapshot\Snapshot;
+
+$snapshot = Snapshot::load('catalog.snapshot.json');
+$spanish = $snapshot->catalog('es-es'); // category => entries, as the API returns them
+```
+
+A snapshot is a cache, never a source. **To refresh one, export it again.** Don't edit
+it: every snapshot carries a checksum of its contents, and `Snapshot::load()` refuses
+one that has changed since it was exported.
+
+Every Langsys SDK writes and reads the same snapshot format, `langsys-catalog-snapshot`
+version 1, so a snapshot exported here loads in another SDK and the other way round.
+It carries the project's base locale (`$snapshot->baseLocale()`) along with the catalog.
+A load that fails says why: `SnapshotException::getReason()` is `format`, `version`,
+`missing-member` or `checksum`.
+
+**Seed the client from a snapshot** to render with no API call:
+
+```php
+$client = new Client($key, $project, ['snapshot' => Snapshot::load('catalog.snapshot.json')]);
+// or: $client->useSnapshot(Snapshot::load('catalog.snapshot.json'));
+```
+
+A phrase or block the snapshot holds renders from it without fetching. Anything it
+doesn't hold is read from the live catalog, which from then on outranks the snapshot;
+offline, it stays in the source language. Only the live catalog decides what is new
+and registered. While the API can't be reached, the snapshot's languages are the ones
+the request locale can resolve to.
+
 ## Error Handling
 
 The SDK throws specific exceptions for different error types:
@@ -1064,6 +1693,12 @@ try {
     // 422 - Invalid request data
     echo "Validation failed: " . $e->getMessage();
     print_r($e->getErrors());
+
+    // The error's code and its message entries, when the API sends them
+    echo $e->getErrorCode();
+    foreach ($e->getServerMessages()->forField('name') as $entry) {
+        echo $client->translateMessage($entry);
+    }
 } catch (ApiException $e) {
     // Other API errors (4xx, 5xx)
     echo "API error: " . $e->getMessage();
@@ -1112,7 +1747,7 @@ $project = $client->getProject();
 echo $project['id'];           // Project UUID
 echo $project['title'];        // Project name
 echo $project['base_locale'];  // e.g., "en-us"
-echo $project['key_type'];     // "read" or "write"
+echo $project['key_type'];     // "read", "write" or "ip_write"
 
 print_r($project['target_locales']);  // ["es-es", "fr-ca", ...]
 print_r($project['default_locales']); // Default locale per language
@@ -1120,7 +1755,30 @@ print_r($project['default_locales']); // Default locale per language
 
 ## Utilities
 
-The SDK includes utility methods for fetching countries, dial codes, and locales.
+### Reference lists for your own forms
+
+```php
+$client->getCurrencies();          // [['code' => 'USD', 'name' => 'dólar estadounidense', 'symbol' => '$', ...], ...]
+$client->getCountries('fr-fr');    // [['label' => 'Costa Rica', 'code' => 'CR', 'eu' => false], ...]
+$client->getDialCodes();           // [['country_code' => 'CR', 'dial_code' => '+506', 'name' => 'Costa Rica (+506)'], ...]
+$client->getLocalesFormat('flat'); // [['code' => 'es-cr', 'name' => 'Español (Costa Rica)'], ...]
+```
+
+Each list is named in the locale you pass, else the current one. They match the Langsys JS
+SDK's lists of the same names. `getLocalesFormat()` takes `''` (grouped by language name),
+`'flat'` (`code` and `name`) or `'data'` (`code`, `locale_name` and `lang_name`), answers the
+list for that one display locale, and writes every locale code `es-cr` however your
+organisation formats codes. A list is held per display locale, in memory and in the cache
+for the catalog's lifetime (`cache_ttl`), so a later request sends nothing for it. A display
+locale that is not shaped as a locale is refused, logged, and nothing is sent. If the API
+cannot answer, or answers something that is not the list, you get an empty list and the
+cause is logged; the list is not asked for again for 3 seconds, doubling on each failure to
+5 minutes. A client without credentials sends nothing and gets an empty list. Nothing
+throws, unless `require_credentials` is on and the client has none.
+
+The `utilities()` resource below gives the raw, paginated endpoints. A display locale is
+written into the request path as one segment; an empty one, `.` or `..` would reach another
+route, so it throws an `InvalidArgumentException` and nothing is sent.
 
 ### Countries
 
@@ -1222,15 +1880,21 @@ The SDK includes a comprehensive test suite using PHPUnit.
 # Install dev dependencies
 composer install
 
-# Run all tests
-vendor/bin/phpunit
+# Run every test that needs nothing but this repository
+vendor/bin/phpunit --testsuite no-clone
 
 # Run specific test file
 vendor/bin/phpunit tests/ConfigTest.php
 
 # Run with coverage report (requires Xdebug)
-vendor/bin/phpunit --coverage-text
+vendor/bin/phpunit --testsuite no-clone --coverage-text
 ```
+
+The contract tests in `tests/Contract` run against a real Langsys API on an SDK test clone,
+reached through `tests/contract-fixture/`, and need Node 18 or later; without a clone named
+they fail rather than skip. `vendor/bin/phpunit` runs both suites. [tests/README.md](tests/README.md)
+says how to run them.
+
 
 ### Test Structure
 
@@ -1265,10 +1929,11 @@ tests/
 
 ### Test Coverage
 
-- **350 tests** covering all public methods
-- **765 assertions** validating functionality
-- Redis tests automatically skip if the extension is unavailable
-- Tests use a mock HTTP client to avoid real API calls
+- The no-clone suite uses a mock HTTP client or a loopback stand-in, and makes no real API
+  calls
+- The contract suite asserts on what a real Langsys API holds after each call
+- Redis tests skip if the extension or a server is unavailable, and fail instead with
+  `LANGSYS_REQUIRE_REDIS` set
 
 ## License
 

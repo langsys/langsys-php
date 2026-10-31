@@ -9,8 +9,16 @@
         "php": ">=7.4",
         "ext-curl": "*",
         "ext-json": "*",
-        "ext-intl": "*"
+        "ext-intl": "*",
+        "ext-dom": "*",
+        "ext-libxml": "*",
+        "ext-filter": "*",
+        "ext-tokenizer": "*"
     },
+    "bin": [
+        "bin/langsys-messages",
+        "bin/langsys-snapshot"
+    ],
     "suggest": {
         "ext-redis": "For Redis cache support"
     },

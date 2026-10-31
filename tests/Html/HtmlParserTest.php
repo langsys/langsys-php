@@ -332,6 +332,162 @@ class HtmlParserTest extends TestCase
      * Same rule as the id fixtures: verify another SDK by EXECUTING it against
      * this file, never by re-deriving the expectation in the same language.
      */
+    /**
+     * The cross-SDK canonicalization vectors (TOK-1, TOK-2, TOK-4).
+     *
+     * Authored by langsys-js-typescript and adopted byte-identically
+     * (`a418fe70:tests/fixtures/canonicalization-reference.json`, blob
+     * `926e8b55d231fae8208e28c42380aacee7a0c98e`, 45 rows). Each row carries every
+     * lane's MEASURED output alongside the expectation, so the file records
+     * where the fleet disagreed rather than only where it should agree — this
+     * SDK was 13/19 when the file was first adopted at `6596faf` (blob
+     * `e4c1f185...`, 19 rows). Re-vendored at `4eac870` (26 rows) for the 8.0.1
+     * re-row: no existing row's expectation changed, and the seven added rows
+     * are the 8.0.1 behaviours. The current copy adds six rows for TOK-2's C0
+     * strip (8.2.7), measured by this SDK, and four rows whose
+     * `expected_content` pins the content a block registers with (VAR-3, 8.5.9),
+     * with no earlier row's expectation changed.
+     *
+     * Every row also carries codepoints. That is the load-bearing part: the
+     * three rules here turn on characters that are invisible in a terminal and
+     * in a diff. U+00A0 and U+0020 render identically, which is exactly how a
+     * divergence that re-keys content blocks survived in two SDKs at once.
+     * Tests must use escapes, never literals, for the same reason.
+     */
+    public function testCanonicalizationMatchesTheCrossSdkVectors()
+    {
+        $path = dirname(__DIR__) . '/fixtures/canonicalization-reference.json';
+
+        $this->assertFileExists($path);
+
+        $fixture = json_decode(file_get_contents($path), true);
+        $cases = $fixture['cases'];
+
+        $this->assertCount(45, $cases, 'the adopted file has 45 rows');
+
+        foreach ($cases as $case) {
+            $tokens = array_values($this->parser->extractPhrases($case['html']));
+
+            $this->assertSame(
+                $case['expected_tokens'],
+                $tokens,
+                $case['id'] . ' — ' . $case['why'] . ' — got ' . $this->describeCodepoints($tokens)
+            );
+
+            $this->assertSame(
+                $case['expected_custom_id'],
+                $this->parser->generateCustomId($case['category'], $tokens),
+                'id for ' . $case['id']
+            );
+
+            // VAR-3: the content the block registers with, byte for byte.
+            if (array_key_exists('expected_content', $case)) {
+                $this->assertSame($case['expected_content'], \Langsys\SDK\Html\ValueMarkers::placeholderHtml($case['html']), 'content for ' . $case['id']);
+                $contentRows = isset($contentRows) ? $contentRows + 1 : 1;
+            }
+        }
+
+        $this->assertSame(4, isset($contentRows) ? $contentRows : 0, 'four rows pin a block\'s content');
+    }
+
+    /**
+     * Render a token list as codepoints.
+     *
+     * A failure message showing "A long description" against "A long
+     * description" is worse than no message: the reader concludes the test is
+     * broken. These rules are only legible as codepoints.
+     */
+    private function describeCodepoints(array $tokens)
+    {
+        $out = [];
+
+        foreach ($tokens as $token) {
+            $points = [];
+            foreach (preg_split('//u', $token, -1, PREG_SPLIT_NO_EMPTY) as $char) {
+                $points[] = sprintf('U+%04X', mb_ord($char, 'UTF-8'));
+            }
+            $out[] = '[' . implode(' ', $points) . ']';
+        }
+
+        return implode(' ', $out);
+    }
+
+    /**
+     * TOK-2, stated as vectors rather than only as a fixture row.
+     *
+     * Written with \u{...} escapes on purpose. A literal non-breaking space in
+     * a test file is indistinguishable from a space in every editor, diff and
+     * code review - which is how this divergence lived in two SDKs at once. A
+     * test that cannot be read is not a test.
+     *
+     * @dataProvider unicodeWhitespaceProvider
+     */
+    public function testUnicodeWhitespaceCollapsesLikeAnyOtherWhitespace($html, $expected, $why)
+    {
+        $this->assertSame($expected, array_values($this->parser->extractPhrases($html)), $why);
+    }
+
+    public function unicodeWhitespaceProvider()
+    {
+        return [
+            // Internal.
+            'NBSP between words' => [
+                "<p>A\u{00A0}long   description</p>",
+                ['A long description'],
+                'U+00A0 must collapse like U+0020',
+            ],
+            'line separators' => [
+                "<p>line one\u{2028}line two\u{2029}para</p>",
+                ['line one line two para'],
+                'U+2028 and U+2029 are whitespace too',
+            ],
+            'narrow NBSP and ideographic space' => [
+                "<p>a\u{202F}b\u{3000}c</p>",
+                ['a b c'],
+                'U+202F and U+3000 are matched by \s under /u',
+            ],
+
+            // Leading and trailing. trim()'s default charlist does NOT strip
+            // these, so the collapse has to run first for them to go.
+            'NBSP at the edges' => [
+                "<p>\u{00A0}Buy now\u{00A0}</p>",
+                ['Buy now'],
+                'leading and trailing U+00A0 must be trimmed, which trim() alone will not do',
+            ],
+
+            // The count case. This is the one that re-keys blocks: a
+            // whitespace-only node is ONE token where U+00A0 survives and ZERO
+            // where it collapses, and a block id is a hash of its token list.
+            'whitespace-only node yields no token' => [
+                "<div><p>Buy now</p><p>\u{00A0}</p><p>Later</p></div>",
+                ['Buy now', 'Later'],
+                'a whitespace-only node must produce NO token, or every block containing one is re-keyed',
+            ],
+            'whitespace-only node, mixed' => [
+                "<div><p>Buy now</p><p> \u{00A0}\u{2028} </p><p>Later</p></div>",
+                ['Buy now', 'Later'],
+                'mixed ASCII and non-ASCII whitespace is still whitespace-only',
+            ],
+        ];
+    }
+
+    /**
+     * And the id actually moves with it - the reason TOK-2 is an identity rule
+     * and not a cosmetic one.
+     */
+    public function testAWhitespaceOnlyNodeDoesNotChangeABlockId()
+    {
+        $withEmptyNode = $this->parser->extractPhrases("<div><p>Buy now</p><p>\u{00A0}</p><p>Later</p></div>");
+        $withoutIt = $this->parser->extractPhrases('<div><p>Buy now</p><p>Later</p></div>');
+
+        $this->assertSame($withoutIt, $withEmptyNode);
+        $this->assertSame(
+            $this->parser->generateCustomId('UI', $withoutIt),
+            $this->parser->generateCustomId('UI', $withEmptyNode),
+            'a block must not be re-keyed by a node that renders as nothing'
+        );
+    }
+
     public function testTokenizerMatchesTheReferenceFixtures()
     {
         $path = dirname(__DIR__) . '/fixtures/tokenizer-reference.json';
@@ -429,14 +585,61 @@ class HtmlParserTest extends TestCase
         $this->assertContains('Submit', $phrases);
     }
 
+    /**
+     * This test used to assert only that 'Real text' was PRESENT, with a note
+     * conceding that DOMDocument might parse the script and style anyway - so
+     * it passed while the parser was harvesting `var x = "JavaScript text";`
+     * and `.class { content: "CSS text"; }` as translatable phrases and sending
+     * them for machine translation. A test that cannot fail is worse than an
+     * absent one, because it is counted as coverage.
+     *
+     * assertSame on the whole list is the difference: it fails on anything
+     * extra, which is precisely what the rule forbids.
+     */
     public function testScriptAndStyleTagsIgnored()
     {
         $html = '<div><script>var x = "JavaScript text";</script><style>.class { content: "CSS text"; }</style><p>Real text</p></div>';
-        $phrases = $this->parser->extractPhrases($html);
 
-        // Script and style content should not be treated as translatable text
-        // Note: DOMDocument may still parse these, so this tests actual behavior
-        $this->assertContains('Real text', $phrases);
+        $this->assertSame(['Real text'], array_values($this->parser->extractPhrases($html)));
+    }
+
+    /**
+     * TOK-1 in the shape the spec states it: one document carrying all four
+     * excluded elements plus ordinary markup.
+     *
+     * The ordinary-markup control is the whole test. Built only from excluded
+     * elements, this passes against a tokenizer that tokenizes nothing at all -
+     * so the surviving phrase is what proves the parser was working and chose
+     * to skip the rest.
+     */
+    public function testTok1ExcludesAllFourElementsInOneDocument()
+    {
+        $html = '<div>'
+            . '<script>window.dataLayer.push(1)</script>'
+            . '<style>.plan{color:#fff}</style>'
+            . '<template><p>Template copy</p></template>'
+            . '<noscript>Enable JavaScript</noscript>'
+            . '<p>Plans</p>'
+            . '</div>';
+
+        $this->assertSame(['Plans'], array_values($this->parser->extractPhrases($html)));
+    }
+
+    /**
+     * `<template>` on its own, because it is the one exclusion no test covered:
+     * dropping it from the list reddened nothing, while the element is live
+     * under libxml2 (which puts template children in the tree, unlike a
+     * scripting-enabled parser).
+     *
+     * Stated as a de-duplication so the failure is legible: without the
+     * exclusion the same sentence is harvested twice, which both changes the
+     * block's id and registers template source as page copy.
+     */
+    public function testTemplateContentsAreNotHarvested()
+    {
+        $html = '<template><p>Same sentence</p></template><p>Same sentence</p>';
+
+        $this->assertSame(['Same sentence'], array_values($this->parser->extractPhrases($html)));
     }
 
     public function testCommentsIgnored()
@@ -1296,5 +1499,681 @@ class HtmlParserTest extends TestCase
             ['body'],
             $parser->extractPhrases('<div data-not-translatable="Skip me">body</div>')
         );
+    }
+
+    /**
+     * json_encode() returns false on invalid UTF-8 and md5(false) === md5(''),
+     * so without a false-check every malformed block hashes to the same id and
+     * aliases unrelated content. Behaviour already present on this line; pinned
+     * so it cannot be simplified away.
+     */
+    public function testInvalidUtf8BlocksDoNotShareOneCustomId()
+    {
+        $a = $this->parser->generateCustomId('Cat', ["Caf\xE9 one"]);
+        $b = $this->parser->generateCustomId('Cat', ["Totally \xE9 different"]);
+
+        $this->assertNotEquals($a, $b, 'Distinct malformed content must not alias');
+        $this->assertNotEquals(md5(''), $a, 'A block id must never be the md5 of an empty string');
+    }
+
+    /**
+     * Legacy ids are lookup-only, but they must be computable for both category
+     * slots the old code could have written.
+     */
+    public function testLegacyCustomIdsCoverBothCategorySlotsWhenUncategorized()
+    {
+        $ids = $this->parser->legacyCustomIds(null, ['Hello there']);
+
+        $this->assertContains(md5(implode('|', ['', 'Hello there'])), $ids);
+        $this->assertContains(md5(implode('|', ['__uncategorized__', 'Hello there'])), $ids);
+    }
+
+    /**
+     * A real category yields both tolerated shapes: this SDK's pipe-join form
+     * and the JS SDKs' pre-fix code-unit hash. CID-3 binds anything that reads
+     * catalogs, so content another SDK registered has to resolve here too.
+     */
+    public function testLegacyCustomIdsCoverBothToleratedShapes()
+    {
+        $ids = $this->parser->legacyCustomIds('Marketing', ['Hello there']);
+
+        $this->assertContains(
+            md5(implode('|', ['Marketing', 'Hello there'])),
+            $ids,
+            "this SDK's own pre-change form"
+        );
+
+        $rows = json_decode(
+            file_get_contents(dirname(__DIR__) . '/fixtures/legacy-custom-id-reference.json'),
+            true
+        );
+        $this->assertNotEmpty($rows);
+
+        // And the code-unit shape, proven against vectors generated by executing
+        // the TS core rather than by reimplementing its algorithm here.
+        $method = new \ReflectionMethod($this->parser, 'codeUnitMd5');
+        $method->setAccessible(true);
+
+        foreach ($rows as $index => $row) {
+            $this->assertSame(
+                $row['legacy_custom_id'],
+                $method->invoke($this->parser, $row['canonical_json']),
+                'legacy vector row ' . $index . ': ' . $row['note']
+            );
+        }
+    }
+
+    /**
+     * And now the part the hash-primitive test cannot reach.
+     *
+     * Every legacy assertion above invokes codeUnitMd5() with the fixture's own
+     * canonical_json. That proves the HASH is ported correctly and nothing
+     * more - it says nothing about whether legacyCustomIds(), the method the
+     * lookup path actually calls, ever ARRIVES at that string. A perfect hash
+     * behind a wrong category slot or a wrong serialization strands the content
+     * just as completely, and every one of those tests still passes.
+     *
+     * So: drive the public method with the row's own inputs and require the
+     * row's id to come out. This is what caught the null-category gap - the
+     * legacy JS generator did not coalesce null, so an untyped caller's block
+     * was filed under '[null,[...]]', a string no slot in this method could
+     * produce.
+     */
+    public function testEveryLegacyVectorIsReachableThroughTheLookupPath()
+    {
+        $rows = json_decode(
+            file_get_contents(dirname(__DIR__) . '/fixtures/legacy-custom-id-reference.json'),
+            true
+        );
+
+        foreach ($rows as $index => $row) {
+            $ids = $this->parser->legacyCustomIds($row['category'], $row['tokens']);
+
+            // The one deliberate exclusion, asserted as an exclusion rather than
+            // quietly skipped. '__uncategorized__' is this SDK's own spelling and
+            // only ever went out on the pipe-join form; a JS caller reached the
+            // code-unit form with '' or with null, never with the sentinel. So
+            // this id is one nothing ever wrote, and we decline to look it up.
+            if ($row['category'] === '__uncategorized__') {
+                $this->assertNotContains(
+                    $row['legacy_custom_id'],
+                    $ids,
+                    'row ' . ($index + 1) . ': the sentinel has no code-unit spelling'
+                );
+            } else {
+                $this->assertContains(
+                    $row['legacy_custom_id'],
+                    $ids,
+                    'row ' . ($index + 1) . ' unreachable through legacyCustomIds(): ' . $row['note']
+                );
+            }
+
+            if ($row['pipe_join_custom_id'] !== null) {
+                $this->assertContains(
+                    $row['pipe_join_custom_id'],
+                    $ids,
+                    'row ' . ($index + 1) . ': pipe-join form unreachable'
+                );
+            }
+        }
+    }
+
+    /**
+     * The vector file is a shared artifact, adopted byte-identically from
+     * langsys-python (blob dc5556466dc54fe82e81ac9fdbf4549b2b76e7ce). Its
+     * coverage is the point: ASCII rows are positive controls where the two
+     * hashes AGREE, so an ASCII-only suite cannot tell a correct port from a
+     * byte-hash stub.
+     */
+    public function testLegacyVectorFileRetainsItsDivergentCoverage()
+    {
+        $rows = json_decode(
+            file_get_contents(dirname(__DIR__) . '/fixtures/legacy-custom-id-reference.json'),
+            true
+        );
+
+        $this->assertCount(20, $rows);
+
+        $divergent = 0;
+        foreach ($rows as $row) {
+            $text = ($row['category'] === null ? '' : $row['category']) . implode('', $row['tokens']);
+            foreach (preg_split('//u', $text, -1, PREG_SPLIT_NO_EMPTY) as $char) {
+                if (mb_ord($char, 'UTF-8') > 0x7F) { $divergent++; break; }
+            }
+        }
+
+        $this->assertGreaterThanOrEqual(
+            10,
+            $divergent,
+            'rows above ASCII are the only ones that can distinguish the two hashes'
+        );
+    }
+
+    /**
+     * Assert the fixture's own columns, programmatically, at every layer of the
+     * chain — not just the final hash.
+     *
+     * A hash-only assertion passes whenever two implementations agree on the
+     * answer, including when they agree by coincidence and disagree on how they
+     * got there. The enriched columns make each step checkable on its own:
+     * codepoints fix the INPUT, `serialized_hex` fixes the exact BYTES fed to
+     * md5, and `custom_id` fixes the OUTPUT. The JS SDK vendors this same file
+     * and asserts the same three, so a divergence lands on the step that caused
+     * it rather than on the hash.
+     *
+     * `serialized_hex` is hex of the very string passed to md5 here, recomputed
+     * rather than trusted — a column derived from a re-serialization could agree
+     * while the hashed bytes differed, which would make the cross-check vacuous.
+     */
+    public function testCustomIdFixtureIsSelfConsistentAtEveryLayer()
+    {
+        $path = dirname(__DIR__) . '/fixtures/custom-id-reference.json';
+        $this->assertFileExists($path);
+
+        $cases = json_decode(file_get_contents($path), true);
+        $this->assertNotEmpty($cases);
+
+        foreach ($cases as $index => $case) {
+            $label = 'fixture row ' . $index;
+
+            $this->assertArrayHasKey('codepoints', $case, $label);
+            $this->assertArrayHasKey('serialized_hex', $case, $label);
+
+            $category = $case['category'] === null ? '' : $case['category'];
+
+            // 1. The recorded codepoints must describe the recorded input.
+            $this->assertSame(
+                $this->codepointsOf($category),
+                $case['codepoints']['category'],
+                $label . ': category codepoints'
+            );
+            foreach ($case['tokens'] as $t => $token) {
+                $this->assertSame(
+                    $this->codepointsOf($token),
+                    $case['codepoints']['tokens'][$t],
+                    $label . ': token ' . $t . ' codepoints'
+                );
+            }
+
+            // 2. The canonical serialization must reproduce, byte for byte.
+            $serialized = json_encode(
+                [$category, $case['tokens']],
+                JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS
+            );
+
+            $this->assertSame($case['canonical_json'], $serialized, $label . ': canonical json');
+            $this->assertSame($case['serialized_hex'], bin2hex($serialized), $label . ': serialized bytes');
+
+            // 3. And the hash of those exact bytes must be the recorded id...
+            $this->assertSame($case['custom_id'], md5($serialized), $label . ': md5 of the serialized bytes');
+
+            // 4. ...which is what the SDK actually produces.
+            $this->assertSame(
+                $case['custom_id'],
+                $this->parser->generateCustomId($case['category'], $case['tokens']),
+                $label . ': generateCustomId'
+            );
+        }
+    }
+
+    /**
+     * The fixture carries unicode coverage on purpose: a suite that only reaches
+     * ASCII cannot distinguish a byte-based hash from a UTF-16 code-unit one,
+     * which is exactly how a false parity claim shipped in 1.0.2.
+     */
+    public function testCustomIdFixtureRetainsItsUnicodeCoverage()
+    {
+        $cases = json_decode(
+            file_get_contents(dirname(__DIR__) . '/fixtures/custom-id-reference.json'),
+            true
+        );
+
+        $aboveLatin1 = 0;
+        $nonBmp = 0;
+
+        foreach ($cases as $case) {
+            $text = ($case['category'] === null ? '' : $case['category']) . implode('', $case['tokens']);
+
+            foreach (preg_split('//u', $text, -1, PREG_SPLIT_NO_EMPTY) as $char) {
+                $cp = mb_ord($char, 'UTF-8');
+                if ($cp > 0xFF) { $aboveLatin1++; }
+                if ($cp > 0xFFFF) { $nonBmp++; }
+            }
+        }
+
+        $this->assertGreaterThanOrEqual(15, $aboveLatin1, 'coverage above U+00FF must not regress');
+        $this->assertGreaterThanOrEqual(1, $nonBmp, 'at least one non-BMP codepoint must remain');
+    }
+
+    /**
+     * @param string $text
+     * @return array U+XXXX for each codepoint, so a reader can verify coverage
+     *               without tooling
+     */
+    private function codepointsOf($text)
+    {
+        $out = [];
+
+        foreach (preg_split('//u', $text, -1, PREG_SPLIT_NO_EMPTY) as $char) {
+            $out[] = sprintf('U+%04X', mb_ord($char, 'UTF-8'));
+        }
+
+        return $out;
+    }
+
+    // =========================================================================
+    // MARK-1 / MARK-2 — identity stamping across SDK boundaries
+    // =========================================================================
+
+    /**
+     * MARK-2: a marker must be read under EITHER spelling.
+     *
+     * The TypeScript core writes `data-ls-*`; this SDK has always written
+     * `data-langsys-*`. A PHP page hosting a JS-rendered component is the
+     * ordinary case, and a reader that knows only its own spelling does not
+     * merely miss an attribute - it re-splits a block that already has an
+     * identity, registers it again under a different id, and strands whatever
+     * was filed under the first.
+     *
+     * Asserted on the predicates rather than through extractPhrases(): the
+     * phrase marker is deliberately NOT honoured on the content-block path (see
+     * walkNode), so driving it from there would test the wrong surface and, in
+     * an earlier draft of this test, did.
+     *
+     * @dataProvider phraseMarkerProvider
+     */
+    public function testPhraseMarkerIsReadUnderBothSpellings($attribute, $value, $expected)
+    {
+        $this->assertSame($expected, HtmlParser::isPhraseMarked($this->elementWith($attribute, $value)));
+    }
+
+    public function phraseMarkerProvider()
+    {
+        return [
+            'ls spelling, bare'        => ['data-ls-phrase', '', true],
+            'langsys spelling, bare'   => ['data-langsys-phrase', '', true],
+            'ls spelling, truthy'      => ['data-ls-phrase', 'yes', true],
+            // Off-values still opt out under both, so the second spelling added
+            // no way around the convention.
+            'ls spelling, false'       => ['data-ls-phrase', 'false', false],
+            'langsys spelling, false'  => ['data-langsys-phrase', 'FALSE', false],
+            'ls spelling, zero'        => ['data-ls-phrase', '0', false],
+            'langsys spelling, padded' => ['data-langsys-phrase', ' false ', false],
+        ];
+    }
+
+    /**
+     * And the marker actually keeps a block together on the path that honours
+     * it - the page path - under the JS spelling.
+     */
+    public function testJsSpellingKeepsABlockTogetherOnThePagePath()
+    {
+        $tokenizer = new \Langsys\SDK\Html\MarkupTokenizer();
+        $doc = new \DOMDocument();
+        $doc->loadHTML('<div data-ls-phrase>Buy <strong>now</strong></div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        $element = $doc->getElementsByTagName('div')->item(0);
+
+        $this->assertTrue(
+            HtmlParser::isPhraseMarked($element),
+            'the page path gates tokenization on this predicate'
+        );
+        $encoded = $tokenizer->encode($element);
+
+        // One phrase carrying a markup slot, not two phrases split at the tag
+        // boundary - which is what an unrecognised marker would have produced.
+        $this->assertTrue($tokenizer->hasTokens($encoded['text']), 'the marked run encodes as one tokenized phrase');
+        $this->assertSame('Buy {m0o}now{m0c}', $encoded['text']);
+        $this->assertCount(1, $encoded['slots']);
+    }
+
+    private function elementWith($attribute, $value)
+    {
+        $doc = new \DOMDocument();
+        $markup = $value === ''
+            ? '<div ' . $attribute . '></div>'
+            : '<div ' . $attribute . '="' . $value . '"></div>';
+        $doc->loadHTML($markup, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+
+        return $doc->getElementsByTagName('div')->item(0);
+    }
+
+    /**
+     * The content-block marker, both spellings, via the public predicate.
+     *
+     * @dataProvider contentBlockMarkerProvider
+     */
+    public function testContentBlockMarkerIsReadUnderBothSpellings($attribute, $value, $expected)
+    {
+        $doc = new \DOMDocument();
+        $doc->loadHTML('<div ' . $attribute . '="' . $value . '"></div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        $element = $doc->getElementsByTagName('div')->item(0);
+
+        $this->assertSame($expected, HtmlParser::isContentBlockMarked($element));
+    }
+
+    public function contentBlockMarkerProvider()
+    {
+        return [
+            'ls spelling on'       => ['data-ls-contentblock', 'abc123', true],
+            'langsys spelling on'  => ['data-langsys-contentblock', 'abc123', true],
+            'ls spelling off'      => ['data-ls-contentblock', 'false', false],
+            'langsys spelling off' => ['data-langsys-contentblock', '0', false],
+        ];
+    }
+
+    // =========================================================================
+    // TOK-1 / TOK-2, as ruled for spec 8.0.1
+    // =========================================================================
+
+    /**
+     * SVG text is visible copy and IS translated; MathML is notation and is not.
+     *
+     * The two paths used to disagree: the block path tokenized both, the page
+     * path skipped both, so the same `<svg>` produced different phrase lists
+     * depending on which entry point saw it. The ordinary-markup control is
+     * what proves the tokenizer ran at all.
+     */
+    public function testSvgTextIsTranslatedAndMathIsNot()
+    {
+        $html = '<svg><text>SvgLabel</text></svg><math><mi>MathLabel</mi></math><p>Ordinary</p>';
+
+        $this->assertSame(
+            ['SvgLabel', 'Ordinary'],
+            array_values($this->parser->extractPhrases($html))
+        );
+    }
+
+    /**
+     * The collapse set is JavaScript's `\s`, not PCRE's.
+     *
+     * The JS core is the identity authority, so PCRE's set was the wrong
+     * standard. Written as escapes, and asserted per codepoint, because the
+     * three that differ are invisible in any rendering of this file.
+     *
+     * @dataProvider jsWhitespaceProvider
+     */
+    public function testTheCollapseSetIsJavascriptsWhitespace($codepoint, $collapses, $why)
+    {
+        $char = mb_chr($codepoint, 'UTF-8');
+        $tokens = array_values($this->parser->extractPhrases('<p>a' . $char . 'b</p>'));
+
+        $this->assertSame(
+            $collapses ? ['a b'] : ['a' . $char . 'b'],
+            $tokens,
+            sprintf('U+%04X: %s', $codepoint, $why)
+        );
+    }
+
+    public function jsWhitespaceProvider()
+    {
+        return [
+            // The three that used to differ from the JS core.
+            'U+FEFF now collapses'      => [0xFEFF, true,  'JS \s matches it; PCRE \s does not - PHP used to keep it'],
+            'U+0085 no longer collapses' => [0x0085, false, 'PCRE \s matches it; JS \s does not - PHP used to collapse it'],
+            'U+180E no longer collapses' => [0x180E, false, 'PCRE \s matches it; JS \s does not - PHP used to collapse it'],
+
+            // Controls on both sides, so the rows above cannot pass by the
+            // collapse being broken in general or disabled entirely.
+            'U+00A0 still collapses'    => [0x00A0, true,  'the original TOK-2 case'],
+            'U+3000 still collapses'    => [0x3000, true,  'ideographic space, matched by both'],
+            'U+2007 still collapses'    => [0x2007, true,  'figure space, matched by both'],
+            'U+200B still content'      => [0x200B, false, 'zero-width space is matched by neither'],
+            'U+2060 still content'      => [0x2060, false, 'word joiner is matched by neither'],
+        ];
+    }
+
+    /**
+     * TOK-5 at CAPTURE: a phrase carries `{name}`, whichever form was authored.
+     *
+     * The Interpolator already accepted both at render time, but the phrase
+     * stored in the catalog still carried whatever the author wrote - so
+     * `Hello %name%` and `Hello {name}` were two different phrases with two
+     * different block ids, and the JS core stored only the brace form. Measured
+     * before: `bb74011a...` here against `1e4b462c...` there.
+     *
+     * @dataProvider capturedPlaceholderProvider
+     */
+    public function testPlaceholdersAreCanonicalisedAtCapture($html, $expected, $why)
+    {
+        $this->assertSame($expected, array_values($this->parser->extractPhrases($html)), $why);
+    }
+
+    public function capturedPlaceholderProvider()
+    {
+        return [
+            'percent form is stored as braces' => [
+                '<p>Hello %name%</p>', ['Hello {name}'],
+                'the escape form must not create a second phrase',
+            ],
+            'brace form is unchanged' => [
+                '<p>Hello {name}</p>', ['Hello {name}'],
+                'positive control - the canonical form stays canonical',
+            ],
+            'both forms converge on one id' => [
+                '<p>%a% and {b}</p>', ['{a} and {b}'],
+                'a phrase may carry both spellings',
+            ],
+            'in an attribute too' => [
+                '<img alt="Hi %name%">', ['Hi {name}'],
+                'attribute values are phrases and follow the same rule',
+            ],
+
+            // The pattern is the only guard at capture, since there is no
+            // parameter list to consult. These are what keep it narrow.
+            'percentages are untouched' => [
+                '<p>Save 20% on 5% APR</p>', ['Save 20% on 5% APR'],
+                'spaces between the signs mean it cannot be an identifier',
+            ],
+            'a lone percent is untouched' => [
+                '<p>width: 100%</p>', ['width: 100%'],
+                'no closing sign, no rewrite',
+            ],
+        ];
+    }
+
+    /**
+     * And both spellings produce the SAME block id, which is the whole point -
+     * the id is what strands translations when it moves.
+     */
+    public function testBothPlaceholderSpellingsProduceOneBlockId()
+    {
+        $percent = $this->parser->extractPhrases('<p>Hello %name%</p>');
+        $brace = $this->parser->extractPhrases('<p>Hello {name}</p>');
+
+        $this->assertSame(
+            $this->parser->generateCustomId('UI', $brace),
+            $this->parser->generateCustomId('UI', $percent)
+        );
+    }
+
+    /**
+     * Registration and lookup must canonicalise placeholders identically, or
+     * this fix recreates the exact register/lookup break the whitespace work
+     * had to be fixed for twice.
+     */
+    public function testCapturedPlaceholderPhrasesAreFoundOnLookup()
+    {
+        $canonical = \Langsys\SDK\Html\Canonical::phrase('Hello %name%');
+
+        $this->assertSame('Hello {name}', $canonical);
+        $this->assertSame(
+            $canonical,
+            \Langsys\SDK\Html\Canonical::phrase('Hello {name}'),
+            'both spellings must reach one key on both sides'
+        );
+    }
+
+    /**
+     * The ASCII fallback's character class, byte for byte.
+     *
+     * It only runs on malformed UTF-8, which is why its spelling went
+     * unnoticed: inside a PCRE class `\v` is the vertical-whitespace CLASS, not
+     * a vertical tab, so `[\t\n\v\f\r ]` also matched U+0085 - and on a
+     * malformed string that means eating the lead byte of a truncated
+     * sequence, corrupting bytes the collapse was supposed to leave alone.
+     *
+     * Asserted on BYTES, not on a string comparison: the difference is one
+     * byte inside an invalid sequence, which renders as nothing at all.
+     */
+    public function testTheAsciiFallbackDoesNotEatNonAsciiBytes()
+    {
+        // Invalid UTF-8, so preg_replace with /u returns null and the fallback
+        // runs. \xC2\x85 is a well-formed NEL; the trailing \xFF makes the
+        // whole string invalid.
+        $input = "a\xC2\x85b\xFF";
+
+        $out = \Langsys\SDK\Html\Whitespace::collapse($input);
+
+        $this->assertSame(
+            bin2hex("a\xC2\x85b\xFF"),
+            bin2hex($out),
+            'the fallback must leave non-ASCII bytes alone; the old class ate the lead byte'
+        );
+    }
+
+    /**
+     * Control: the fallback still collapses the ASCII whitespace it is for.
+     */
+    public function testTheAsciiFallbackStillCollapsesAsciiWhitespace()
+    {
+        $out = \Langsys\SDK\Html\Whitespace::collapse("a \t\n b\xFF");
+
+        $this->assertSame(bin2hex("a b\xFF"), bin2hex($out));
+    }
+
+    // =========================================================================
+    // Fixtures must not carry invisible characters as literals
+    // =========================================================================
+
+    /**
+     * A codepoint a test asserts about must not be written as itself.
+     *
+     * Raised by the TypeScript lane against their own file: a row whose whole
+     * purpose was asserting that U+FEFF collapses contained a RAW U+FEFF, and
+     * every BOM-stripper deletes that codepoint. Had one run, the row would
+     * have gone on passing while asserting something else entirely - the same
+     * shape as a test that cannot fail, and invisible in every diff and review.
+     *
+     * This SDK had the same problem in three files, two of which are vendored.
+     *
+     * The exemption is keyed on the BLOB, not the filename. A vendored fixture
+     * is adopted byte-identically and its blob is cited in CONFORMANCE, so
+     * escaping it would destroy the property that makes it worth having -
+     * re-vendoring is the only legitimate way it changes. Keying on the blob
+     * means the exemption stops applying the moment the bytes do change, so a
+     * local edit to a vendored file fails here instead of hiding behind a name.
+     *
+     * @dataProvider scannedFileProvider
+     */
+    public function testSourcesWriteInvisibleCharactersAsEscapes($path, $blob): void
+    {
+        $vendored = [
+            // canonicalization-reference.json needs no exemption: vendored at
+            // langsys-js-typescript a418fe70 (blob 926e8b55), which is escaped at source.
+            // legacy-custom-id-reference.json, langsys-python
+            'dc5556466dc54fe82e81ac9fdbf4549b2b76e7ce' => 'adopted byte-identically from langsys-python',
+        ];
+
+        if (isset($vendored[$blob])) {
+            $this->addToAssertionCount(1);
+            return;
+        }
+
+        $raw = file_get_contents($path);
+        $found = [];
+
+        $chars = preg_split('//u', $raw, -1, PREG_SPLIT_NO_EMPTY);
+        $this->assertNotFalse($chars, $path . ' is not valid UTF-8, so it cannot be scanned');
+
+        foreach ($chars as $char) {
+            $cp = mb_ord($char, 'UTF-8');
+            if (isset(self::invisibleCodepoints()[$cp])) {
+                $found[sprintf('U+%04X', $cp)] = true;
+            }
+        }
+
+        $this->assertSame(
+            [],
+            array_keys($found),
+            $path . ' carries invisible characters as literals; write them as \\uXXXX escapes'
+        );
+    }
+
+    /**
+     * The codepoints that must never appear raw in a scanned file.
+     *
+     * DERIVED from the collapse set rather than typed out. The typed list went
+     * stale the moment the collapse set became JavaScript's `\s`: it omitted
+     * eleven codepoints the SDK collapses (U+1680, U+2000-U+2006, U+2008,
+     * U+2009, U+205F), so a raw U+2003 in a fixture reddened nothing. Derived,
+     * the scan cannot fall behind the rule it protects.
+     *
+     * Plus, explicitly, the invisible codepoints the SDK deliberately does NOT
+     * collapse - a reader cannot see them and an editor or BOM-stripper may
+     * silently change them, so they must be escaped too - and ASCII VT/FF,
+     * which libxml2 drops from DOM text. These cannot be derived from the
+     * collapse set, because not being in it is what defines them.
+     */
+    private static function invisibleCodepoints(): array
+    {
+        static $set = null;
+        if ($set !== null) {
+            return $set;
+        }
+
+        $set = [];
+        for ($cp = 0x80; $cp <= 0xFFFF; $cp++) {
+            if ($cp >= 0xD800 && $cp <= 0xDFFF) {
+                continue;
+            }
+            $char = mb_chr($cp, 'UTF-8');
+            if ($char !== false && \Langsys\SDK\Html\Whitespace::collapse('a' . $char . 'b') === 'a b') {
+                $set[$cp] = true;
+            }
+        }
+
+        foreach ([0x000B, 0x000C, 0x0085, 0x180E, 0x200B, 0x2060] as $cp) {
+            $set[$cp] = true;
+        }
+
+        return $set;
+    }
+
+    /**
+     * Every file the scan covers: all PHP under src/ and tests/, the Markdown
+     * under tests/, and the JSON fixtures. It was fixtures only, which let a raw
+     * U+00A0 sit in a test source or in tests/fixtures/README.md with nothing
+     * reddening - and a test file is where an invisible literal does the most
+     * damage, because it is the thing making assertions about that codepoint.
+     */
+    public function scannedFileProvider(): array
+    {
+        $root = dirname(__DIR__, 2);
+        $out = [];
+
+        foreach (['src', 'tests'] as $dir) {
+            $files = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($root . '/' . $dir, \FilesystemIterator::SKIP_DOTS)
+            );
+
+            foreach ($files as $file) {
+                $path = $file->getPathname();
+                $ext = strtolower($file->getExtension());
+                $inScope = $ext === 'php'
+                    || ($dir === 'tests' && $ext === 'md')
+                    || ($dir === 'tests' && $ext === 'json' && strpos($path, '/fixtures/') !== false);
+
+                if (!$inScope) {
+                    continue;
+                }
+
+                $relative = substr($path, strlen($root) + 1);
+                $out[$relative] = [$path, sha1('blob ' . filesize($path) . "\0" . file_get_contents($path))];
+            }
+        }
+
+        ksort($out);
+
+        return $out;
     }
 }

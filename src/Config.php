@@ -18,6 +18,13 @@ class Config
     const DEFAULT_CACHE_TTL = 3600;
 
     /**
+     * The category server message templates are registered and looked up under
+     * (MSG-6). It has to match on the server that registers them and on every
+     * client that renders them, or every lookup misses and falls back.
+     */
+    const DEFAULT_MESSAGES_CATEGORY = 'Errors';
+
+    /**
      * @var string
      */
     protected $apiKey;
@@ -63,6 +70,21 @@ class Config
     protected $logLevel;
 
     /**
+     * @var string Category for server message templates
+     */
+    protected $messagesCategory;
+
+    /**
+     * @var array|null Legacy-key migration mode, or null when it is off
+     */
+    protected $migration;
+
+    /**
+     * @var bool Whether a client built without an API key or project id throws at first use
+     */
+    protected $requireCredentials;
+
+    /**
      * Create a new Config instance.
      *
      * @param array $options
@@ -104,6 +126,18 @@ class Config
         $this->logLevel = isset($options['log_level'])
             ? $options['log_level']
             : $this->getEnv('LANGSYS_LOG_LEVEL', 'info');
+
+        $this->messagesCategory = isset($options['messages_category'])
+            ? (string) $options['messages_category']
+            : (string) $this->getEnv('LANGSYS_MESSAGES_CATEGORY', self::DEFAULT_MESSAGES_CATEGORY);
+
+        $this->migration = (isset($options['migration']) && is_array($options['migration'])
+            && (!empty($options['migration']['files']) || !empty($options['migration']['fallback_files']) || !empty($options['migration']['namespaces'])))
+            ? $options['migration']
+            : null;
+
+        $this->requireCredentials = isset($options['require_credentials'])
+            && filter_var($options['require_credentials'], FILTER_VALIDATE_BOOLEAN);
     }
 
     /**
@@ -269,6 +303,39 @@ class Config
     public function getLogLevel()
     {
         return $this->logLevel;
+    }
+
+    /**
+     * Get the category server message templates live under.
+     *
+     * @return string
+     */
+    public function getMessagesCategory()
+    {
+        return $this->messagesCategory;
+    }
+
+    /**
+     * The legacy-key migration mode (MIG-1): the source files `translate()`
+     * resolves an argument against as a key first. Null - the default - means
+     * the mode is off, and no file is read and no key is looked up.
+     *
+     * @return array|null
+     */
+    public function getMigration()
+    {
+        return $this->migration;
+    }
+
+    /**
+     * Whether a client without an API key or project id throws at first use,
+     * rather than rendering source text.
+     *
+     * @return bool
+     */
+    public function requiresCredentials()
+    {
+        return $this->requireCredentials;
     }
 
     /**

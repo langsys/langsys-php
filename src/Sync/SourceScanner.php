@@ -1,0 +1,467 @@
+<?php
+
+namespace Langsys\SDK\Sync;
+
+/**
+ * Finds the calls to a translate function in PHP source (FRM-2).
+ *
+ * Only a literal is a phrase: a call whose first argument is one string
+ * literal is collected with its text; any other call is reported, never
+ * guessed. The source is read with PHP's own tokenizer, so strings, heredocs
+ * and comments are never mistaken for calls, and a call nested in an
+ * expression (`e(__('Save'))`, as a compiled Blade view writes it) is found
+ * like any other.
+ *
+ * Recognised: the configured function names, static calls written
+ * `Class::method`, and `app('translator')->get(...)` / `->choice(...)`, which
+ * Blade's `@lang` and `@choice` compile to. `app('translator')->getHtml(...)`
+ * and `->choiceHtml(...)`, what a binding compiles `@lang`/`@t` and `@choice`
+ * to where it prints the line raw (FRM-8), read as `->get(...)` and
+ * `->choice(...)` do and are marked rich: the line registers with its inline
+ * markup as tokens.
+ */
+final class SourceScanner
+{
+    /** A call's function name => how it reads its arguments. */
+    const DEFAULT_FUNCTIONS = [
+        '__' => '__',
+        'trans' => '__',
+        't' => '__',
+        'trans_choice' => 'trans_choice',
+        'Lang::get' => '__',
+        'Lang::choice' => 'trans_choice',
+    ];
+
+    /** @var array<string, string> */
+    private $functions;
+
+    /**
+     * @param array<string, string>|null $functions name => '__' or 'trans_choice'
+     */
+    public function __construct(?array $functions = null)
+    {
+        $this->functions = $functions === null ? self::DEFAULT_FUNCTIONS : $functions;
+    }
+
+    /**
+     * Every translate call in $code.
+     *
+     * Each hit: `text` (the literal, or null), `skipped` (null, or
+     * 'non-literal'), `entry_point` (the name as written), `kind` ('__' or
+     * 'trans_choice'), `line` (in $code), `arg_count`, `replace_keys` (the
+     * keys of a replace array literal or the names a `compact()` passes, or
+     * null), `replace_dynamic` (whether replacements are passed that the
+     * source does not name, such as a variable), `file` ($label), and where
+     * the call sits: `class` (null outside one, or in an anonymous class) and
+     * `class_fqcn` (with its namespace) - an enum counts as a class -
+     * `implements` (the short names of the interfaces it names itself) and
+     * `method`; and `rich`, whether the call prints its line raw.
+     *
+     * @param string $code PHP source, or a compiled view
+     * @param string $label The file it came from, carried into each hit
+     * @return array[]
+     */
+    public function scan($code, $label = '')
+    {
+        $tokens = array_values(array_filter(token_get_all((string) $code), function ($token) {
+            return !is_array($token) || !in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true);
+        }));
+
+        $hits = [];
+        $count = count($tokens);
+        $context = self::context($tokens);
+
+        for ($i = 0; $i < $count; $i++) {
+            $call = $this->callAt($tokens, $i);
+            if ($call === null) {
+                continue;
+            }
+
+            list($name, $open, $line, $rich) = $call;
+            $args = self::arguments($tokens, $open);
+            $kind = $this->functions[$name];
+            $text = $args === [] ? null : self::literal($args[0]);
+
+            $replaceIndex = $kind === 'trans_choice' ? 2 : 1;
+            $replaceKeys = isset($args[$replaceIndex]) ? self::literalKeys($args[$replaceIndex]) : null;
+            if ($replaceKeys === null && isset($args[$replaceIndex])) {
+                $replaceKeys = self::compactKeys($args[$replaceIndex]);
+            }
+
+            $hits[] = [
+                'text' => $text,
+                'group' => $text === null && $args !== [] ? self::literalGroup($args[0]) : null,
+                'skipped' => $text === null ? 'non-literal' : null,
+                'entry_point' => $name,
+                'kind' => $kind,
+                'line' => $line,
+                'arg_count' => count($args),
+                'replace_keys' => $replaceKeys,
+                'replace_dynamic' => $replaceKeys === null && isset($args[$replaceIndex]),
+                'file' => (string) $label,
+                'class' => $context[$i]['class'],
+                'class_fqcn' => $context[$i]['class_fqcn'],
+                'implements' => $context[$i]['implements'],
+                'method' => $context[$i]['method'],
+                'rich' => $rich,
+            ];
+        }
+
+        return $hits;
+    }
+
+    /**
+     * The class and method each token sits in.
+     *
+     * @param array $tokens
+     * @return array<int, array{class: string|null, class_fqcn: string|null, implements: string[], method: string|null}>
+     */
+    private static function context(array $tokens)
+    {
+        $out = [];
+        $depth = 0;
+        $classes = [];
+        $methods = [];
+        $pendingClass = null;
+        $pendingMethod = null;
+        $namespace = '';
+        $count = count($tokens);
+
+        for ($i = 0; $i < $count; $i++) {
+            $token = $tokens[$i];
+            $text = is_array($token) ? $token[1] : $token;
+            $type = is_array($token) ? $token[0] : null;
+
+            if ($type === T_NAMESPACE && !(isset($tokens[$i + 1]) && is_array($tokens[$i + 1]) && $tokens[$i + 1][0] === T_NS_SEPARATOR)) {
+                $namespace = '';
+                for ($j = $i + 1; $j < $count && $tokens[$j] !== ';' && $tokens[$j] !== '{'; $j++) {
+                    $namespace .= is_array($tokens[$j]) ? $tokens[$j][1] : $tokens[$j];
+                }
+                $namespace = trim($namespace, '\\');
+            }
+
+            // An enum is a class scope too; before PHP 8.1 it reads as the
+            // word "enum" followed by its name.
+            $isEnum = (defined('T_ENUM') && $type === T_ENUM)
+                || ($type === T_STRING && strtolower($text) === 'enum' && isset($tokens[$i + 1]) && is_array($tokens[$i + 1]) && $tokens[$i + 1][0] === T_STRING);
+
+            if (($type === T_CLASS || $isEnum) && !($i > 0 && is_array($tokens[$i - 1]) && $tokens[$i - 1][0] === T_DOUBLE_COLON)) {
+                $name = isset($tokens[$i + 1]) && is_array($tokens[$i + 1]) && $tokens[$i + 1][0] === T_STRING ? $tokens[$i + 1][1] : null;
+                $implements = [];
+                for ($j = $i + 1; $j < $count && $tokens[$j] !== '{'; $j++) {
+                    if (is_array($tokens[$j]) && $tokens[$j][0] === T_IMPLEMENTS) {
+                        // A qualified name is one token on PHP 8 and its
+                        // segments and separators before, so each name is
+                        // joined up to the comma that ends it.
+                        $names = [''];
+                        for ($k = $j + 1; $k < $count && $tokens[$k] !== '{'; $k++) {
+                            if ($tokens[$k] === ',') {
+                                $names[] = '';
+                            } elseif (is_array($tokens[$k]) && ($tokens[$k][0] === T_NS_SEPARATOR || in_array($tokens[$k][0], self::nameTokens(), true))) {
+                                $names[count($names) - 1] .= $tokens[$k][1];
+                            }
+                        }
+                        foreach ($names as $qualified) {
+                            if ($qualified !== '') {
+                                $implements[] = substr('\\' . $qualified, strrpos('\\' . $qualified, '\\') + 1);
+                            }
+                        }
+                        break;
+                    }
+                }
+                $pendingClass = ['class' => $name, 'fqcn' => $name === null ? null : ($namespace === '' ? $name : $namespace . '\\' . $name), 'implements' => $implements];
+            } elseif ($type === T_FUNCTION && isset($tokens[$i + 1]) && is_array($tokens[$i + 1]) && $tokens[$i + 1][0] === T_STRING && $classes !== []) {
+                $pendingMethod = $tokens[$i + 1][1];
+            }
+
+            if ($text === '{' || $type === T_CURLY_OPEN || $type === T_DOLLAR_OPEN_CURLY_BRACES) {
+                $depth++;
+                if ($text === '{' && $pendingClass !== null) {
+                    $classes[] = $pendingClass + ['depth' => $depth];
+                    $pendingClass = null;
+                } elseif ($text === '{' && $pendingMethod !== null) {
+                    $methods[] = ['method' => $pendingMethod, 'depth' => $depth];
+                    $pendingMethod = null;
+                }
+            } elseif ($text === '}') {
+                if ($methods !== [] && end($methods)['depth'] === $depth) {
+                    array_pop($methods);
+                } elseif ($classes !== [] && end($classes)['depth'] === $depth) {
+                    array_pop($classes);
+                }
+                $depth--;
+            } elseif ($text === ';' && $pendingMethod !== null) {
+                $pendingMethod = null;
+            }
+
+            $class = $classes === [] ? null : end($classes);
+            $method = $methods === [] ? null : end($methods);
+            $out[$i] = [
+                'class' => $class === null ? null : $class['class'],
+                'class_fqcn' => $class === null ? null : $class['fqcn'],
+                'implements' => $class === null ? [] : $class['implements'],
+                'method' => ($method !== null && $class !== null && $method['depth'] > $class['depth']) ? $method['method'] : null,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return int[] The token types a class or interface name can be
+     */
+    private static function nameTokens()
+    {
+        return array_values(array_filter([T_STRING, defined('T_NAME_QUALIFIED') ? T_NAME_QUALIFIED : null, defined('T_NAME_FULLY_QUALIFIED') ? T_NAME_FULLY_QUALIFIED : null, defined('T_NAME_RELATIVE') ? T_NAME_RELATIVE : null]));
+    }
+
+    /**
+     * The call starting at token $i: [name, index of its "(", line], or null.
+     *
+     * @param array $tokens
+     * @param int $i
+     * @return array|null
+     */
+    private function callAt(array $tokens, $i)
+    {
+        $token = $tokens[$i];
+
+        // app('translator')->get( / ->choice(
+        if (is_array($token) && $token[0] === T_STRING && strtolower($token[1]) === 'app'
+            && self::is($tokens, $i + 1, '(')
+            && isset($tokens[$i + 2]) && is_array($tokens[$i + 2]) && $tokens[$i + 2][0] === T_CONSTANT_ENCAPSED_STRING
+            && self::literal([$tokens[$i + 2]]) === 'translator'
+            && self::is($tokens, $i + 3, ')')
+            && isset($tokens[$i + 4]) && is_array($tokens[$i + 4]) && in_array($tokens[$i + 4][0], [T_OBJECT_OPERATOR, defined('T_NULLSAFE_OBJECT_OPERATOR') ? T_NULLSAFE_OBJECT_OPERATOR : -1], true)
+            && isset($tokens[$i + 5]) && is_array($tokens[$i + 5]) && in_array(strtolower($tokens[$i + 5][1]), ['get', 'choice', 'gethtml', 'choicehtml'], true)
+            && self::is($tokens, $i + 6, '(')) {
+            $method = strtolower($tokens[$i + 5][1]);
+            $name = $method === 'choice' || $method === 'choicehtml' ? 'Lang::choice' : 'Lang::get';
+
+            return isset($this->functions[$name]) ? [$name, $i + 6, $token[2], $method === 'gethtml' || $method === 'choicehtml'] : null;
+        }
+
+        if (!is_array($token)) {
+            return null;
+        }
+
+        $previous = $i > 0 ? $tokens[$i - 1] : null;
+
+        // Class::method( - including a qualified class name.
+        if ($token[0] === T_DOUBLE_COLON && $previous !== null && is_array($previous)
+            && isset($tokens[$i + 1]) && is_array($tokens[$i + 1]) && $tokens[$i + 1][0] === T_STRING
+            && self::is($tokens, $i + 2, '(')) {
+            $class = ltrim($previous[1], '\\');
+            $class = substr($class, (int) strrpos('\\' . $class, '\\'));
+            $name = $class . '::' . $tokens[$i + 1][1];
+
+            return isset($this->functions[$name]) ? [$name, $i + 2, $tokens[$i + 1][2], false] : null;
+        }
+
+        $isName = $token[0] === T_STRING
+            || (defined('T_NAME_FULLY_QUALIFIED') && $token[0] === T_NAME_FULLY_QUALIFIED);
+        if (!$isName || !self::is($tokens, $i + 1, '(')) {
+            return null;
+        }
+
+        // A method, a declaration or a static call's method name is not a
+        // function call.
+        if ($previous !== null && is_array($previous)
+            && in_array($previous[0], [T_OBJECT_OPERATOR, T_DOUBLE_COLON, T_FUNCTION, T_NEW, defined('T_NULLSAFE_OBJECT_OPERATOR') ? T_NULLSAFE_OBJECT_OPERATOR : -1], true)) {
+            return null;
+        }
+
+        $name = ltrim($token[1], '\\');
+
+        return isset($this->functions[$name]) ? [$name, $i + 1, $token[2], false] : null;
+    }
+
+    /**
+     * The top-level arguments of the call whose "(" is at $open, each a list
+     * of tokens.
+     *
+     * @param array $tokens
+     * @param int $open
+     * @return array[]
+     */
+    private static function arguments(array $tokens, $open)
+    {
+        $args = [];
+        $current = [];
+        $depth = 0;
+
+        for ($i = $open + 1; $i < count($tokens); $i++) {
+            $token = $tokens[$i];
+            $text = is_array($token) ? $token[1] : $token;
+
+            if (in_array($text, ['(', '[', '{'], true) || (is_array($token) && in_array($token[0], [T_CURLY_OPEN, T_DOLLAR_OPEN_CURLY_BRACES], true))) {
+                $depth++;
+            } elseif (in_array($text, [')', ']', '}'], true)) {
+                if ($depth === 0) {
+                    if ($current !== []) {
+                        $args[] = $current;
+                    }
+
+                    return $args;
+                }
+                $depth--;
+            } elseif ($text === ',' && $depth === 0) {
+                $args[] = $current;
+                $current = [];
+                continue;
+            }
+
+            $current[] = $token;
+        }
+
+        return $args;
+    }
+
+    /**
+     * The string an argument is, when it is exactly one string literal with
+     * nothing interpolated into it; else null.
+     *
+     * @param array $arg
+     * @return string|null
+     */
+    private static function literal(array $arg)
+    {
+        if (count($arg) === 1 && is_array($arg[0]) && $arg[0][0] === T_CONSTANT_ENCAPSED_STRING) {
+            $raw = $arg[0][1];
+            $body = substr($raw, 1, -1);
+
+            if ($raw[0] === "'") {
+                return strtr($body, ["\\\\" => "\\", "\\'" => "'"]);
+            }
+
+            return stripcslashes(str_replace('\\$', '$', $body));
+        }
+
+        // A heredoc or nowdoc with no interpolation.
+        if (count($arg) === 3 && is_array($arg[0]) && $arg[0][0] === T_START_HEREDOC
+            && is_array($arg[1]) && $arg[1][0] === T_ENCAPSED_AND_WHITESPACE
+            && is_array($arg[2]) && $arg[2][0] === T_END_HEREDOC) {
+            $body = rtrim($arg[1][1], "\r\n");
+
+            return strpos($arg[0][1], "'") !== false ? $body : stripcslashes($body);
+        }
+
+        return null;
+    }
+
+    /**
+     * The group a key built at runtime is fixed to: the literal prefix of
+     * `"group.$key"` or `'group.' . $key`, when that prefix is a dotted key
+     * path. Null for anything else - a sentence built at runtime has none.
+     *
+     * @param array $arg
+     * @return string|null
+     */
+    private static function literalGroup(array $arg)
+    {
+        $prefix = null;
+
+        if (isset($arg[0], $arg[1], $arg[2]) && $arg[0] === '"' && is_array($arg[1]) && $arg[1][0] === T_ENCAPSED_AND_WHITESPACE
+            && is_array($arg[2]) && in_array($arg[2][0], [T_VARIABLE, T_CURLY_OPEN, T_DOLLAR_OPEN_CURLY_BRACES], true)) {
+            $prefix = $arg[1][1];
+        } elseif (isset($arg[0], $arg[1]) && is_array($arg[0]) && $arg[0][0] === T_CONSTANT_ENCAPSED_STRING && $arg[1] === '.') {
+            $prefix = self::literal([$arg[0]]);
+        }
+
+        return $prefix !== null && preg_match('/^([A-Za-z0-9_-]+)\.(?:[A-Za-z0-9_-]+\.)*$/', $prefix, $m) ? $m[1] : null;
+    }
+
+    /**
+     * The names a `compact('a', 'b')` call passes, when every argument is a
+     * string literal; else null.
+     *
+     * @param array $arg
+     * @return string[]|null
+     */
+    private static function compactKeys(array $arg)
+    {
+        if (count($arg) < 3 || !is_array($arg[0]) || $arg[0][0] !== T_STRING || strtolower($arg[0][1]) !== 'compact'
+            || $arg[1] !== '(' || end($arg) !== ')') {
+            return null;
+        }
+
+        $names = [];
+        foreach (array_slice($arg, 2, -1) as $token) {
+            if ($token === ',') {
+                continue;
+            }
+            $name = self::literal([$token]);
+            if ($name === null) {
+                return null;
+            }
+            $names[] = $name;
+        }
+
+        return $names;
+    }
+
+    /**
+     * The literal string keys of an array literal, or null when the argument
+     * is not an array literal whose keys are all literal strings.
+     *
+     * @param array $arg
+     * @return string[]|null
+     */
+    private static function literalKeys(array $arg)
+    {
+        $first = $arg[0];
+        $short = !is_array($first) && $first === '[';
+        $long = is_array($first) && $first[0] === T_ARRAY && isset($arg[1]) && $arg[1] === '(';
+        if (!$short && !$long) {
+            return null;
+        }
+
+        $inner = $short ? array_slice($arg, 1, -1) : array_slice($arg, 2, -1);
+        $keys = [];
+        $depth = 0;
+        $element = [];
+
+        $inner[] = ',';
+        foreach ($inner as $token) {
+            $text = is_array($token) ? $token[1] : $token;
+
+            if (in_array($text, ['(', '[', '{'], true)) {
+                $depth++;
+            } elseif (in_array($text, [')', ']', '}'], true)) {
+                $depth--;
+            } elseif ($text === ',' && $depth === 0) {
+                if ($element !== []) {
+                    $arrow = null;
+                    foreach ($element as $k => $part) {
+                        if (is_array($part) && $part[0] === T_DOUBLE_ARROW) {
+                            $arrow = $k;
+                            break;
+                        }
+                    }
+                    $key = $arrow === null ? null : self::literal(array_slice($element, 0, $arrow));
+                    if ($key === null) {
+                        return null;
+                    }
+                    $keys[] = $key;
+                }
+                $element = [];
+                continue;
+            }
+
+            $element[] = $token;
+        }
+
+        return $keys;
+    }
+
+    /**
+     * @param array $tokens
+     * @param int $i
+     * @param string $char
+     * @return bool
+     */
+    private static function is(array $tokens, $i, $char)
+    {
+        return isset($tokens[$i]) && !is_array($tokens[$i]) && $tokens[$i] === $char;
+    }
+}
