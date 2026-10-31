@@ -16,8 +16,8 @@ Official PHP SDK for the [Langsys](https://langsys.dev) Translation API. Manage 
 - cURL extension
 - JSON extension
 - intl extension (for ICU plurals and locale-aware number/date formatting)
-- DOM, libxml, filter and tokenizer extensions (included in most PHP builds); pages read
-  the same on libxml2 2.9 and 2.15, and CI runs both
+- DOM, libxml, filter and tokenizer extensions (included in most PHP builds); tested on
+  libxml2 2.9 and 2.15 (CI runs both)
 - Redis extension (optional, for Redis caching)
 
 ## Installation

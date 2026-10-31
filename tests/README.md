@@ -10,9 +10,10 @@ exist on that path, and CI has a dedicated job for it. `-n` removes intl only
 where PHP loads it as a shared extension; Homebrew's PHP builds it in, so there
 the CI job is the check.
 
-CI runs every job on `ubuntu-24.04` (libxml2 2.9) and `ubuntu-latest` (libxml2
-2.15), which parse HTML differently; the SDK reads a page the same on both, and
-`Html\Document::readsRawBodies()` is how it tells them apart. PHP 7.4 to 8.2 run
+CI runs every job on `ubuntu-24.04` (libxml2 2.9) and `ubuntu-latest` (Ubuntu
+26.04, libxml2 2.15), and each job prints the libxml2 version it ran on. The two
+parse HTML differently; `Html\Document::readsRawBodies()` is how the SDK tells
+them apart, and every test passes on both. PHP 7.4 to 8.2 run
 locally from the `shivammathur/php` Homebrew tap
 (`/opt/homebrew/opt/php@7.4/bin/php vendor/bin/phpunit --testsuite no-clone`).
 

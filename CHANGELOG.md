@@ -5,7 +5,7 @@ All notable changes to the Langsys PHP SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.0.0] - 2026-10-30
+## [2.0.0] - 2026-10-31
 
 ### Upgrading from 1.x
 
@@ -23,8 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - text holding a non-breaking space, a line or paragraph separator, or an invisible
     control character;
   - a phrase written with `%name%`, now stored as `{name}`;
-  - a content block holding `<script>`, `<style>`, `<template>`, `<noscript>` or
-    `<math>`, whose contents are no longer part of it;
+  - a content block holding `<script>`, `<style>`, `<template>`, `<noscript>`,
+    `<plaintext>` or `<math>`, whose contents are no longer part of it;
   - a block holding text inside `<svg>`, which is translated now;
   - a block holding a `<textarea>` or `<title>` with markup in it;
   - a fragment that ends inside a start tag, such as `…<a title="Read more`, whose
@@ -148,14 +148,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mark, its declared charset or its bytes, by the browser's own decoders; written out
   in UTF-8; a page without `<html>`, `<head>` or `<body>` is translated whole; its
   scripts and styles come back byte for byte; a `<` that starts no tag is text; and
-  `<!-->` is an empty comment. Each of these lost or mangled part of a page. A page
-  reads and writes the same on libxml2 2.9 and 2.15 (Ubuntu 26.04's): it starts with
-  its own first bytes, never a stray `<!--?xml encoding="UTF-8"-->`, and its xmp and
-  iframe bodies come back escaped once.
+  `<!-->` is an empty comment. Each of these lost or mangled part of a page. On libxml2
+  2.9 and 2.15 (Ubuntu 26.04's) alike, a page starts with its own first bytes, never a
+  stray `<!--?xml encoding="UTF-8"-->`, and one that opens with an XML declaration
+  starts at its first element; a title, textarea, xmp, iframe, noembed or noframes body
+  is read as a browser reads it, inside svg, math or a select too, and written back
+  never escaped twice; and a page's own escaped text never becomes markup.
 - **HTML cut off inside a tag reads as a browser reads it**, as an excerpt trimmed to a
   length often is: the unfinished tag is left out and registers nothing, and a comment
   left open runs to the end of the input.
-- **Script, style and excluded text are never rewritten** by a translation.
+- **Script, style and excluded text are never rewritten** by a translation. Text inside
+  `<plaintext>`, which a browser shows as written, is neither translated nor registered.
 - **A plural Langsys generates for a target locale renders its singular** at a count
   of 1. Every request asks the API for ICU.
 - **ICU renders on every path.** A page translated without params, and a translation
