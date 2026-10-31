@@ -117,8 +117,8 @@ final class Document
     private static function readAsMarkup(DOMDocument $doc)
     {
         $read = [];
-        foreach (self::textOnlyBodies($doc) as $element) {
-            if (strpbrk($element->textContent, '<&') !== false) {
+        foreach (self::bodiesAt($doc) as $element) {
+            if (self::holdsOnlyText($element) && strpbrk($element->textContent, '<&') !== false) {
                 $read[] = $element;
             }
         }
@@ -144,13 +144,12 @@ final class Document
     }
 
     /**
-     * The xmp, iframe, noembed and noframes elements at or below $node that
-     * hold text and nothing else.
+     * The xmp, iframe, noembed and noframes elements at or below $node.
      *
      * @param \DOMNode $node
      * @return \DOMElement[]
      */
-    private static function textOnlyBodies(\DOMNode $node)
+    private static function bodiesAt(\DOMNode $node)
     {
         $elements = [];
         if ($node instanceof \DOMElement && in_array(strtolower($node->nodeName), self::RAW_BODIES, true)) {
@@ -165,17 +164,23 @@ final class Document
         }
 
         return array_values(array_filter($elements, function (\DOMElement $element) {
-            if (!$element->hasChildNodes()) {
+            return $element->hasChildNodes();
+        }));
+    }
+
+    /**
+     * @param \DOMElement $element
+     * @return bool Whether $element holds text and nothing else
+     */
+    private static function holdsOnlyText(\DOMElement $element)
+    {
+        foreach ($element->childNodes as $child) {
+            if (!$child instanceof \DOMText) {
                 return false;
             }
-            foreach ($element->childNodes as $child) {
-                if (!$child instanceof \DOMText) {
-                    return false;
-                }
-            }
+        }
 
-            return true;
-        }));
+        return true;
     }
 
     /**
@@ -238,7 +243,7 @@ final class Document
             return $html;
         }
 
-        $bodies = self::textOnlyBodies($node);
+        $bodies = self::bodiesAt($node);
         if ($bodies === []) {
             return $html;
         }
@@ -246,9 +251,26 @@ final class Document
         $raw = self::rawBodies($node);
         $nonce = bin2hex(random_bytes(8));
         $texts = [];
-        $swapped = [];
+        $restore = [];
 
         foreach ($bodies as $element) {
+            if (!self::holdsOnlyText($element)) {
+                // Text beside an element, which only a tree built in code
+                // holds, is written escaped, as libxml2 2.9 writes it.
+                foreach (iterator_to_array($element->childNodes) as $child) {
+                    if ($child instanceof \DOMText) {
+                        $placeholder = 'ls' . $nonce . 'r' . count($texts) . 'r';
+                        $texts[$placeholder] = htmlspecialchars($child->data, ENT_NOQUOTES | ENT_SUBSTITUTE, 'UTF-8');
+                        $added = $doc->createTextNode($placeholder);
+                        $element->replaceChild($added, $child);
+                        $restore[] = function () use ($element, $added, $child) {
+                            $element->replaceChild($child, $added);
+                        };
+                    }
+                }
+                continue;
+            }
+
             // As written only when nothing in it can end the element, or a
             // <noscript> around it, which a browser reads as raw text too: the
             // page's own body never holds either end tag, so one there came
@@ -264,17 +286,20 @@ final class Document
             foreach ($children as $child) {
                 $element->removeChild($child);
             }
-            $swapped[] = [$element, $element->appendChild($doc->createTextNode($placeholder)), $children];
+            $added = $element->appendChild($doc->createTextNode($placeholder));
+            $restore[] = function () use ($element, $added, $children) {
+                $element->removeChild($added);
+                foreach ($children as $child) {
+                    $element->appendChild($child);
+                }
+            };
         }
 
         try {
             $html = (string) ($node instanceof DOMDocument ? $node->saveHTML() : $doc->saveHTML($node));
         } finally {
-            foreach ($swapped as list($element, $placeholder, $children)) {
-                $element->removeChild($placeholder);
-                foreach ($children as $child) {
-                    $element->appendChild($child);
-                }
+            foreach ($restore as $undo) {
+                $undo();
             }
         }
 
