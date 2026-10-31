@@ -79,6 +79,15 @@ final class ValueMarkers
     private $runs = [];
 
     /**
+     * Every ancestor of a run's node. Before PHP 8.3, a node removed from the
+     * tree frees everything below it once nothing holds the node itself, so a
+     * render that rebuilds a host's children would leave a run unreadable.
+     *
+     * @var array<int, DOMNode>
+     */
+    private $held = [];
+
+    /**
      * Well-formed markers whose name is outside VAR-2's grammar: a value the
      * reader can tell came from a variable but cannot name (VAR-7).
      *
@@ -795,6 +804,9 @@ final class ValueMarkers
                     $parent->removeChild($replaced);
                 }
                 $this->runs[] = ['node' => $collapsed, 'text' => $text, 'values' => $values];
+                for ($ancestor = $parent; $ancestor !== null; $ancestor = $ancestor->parentNode) {
+                    $this->held[spl_object_id($ancestor)] = $ancestor;
+                }
             }
 
             // The inner loop stops only at a node that is neither text nor a
