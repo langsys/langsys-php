@@ -221,11 +221,17 @@ final class Document
         self::scan($html, $edits, $marker);
 
         // In the order they apply, each once: a mark and keepReferences()
-        // add edits before scan() reaches what is inside the body.
+        // add edits before scan() reaches what is inside the body, and only
+        // they put edits out of order.
         $order = array_keys($edits);
-        usort($order, function ($a, $b) use ($edits) {
-            return $edits[$a][0] === $edits[$b][0] ? $a - $b : $edits[$a][0] - $edits[$b][0];
-        });
+        for ($i = 1, $count = count($edits); $i < $count; $i++) {
+            if ($edits[$i][0] < $edits[$i - 1][0]) {
+                usort($order, function ($a, $b) use ($edits) {
+                    return $edits[$a][0] === $edits[$b][0] ? $a - $b : $edits[$a][0] - $edits[$b][0];
+                });
+                break;
+            }
+        }
 
         $out = '';
         $at = 0;
