@@ -392,6 +392,29 @@ class RawTextBodyTest extends TestCase
     }
 
     /**
+     * A title in svg is the drawing's element, and its body is read as
+     * markup once, as a browser reads it: a reference is decoded once, a `<`
+     * that opens nothing is text, and a tag the input ends inside is left
+     * out.
+     */
+    public function testATitleInSvgIsReadAsMarkupOnce(): void
+    {
+        $parser = new HtmlParser();
+        foreach ([
+            '<svg><title>Tom &amp;lt;3 &amp; co</title></svg>' => ['Tom &lt;3 & co'],
+            '<svg><title>a < b &amp; c</title></svg>' => ['a < b & c'],
+            '<svg><title>a &amp; b <a title="x &amp; y' => ['a & b'],
+        ] as $html => $phrases) {
+            $this->assertSame($phrases, array_values($parser->extractPhrases($html)), $html);
+        }
+
+        $this->assertStringContainsString(
+            '<title>Tom &amp;lt;3 &amp; co</title>',
+            $this->client()->translateContentBlock('<div><svg><title>Tom &amp;lt;3 &amp; co</title></svg><p>Hello world</p></div>', 'UI')
+        );
+    }
+
+    /**
      * What marks a body for its second read as markup stays in the loader:
      * no output and no registered block holds it. An attribute of the page's
      * that looks like it is the page's own, kept as written and not read
