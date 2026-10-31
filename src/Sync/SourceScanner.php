@@ -212,7 +212,7 @@ final class SourceScanner
      */
     private static function nameTokens()
     {
-        return array_values(array_filter([T_STRING, defined('T_NAME_QUALIFIED') ? T_NAME_QUALIFIED : null, defined('T_NAME_FULLY_QUALIFIED') ? T_NAME_FULLY_QUALIFIED : null]));
+        return array_values(array_filter([T_STRING, defined('T_NAME_QUALIFIED') ? T_NAME_QUALIFIED : null, defined('T_NAME_FULLY_QUALIFIED') ? T_NAME_FULLY_QUALIFIED : null, defined('T_NAME_RELATIVE') ? T_NAME_RELATIVE : null]));
     }
 
     /**

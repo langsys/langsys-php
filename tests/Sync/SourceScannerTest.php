@@ -108,6 +108,9 @@ class SourceScannerTest extends TestCase
         $this->assertSame([null, 'QuotaExceeded', 'QuotaExceeded', null], array_column($hits, 'class'));
         $this->assertSame([[], ['HasAppMessageTemplate', 'Countable'], ['HasAppMessageTemplate', 'Countable'], ['Foo']], array_column($hits, 'implements'));
         $this->assertSame([null, 'template', 'other', 'template'], array_column($hits, 'method'));
+
+        $relative = $this->scan("namespace App;\nclass Quota implements namespace\\HasAppMessageTemplate { public function template() { return __('Relative'); } }");
+        $this->assertSame([['HasAppMessageTemplate']], array_column($relative, 'implements'), 'a name relative to the namespace');
     }
 
     /**
