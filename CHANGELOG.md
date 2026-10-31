@@ -5,6 +5,20 @@ All notable changes to the Langsys PHP SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-10-31
+
+### Added
+
+- **An agent skill ships in `skill/`.** `langsys-php` is the Langsys skill set's core skill
+  for PHP, read after the entry skill `langsys` and before a framework's own skill. It
+  covers the four translate calls and the `data-langsys-*` attributes, whether a request
+  registers, the `Client`'s options, interpolation and ICU, value markers, server
+  messages, key-based language files and sync, snapshots, the request's locale, the
+  reference lists, caching and long-lived workers. `npx langsys-skill install` installs it
+  from `vendor/langsys/langsys-php/skill/`. A test holds the names it uses to the code:
+  methods, classes, options and the keys inside them, environment variables, commands and
+  their flags, and links and the headings they point to.
+
 ## [2.0.0] - 2026-10-31
 
 ### Upgrading from 1.x
@@ -567,6 +581,7 @@ First tagged release.
   pollutes the catalog shared with every other Langsys SDK. Use `$params`
   instead. This cannot be detected at runtime; see README.
 
+[2.0.1]: https://github.com/langsys/langsys-php/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/langsys/langsys-php/compare/v1.3.1...v2.0.0
 [1.3.1]: https://github.com/langsys/langsys-php/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/langsys/langsys-php/compare/v1.2.0...v1.3.0

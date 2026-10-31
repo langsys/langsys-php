@@ -105,8 +105,9 @@ worker that serves one fixed locale calls `setLocale()` again after each reset.
 
 ## Output that changed
 
-- **`translatePage()` and `translateContentBlock()`** add `data-ls-contentblock="<id>"` to
-  each content-block element they render.
+- **`translatePage()` and `translateContentBlock()`** write each rendered content block's id on
+  its element: `data-ls-contentblock="<id>"`, or the id in the `data-langsys-contentblock` that
+  declared it.
 - **`translatePage()` in a locale other than the project's base** adds
   `data-ls-resolved="<locale>"` on `<html>`. A later walk of that page — a Langsys
   browser SDK, a second middleware — registers none of it.
