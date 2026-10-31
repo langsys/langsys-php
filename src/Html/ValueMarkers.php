@@ -59,7 +59,7 @@ final class ValueMarkers
     const SENTINEL_PATTERN = '/\xEE\x80\x90([0-9a-f]{32})([A-Za-z0-9+\/=]*)\xEE\x80\x91/';
 
     /** Subtrees whose text is not prose, or holds no comments (RCDATA). */
-    const SKIPPED = ['script', 'style', 'template', 'noscript', 'math', 'title', 'textarea', 'head'];
+    const SKIPPED = ['script', 'style', 'template', 'noscript', 'math', 'plaintext', 'title', 'textarea', 'head'];
 
     /**
      * The nonces of the readers alive in this process.

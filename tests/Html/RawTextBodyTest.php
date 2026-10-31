@@ -362,6 +362,36 @@ class RawTextBodyTest extends TestCase
     }
 
     /**
+     * Text inside a <plaintext> is not translated or registered, wherever it
+     * sits: libxml2 2.9 parses what follows the element as markup, and 2.14
+     * and later make its body one raw text node even inside svg or a select,
+     * where a browser reads markup, and write that node back unescaped.
+     */
+    public function testTextInsidePlaintextIsNeitherTranslatedNorRegistered(): void
+    {
+        $parser = new HtmlParser();
+        foreach ([
+            '<svg><plaintext>Hello world</plaintext></svg>' => [],
+            '<div><select><plaintext>Hello world</plaintext></select></div>' => [],
+            '<p>Hello world</p><plaintext><p>Second</p>' => ['Hello world'],
+        ] as $html => $phrases) {
+            $this->assertSame($phrases, array_values($parser->extractPhrases($html)), $html);
+        }
+
+        $hostile = '<img src=x onerror=alert(1)>';
+        $client = $this->client(['Hello world' => $hostile, 'Hello world</plaintext></svg>' => $hostile, 'Hello world</plaintext></select></div>' => $hostile]);
+        foreach (['<svg><plaintext>Hello world</plaintext></svg>', '<div><select><plaintext>Hello world</plaintext></select></div>'] as $html) {
+            foreach ([
+                'block' => $client->translateContentBlock('<div>' . $html . '</div>', 'UI'),
+                'page' => $client->translatePage('<html><body>' . $html . '</body></html>', 'UI'),
+                'rich' => $client->translateRich('Read ' . $html, null, 'UI')['html'],
+            ] as $route => $out) {
+                $this->assertStringNotContainsString('<img', $out, "$route: $html");
+            }
+        }
+    }
+
+    /**
      * What marks a body for its second read as markup stays in the loader:
      * no output and no registered block holds it. An attribute of the page's
      * that looks like it is the page's own, kept as written and not read

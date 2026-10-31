@@ -602,11 +602,15 @@ class HtmlParser
     /**
      * Elements whose text content is code rather than prose (TOK-1).
      *
-     * Exactly the five the spec names. `svg` is deliberately ABSENT: SVG
-     * `<text>` is visible copy a reader is expected to read, so it is
-     * translated. MathML is notation rather than prose and is excluded.
+     * The five the spec names, and `plaintext`, which no two parsers read
+     * alike: libxml2 2.9 parses what follows it as markup, and 2.14 and
+     * later make its body one raw text node even inside svg or a select,
+     * where a browser reads markup, and write that node back unescaped.
+     * `svg` is deliberately ABSENT: SVG `<text>` is visible copy a reader is
+     * expected to read, so it is translated. MathML is notation rather than
+     * prose and is excluded.
      */
-    const NON_PROSE_ELEMENTS = ['script', 'style', 'template', 'noscript', 'math'];
+    const NON_PROSE_ELEMENTS = ['script', 'style', 'template', 'noscript', 'math', 'plaintext'];
 
     /**
      * Both spellings of the content-block marker, canonical form first (MARK-2).

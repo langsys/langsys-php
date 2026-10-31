@@ -52,7 +52,7 @@ class PageTranslator
      * unit that holds it, or a unit of its own.
      */
     const SKIP_ELEMENTS = [
-        'script', 'style', 'noscript', 'template', 'math',
+        'script', 'style', 'noscript', 'template', 'math', 'plaintext',
         // The head handler's, and walked only on a page with no <body>.
         'head',
     ];

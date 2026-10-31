@@ -80,7 +80,7 @@ class MarkupTokenizer
      * translated. `math` stays: notation, not prose.
      */
     const OPAQUE_ELEMENTS = [
-        'script', 'style', 'noscript', 'template', 'math',
+        'script', 'style', 'noscript', 'template', 'math', 'plaintext',
     ];
 
     /**
