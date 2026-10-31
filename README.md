@@ -32,6 +32,9 @@ composer require "langsys/langsys-php:^2.0"
 Laravel app that uses it stays on langsys-php 1.x until the Laravel package releases a
 version built on 2.0.0.
 
+**Using a coding agent?** Run `npx langsys-skill install`. It gives the agent the Langsys
+skills, this package's included: the package ships its own in `skill/`.
+
 Coming from 1.x? [UPGRADING.md](UPGRADING.md) lists what an existing app notices.
 [tests/README.md](tests/README.md) says how to run this SDK's tests.
 
