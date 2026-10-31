@@ -542,6 +542,39 @@ class RawTextBodyTest extends TestCase
     }
 
     /**
+     * A page comes back starting with its own first bytes, and a fragment
+     * with its own: the encoding hint every load starts with, which libxml2
+     * 2.14 and later read as a comment, is written into neither. Nor is a
+     * page's own XML declaration.
+     */
+    public function testAPageAndAFragmentStartWithTheirOwnFirstBytes(): void
+    {
+        foreach ([
+            '<!DOCTYPE html><html><head></head><body><p>Hello world</p></body></html>' => '<!DOCTYPE html>',
+            '<html><head></head><body><p>Hello world</p></body></html>' => '<html',
+            '<html><body><p>Hello world</p></body></html>' => '<html',
+            '<!-- built 2026-10-30 --><p>Hello world</p>' => '<!-- built 2026-10-30 -->',
+            '<p>Hello world</p>' => '<p',
+            '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html><html><body><p>Hello world</p></body></html>' => '<!DOCTYPE html>',
+        ] as $page => $start) {
+            $out = $this->client(['Hello world' => 'Hola mundo'])->translatePage($page, 'UI');
+
+            $this->assertSame(0, strpos($out, $start), $page . ' became ' . $out);
+            $this->assertStringContainsString('Hola mundo', $out, $page);
+            $this->assertStringNotContainsString('?xml', $out, $page);
+        }
+
+        $client = $this->client(['Hello world' => 'Hola mundo']);
+        foreach ([
+            '<p' => $client->translateContentBlock('<p>Hello world</p><p>Hello world</p>', 'UI'),
+            'Hello <b>' => $client->translateRich('Hello <b>world</b>', null, 'UI')['html'],
+        ] as $start => $fragment) {
+            $this->assertSame(0, strpos($fragment, $start), $fragment);
+            $this->assertStringNotContainsString('?xml', $fragment);
+        }
+    }
+
+    /**
      * A doctype with public and system identifiers is written back as it was.
      */
     public function testALegacyDoctypeIsWrittenBack(): void
