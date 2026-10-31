@@ -152,6 +152,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reads and writes the same on libxml2 2.9 and 2.15 (Ubuntu 26.04's): it starts with
   its own first bytes, never a stray `<!--?xml encoding="UTF-8"-->`, and its xmp and
   iframe bodies come back escaped once.
+- **HTML cut off inside a tag reads as a browser reads it**, as an excerpt trimmed to a
+  length often is: the unfinished tag is left out and registers nothing, and a comment
+  left open runs to the end of the input.
 - **Script, style and excluded text are never rewritten** by a translation.
 - **A plural Langsys generates for a target locale renders its singular** at a count
   of 1. Every request asks the API for ICU.

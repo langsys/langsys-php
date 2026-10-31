@@ -395,8 +395,11 @@ it.** libxml2 2.15.2, as Ubuntu 26.04 ships it, reads a textarea or title body a
 2.13.9 behaves like 2.9.13. No libxml2 measured foster-parents: 2.9.13, lxml's 2.14.6 and 2.15.2
 all keep the stray `<b>` and the loose text inside the table. The fixture's `libxml2_raw_bodies`
 column holds 2.15.2's answers where they differ, and `Html\Document::readsRawBodies()` asks libxml2
-once per process which reading it has. Through `Document::load()` the SDK gives the same tokens, keys
-and block ids on 2.9 and on 2.15, so a host's libxml2 version moves none of them.
+once per process which reading it has. Where a parse differs, the two identities are exposed
+differently, as the table above measures: a raw-text body moves both a `Phrase` key and a content
+block's id, while foster parenting moves only the `Phrase` key, its two rows having equal block ids.
+Through `Document::load()` the SDK gives the same tokens, keys and block ids on 2.9 and on 2.15, so a
+host's libxml2 version moves none of them.
 
 ### C0 controls
 
