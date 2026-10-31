@@ -1101,7 +1101,10 @@ class InterpolatorTest extends TestCase
             $locale
         );
 
-        $this->assertSame($expected, $out);
+        // The count is written in the locale's own digits, which differ
+        // between ICU versions: Arabic's is 3 on ICU 76.1 and 78.2, ٣ on 74.2.
+        $digits = (new \NumberFormatter($locale, \NumberFormatter::DECIMAL))->format(3);
+        $this->assertSame(str_replace('3', $digits, $expected), $out);
     }
 
     public function cldrFewProvider()
