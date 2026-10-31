@@ -50,13 +50,31 @@ final class Document
      */
     public static function load(DOMDocument $doc, $html, $options = 0)
     {
-        if (!$doc->loadHTML(self::UTF8_HINT . self::forLibxml((string) $html), $options | self::RECOVER | self::IGNORE_ENCODING)) {
+        return self::loadReading($doc, $html, $options, self::readsRawBodies());
+    }
+
+    /**
+     * load(), reading again as markup, when $reread, each body a browser
+     * reads as markup and libxml2 read as text.
+     *
+     * @param DOMDocument $doc
+     * @param string $html
+     * @param int $options
+     * @param bool $reread
+     * @return bool
+     */
+    private static function loadReading(DOMDocument $doc, $html, $options, $reread)
+    {
+        // The scan marks each such body's start tag with an attribute no
+        // page can know, so the second read follows the scan's reading.
+        $marker = $reread ? 'data-ls-markup-' . bin2hex(random_bytes(8)) : null;
+        if (!$doc->loadHTML(self::UTF8_HINT . self::forLibxml((string) $html, $marker), $options | self::RECOVER | self::IGNORE_ENCODING)) {
             return false;
         }
 
         self::dropHint($doc);
-        if (self::readsRawBodies()) {
-            self::readAsMarkup($doc);
+        if ($marker !== null) {
+            self::readAsMarkup($doc, $marker);
         }
 
         return true;
@@ -106,42 +124,27 @@ final class Document
     }
 
     /**
-     * Read as markup each body a browser reads as markup and a libxml2 that
-     * reads raw bodies read as text: an xmp, iframe, noembed or noframes
-     * inside a <select>, or in svg or math outside their integration points,
-     * and a title or textarea in svg or math, the drawing's own element.
+     * Read as markup each body the scan marked with $marker: one a browser
+     * reads as markup and a libxml2 that reads raw bodies read as text, an
+     * xmp, iframe, noembed or noframes inside a <select>, or in svg or math
+     * outside their integration points, and a title or textarea in svg or
+     * math, the drawing's own element. Each is read once: a body inside one
+     * is read as the second read finds it.
      *
      * @param DOMDocument $doc
+     * @param string $marker
      * @return void
      */
-    private static function readAsMarkup(DOMDocument $doc)
+    private static function readAsMarkup(DOMDocument $doc, $marker)
     {
-        $read = [];
-        foreach (self::bodiesAt($doc) as $element) {
-            if (self::holdsOnlyText($element) && strpbrk($element->textContent, '<&') !== false) {
-                $read[] = $element;
+        foreach (iterator_to_array((new \DOMXPath($doc))->query('//*[@' . $marker . ']')) as $element) {
+            $element->removeAttribute($marker);
+            if (!$element->hasChildNodes() || !self::holdsOnlyText($element) || strpbrk($element->textContent, '<&') === false) {
+                continue;
             }
-        }
-        if ($read !== []) {
-            $raw = self::rawBodies($doc);
-            $read = array_filter($read, function ($element) use ($raw) {
-                return !in_array($element, $raw, true);
-            });
-        }
 
-        // A title or textarea in svg or math is the drawing's element.
-        foreach (self::DECODED_BODIES as $name) {
-            foreach ($doc->getElementsByTagName($name) as $element) {
-                if ($element->hasChildNodes() && self::holdsOnlyText($element) && strpbrk($element->textContent, '<&') !== false
-                    && in_array(self::contentAround($element), self::FOREIGN, true)) {
-                    $read[] = $element;
-                }
-            }
-        }
-
-        foreach ($read as $element) {
             $parsed = new DOMDocument();
-            self::loadFragment($parsed, $element->textContent);
+            self::loadReading($parsed, '<' . self::FRAGMENT_ROOT . '>' . $element->textContent, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD, false);
             while ($element->firstChild !== null) {
                 $element->removeChild($element->firstChild);
             }
@@ -149,32 +152,6 @@ final class Document
                 $element->appendChild($doc->importNode($child, true));
             }
         }
-    }
-
-    /**
-     * The content a browser reads $element in, from its ancestors: null for
-     * HTML, svg or math for theirs, and false where no raw body is read as
-     * written. See contentIn().
-     *
-     * @param \DOMElement $element
-     * @return string|null|false
-     */
-    private static function contentAround(\DOMElement $element)
-    {
-        $ancestors = [];
-        for ($at = $element->parentNode; $at instanceof \DOMElement; $at = $at->parentNode) {
-            $ancestors[] = $at;
-        }
-
-        $content = null;
-        foreach (array_reverse($ancestors) as $ancestor) {
-            $content = self::contentIn($ancestor, $content);
-            if ($content === false) {
-                return false;
-            }
-        }
-
-        return $content;
     }
 
     /**
@@ -231,19 +208,20 @@ final class Document
      * runs to a later `-->`, so they are written `<!---->`.
      *
      * @param string $html
+     * @param string|null $marker The attribute scan() marks a body with for readAsMarkup()
      * @return string
      */
-    private static function forLibxml($html)
+    private static function forLibxml($html, $marker = null)
     {
         if (strpos($html, '<') === false) {
             return $html;
         }
 
         $edits = [];
-        self::scan($html, $edits);
+        self::scan($html, $edits, $marker);
 
-        // In the order they apply, each once: keepReferences() adds a body's
-        // edits before scan() reaches what is inside it.
+        // In the order they apply, each once: a mark and keepReferences()
+        // add edits before scan() reaches what is inside the body.
         $order = array_keys($edits);
         usort($order, function ($a, $b) use ($edits) {
             return $edits[$a][0] === $edits[$b][0] ? $a - $b : $edits[$a][0] - $edits[$b][0];
@@ -575,9 +553,10 @@ final class Document
      *
      * @param string $html
      * @param array $edits
+     * @param string|null $marker The attribute a body read again as markup is marked with
      * @return array[]
      */
-    private static function scan($html, array &$edits)
+    private static function scan($html, array &$edits, $marker = null)
     {
         $tags = [];
         $open = [];
@@ -645,12 +624,17 @@ final class Document
             if ($foreign !== null) {
                 $inPoint = $points !== [];
                 if ($inPoint || !in_array($name, self::BREAKOUT, true)) {
-                    // A title or textarea here is the drawing's, and a browser
-                    // reads its body as markup. A libxml2 that reads raw bodies
-                    // reads it as text, decoding its references, so they are
-                    // kept as written for load() to read it again as markup.
-                    if (!$inPoint && !$closed && in_array($name, self::DECODED_BODIES, true) && self::readsRawBodies()) {
+                    // A body here is the drawing's element's, and a browser
+                    // reads it as markup, as in a select inside an
+                    // integration point. A libxml2 that reads raw bodies reads
+                    // it as text, a title's or a textarea's decoding its
+                    // references, so those are kept as written and the body is
+                    // marked to be read again as markup.
+                    if ($marker !== null && !$closed && (!$inPoint || $pointSelects > 0) && in_array($name, self::RAW_BODIES, true)) {
+                        $edits[] = [$lt + 1 + strlen($m[1]), 0, ' ' . $marker];
+                    } elseif ($marker !== null && !$closed && !$inPoint && in_array($name, self::DECODED_BODIES, true)) {
                         self::keepReferences($html, $name, $at, $edits);
+                        $edits[] = [$lt + 1 + strlen($m[1]), 0, ' ' . $marker];
                     }
                     if ($name === $foreign && !$closed) {
                         $depth++;
@@ -689,6 +673,9 @@ final class Document
             }
             // Inside a <select> a browser reads no raw-body element, and its
             // text as markup.
+            if ($marker !== null && !$closed && !empty($counts['select']) && in_array($name, self::RAW_BODIES, true)) {
+                $edits[] = [$lt + 1 + strlen($m[1]), 0, ' ' . $marker];
+            }
             if (in_array($name, self::TEXT_BODIES, true) && !(!empty($counts['select']) && in_array($name, self::RAW_BODIES, true))) {
                 $at = self::textBody($html, $name, $at, $edits);
                 if ($at === null) {

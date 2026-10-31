@@ -334,6 +334,66 @@ class RawTextBodyTest extends TestCase
     }
 
     /**
+     * A page's own escaped text in a title or textarea stays text, whether
+     * the svg around it has ended or not. A browser reads such a body as
+     * markup only inside svg or math, and a breakout element such as a
+     * <span> ends that content though the DOM keeps the title inside <svg>.
+     */
+    public function testEscapedTextInATitleOrTextareaAfterAnSvgBreakoutStaysText(): void
+    {
+        foreach ([
+            '<svg><span>Icon</span><title>&lt;title&gt;x&lt;/title&gt;&lt;img src=x onerror=alert(1)&gt;</title></svg>',
+            '<svg><span>Icon</span><title>&lt;!--&lt;/title&gt;&lt;img src=x onerror=alert(1)&gt;--&gt;</title></svg>',
+            '<svg><b>x</b><textarea>&lt;textarea&gt;&lt;/textarea&gt;&lt;img src=x onerror=alert(1)&gt;</textarea></svg>',
+            '<div><svg></div><title>&lt;img src=x onerror=alert(1)&gt;</title>',
+        ] as $html) {
+            foreach ([
+                'block' => $this->client()->translateContentBlock('<div>' . $html . '</div>', 'UI'),
+                'page' => $this->client()->translatePage('<html><body>' . $html . '</body></html>', 'UI'),
+                'rich' => $this->client()->translateRich('Read ' . $html, null, 'UI')['html'],
+            ] as $route => $out) {
+                $this->assertStringNotContainsString('<img', $out, "$route: $html");
+            }
+        }
+
+        $parser = new HtmlParser();
+        $this->assertContains('Tom &lt;3', array_values($parser->extractPhrases('<svg><b>x</b><title>Tom &amp;lt;3</title></svg>')), 'decoded once');
+        $this->assertContains('A & B', array_values($parser->extractPhrases('<div><svg></div><title>A &amp; B</title>')), 'and not escaped twice');
+    }
+
+    /**
+     * What marks a body for its second read as markup stays in the loader:
+     * no output and no registered block holds it. An attribute of the page's
+     * that looks like it is the page's own, kept as written and not read
+     * again.
+     */
+    public function testTheLoadersOwnMarkLeavesNoTrace(): void
+    {
+        $html = '<div><svg><title>Fish &amp; chips</title><xmp>a &amp; b</xmp></svg><select><xmp>c &amp; d</xmp></select><p>Hello world</p></div>';
+        $client = $this->client();
+        foreach ([
+            'block' => $client->translateContentBlock($html, 'UI'),
+            'page' => $client->translatePage('<html><body>' . $html . '</body></html>', 'UI'),
+            'rich' => $client->translateRich('Read <svg><title>Fish &amp; chips</title></svg> now', null, 'UI')['html'],
+        ] as $route => $out) {
+            $this->assertStringNotContainsString('data-ls-markup', $out, $route);
+        }
+        foreach ($client->getPendingContentBlocks() as $block) {
+            $this->assertStringNotContainsString('data-ls-markup', json_encode($block), 'a registered block');
+        }
+        $this->assertSame(
+            (new HtmlParser())->generateCustomId('UI', ['Fish & chips', 'a & b', 'c & d', 'Hello world']),
+            (new HtmlParser())->generateCustomId('UI', array_values((new HtmlParser())->extractPhrases($html))),
+            'the block id is the content\'s own'
+        );
+
+        $own = '<svg><title data-ls-markup-0123456789abcdef="x">&lt;b&gt;Fish&lt;/b&gt;</title></svg>';
+        $out = $client->translateContentBlock('<div>' . $own . '<p>Hello world</p></div>', 'UI');
+        $this->assertStringContainsString('data-ls-markup-0123456789abcdef="x"', $out, 'the page\'s own attribute is kept');
+        $this->assertStringNotContainsString('<b>', $out, 'and its body is not read again');
+    }
+
+    /**
      * A translation that nests one of a line's elements inside another
      * cannot end a textarea or title with what it puts in a raw body there.
      */
