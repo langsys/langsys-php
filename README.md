@@ -729,7 +729,8 @@ without markers registers what it renders.
 
 Never write ICU. Write the sentence as it reads, with the count as a placeholder, and
 Langsys makes each language's plural forms, the base language included (Russian's four,
-Arabic's six, and English's `You have 1 new message`):
+Arabic's six, and English's `You have 1 new message`): it runs the same plural check on
+the base-language text, so English needs no ICU either.
 
 ```php
 $client->translate('You have {count} new messages', null, 'Inbox', null, ['count' => $count]);
