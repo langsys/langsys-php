@@ -1,4 +1,4 @@
-# Interpolation and ICU
+# Interpolation and plurals
 
 ## `{name}`
 
@@ -26,14 +26,34 @@ The phrase registers with its placeholders, `Hello, {name}!`, once. `{name}` is 
 
 An untranslated phrase still interpolates on `translate()`, `resolve()`, `translateRich()` and `translateContentBlock()`, so a reader never sees a raw `{name}` for a value you passed. **`translatePage()` doesn't:** a page it can't translate, because no catalog or no locale can be read (a client without credentials, or the API unreachable with nothing cached), comes back exactly as given, `{name}` included. On a page, mark printed values instead ([value-markers.md](./value-markers.md)): a marked value shows its value either way. Interpolation changes only what your code receives, never what registers.
 
-## ICU MessageFormat
+## Plurals and gender: write the sentence flat
+
+**Never write ICU.** Write the sentence as it reads, with the count or the name as a `{placeholder}`, and pass the value as a param:
 
 ```php
-$client->translate('{n, plural, one {# item} other {# items}}', null, 'Cart', null, ['n' => $count]);
-$client->translate('{g, select, female {She} male {He} other {They}} replied', null, 'Inbox', null, ['g' => $gender]);
+$client->translate('You have {count} new messages', null, 'Inbox', null, ['count' => $count]);
 ```
 
-Plural categories are each language's own: Russian's four, Arabic's six. Langsys also turns a flat phrase into a plural for a target locale that needs one: `You have {count} new messages.` is stored for Spanish as `{count, plural, one {…} other {…}}`. Every request asks the API for that ICU form, so a call that already passes `count` renders the right form with no change. A count's noun must be in the same phrase as the count for this to work: on a page, keep them together with `data-langsys-phrase` ([primitives.md](./primitives.md)).
+Langsys makes the plural and gender forms each language needs, the base language included: English renders `You have 1 new message`, Russian picks among its four forms and Arabic among its six. Every request asks the API for those forms as ICU (`X-Langsys-Capabilities: icu`), and `translate()` renders the one the count selects. Your code passes the same params in every language.
+
+- **Keep a count and the noun it inflects in one phrase**, or no plural form can reach the noun: on a page, keep them together with `data-langsys-phrase` ([primitives.md](./primitives.md)).
+- **A sentence that says something different at zero is its own phrase**, chosen in code:
+
+```php
+$text = $count === 0
+    ? $client->translate('Ready to import the rest of the plan.', null, 'Import')
+    : $client->translate('Ready to import {count} new events.', null, 'Import', null, ['count' => $count]);
+```
+
+**Gender.** In a language with grammatical gender, Langsys can turn `{name}` into `{name_gender, select, …}` in the translation. Pass `name_gender` beside `name` when you know it (`female`, `male`); without it the neutral form renders:
+
+```php
+$client->translate('{name} replied', null, 'Inbox', null, ['name' => $user->name, 'name_gender' => 'female']);
+```
+
+## Rendering what the catalog sends
+
+A translation in ICU syntax renders with the locale's CLDR rules.
 
 - `#` in a plural branch is the number; in a `select` branch it is text.
 - A `{d}` holding a date renders as a date in a phrase with ICU in it too.
