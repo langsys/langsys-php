@@ -1,9 +1,9 @@
 ---
 name: langsys-php
-description: The Langsys PHP core skill, for langsys/langsys-php and every Langsys PHP binding built on it. Part of the Langsys skill set, read in order - the entry skill langsys first, then this one, then the framework's own skill (langsys-laravel). Covers translate(), translateRich(), translatePage() and translateContentBlock(), the data-langsys-* attributes, whether a request registers (write_enabled, canWrite()), the Client's options, interpolation and ICU, value markers, server messages, key-based language files, sync and snapshots, the request's locale and Vary, reference lists, caching, and long-lived workers.
+description: The Langsys PHP core skill, for langsys/langsys-php and every Langsys PHP binding built on it. Part of the Langsys skill set, read in order - the entry skill langsys first, then this one, then the framework's own skill (langsys-laravel). Covers translate(), translateRich(), translatePage() and translateContentBlock(), the data-langsys-* attributes, whether a request registers (write_enabled, canWrite()), the Client's options, interpolation and plurals, value markers, server messages, key-based language files, sync and snapshots, the request's locale and Vary, reference lists, caching, and long-lived workers.
 metadata:
   package: langsys/langsys-php
-  version: 2.0.1
+  version: 2.0.2
 ---
 
 # Langsys PHP core
@@ -20,23 +20,24 @@ The entry skill isn't installed with any SDK. If `langsys` isn't among your skil
 
 This is `langsys-php`, step 2 for PHP. It describes `langsys/langsys-php` at the version in its frontmatter. Check the installed version first (`composer show langsys/langsys-php`). If it differs, say so before relying on anything here.
 
-`langsys/langsys-php` is the PHP SDK every Langsys PHP binding builds on: the API client, the catalog and its cache, phrase discovery and registration, the HTML reader that walks pages and fragments, interpolation and ICU, the request's locale, server messages, the key-based migration and sync. A binding's skill (`langsys-laravel`) reads this one first and adds only what its framework changes. Where a binding forwards a call, the behaviour is the one described here. The examples are plain PHP, written for 7.4 except the one that declares an enum, which needs 8.1.
+`langsys/langsys-php` is the PHP SDK every Langsys PHP binding builds on: the API client, the catalog and its cache, phrase discovery and registration, the HTML reader that walks pages and fragments, interpolation and plurals, the request's locale, server messages, the key-based migration and sync. A binding's skill (`langsys-laravel`) reads this one first and adds only what its framework changes. Where a binding forwards a call, the behaviour is the one described here. The examples are plain PHP, written for 7.4 except the one that declares an enum, which needs 8.1.
 
 ## The model
 
 - **The source text is the key.** There are no catalog files and no message ids: `$client->translate('Save', null, 'UI')` looks up the phrase `Save` and returns it as-is until a translation exists.
 - **Content is discovered as the app runs.** A request the API lets write registers each phrase and content block it misses, at the end of the request, and the Translation Manager fills in the translations.
 - **The catalog is fetched per project and locale**, held in memory for the request and in the cache (a file by default) across requests.
-- **Untranslated text renders as its source**, so the base language always looks right. That is why most mistakes here are invisible: they show only when someone switches locale or reads what was registered in the Translation Manager.
+- **Untranslated text renders as its source**, so the base language always reads as written, and gains its plural forms once Langsys has checked the phrase. That is why most mistakes here are invisible: they show only when someone switches locale or reads what was registered in the Translation Manager.
 
 ## The rules that matter most
 
 1. **Never build a phrase.** `translate(sprintf('Hello, %s!', $name))` registers one phrase per distinct value, permanently, in a catalog every SDK on the project shares. Pass values as params: `translate('Hello, {name}!', null, 'Greetings', null, ['name' => $name])`. [invariants.md](./invariants.md)
-2. **The locale comes before the category.** `translate($phrase, $locale, $category, $contentBlockId, $params)`. Pass `null` for the locale to use the request's. A category in the second place is read as a locale, so the phrase renders as its source in every language. This is the opposite of the JavaScript SDKs' `t(phrase, category, params)`.
-3. **Choose the call by asking whether a tag boundary belongs to the language or to the layout.** Plain text is `translate()`. One line with inline markup is `translateRich()`, or `data-langsys-phrase` on a page. A fragment is `translateContentBlock()`, a whole document `translatePage()`. [primitives.md](./primitives.md)
-4. **The API decides whether a request registers, not the key's type.** An answer without `write_enabled: true` is read-only, even for a `write` key. The entry skill holds the concept; [writing.md](./writing.md) has how the SDK exposes it.
-5. **A long-lived worker flushes and resets.** The automatic flush runs when a `Client` is freed or the process ends. A worker that keeps one `Client` calls `flushPendingRegistrations()` and then `resetRequestState()` after each request or job. [server-rendering.md](./server-rendering.md)
-6. **Locale codes are lowercase `xx-yy`** (`es-es`, `zh-hant-tw`). `setLocale()` and every lookup accept `es_ES` or `es-ES` and normalise them; compare in the lowercase form. [locales.md](./locales.md)
+2. **Never write ICU.** Write the sentence flat, `translate('You have {count} new messages', null, 'Inbox', null, ['count' => $count])`, and Langsys makes each language's plural and gender forms, your base language's included: English renders `You have 1 new message` with no ICU in your code. A sentence that says something different at zero is its own phrase. [interpolation.md](./interpolation.md)
+3. **The locale comes before the category.** `translate($phrase, $locale, $category, $contentBlockId, $params)`. Pass `null` for the locale to use the request's. A category in the second place is read as a locale, so the phrase renders as its source in every language. This is the opposite of the JavaScript SDKs' `t(phrase, category, params)`.
+4. **Choose the call by asking whether a tag boundary belongs to the language or to the layout.** Plain text is `translate()`. One line with inline markup is `translateRich()`, or `data-langsys-phrase` on a page. A fragment is `translateContentBlock()`, a whole document `translatePage()`. [primitives.md](./primitives.md)
+5. **The API decides whether a request registers, not the key's type.** An answer without `write_enabled: true` is read-only, even for a `write` key. The entry skill holds the concept; [writing.md](./writing.md) has how the SDK exposes it.
+6. **A long-lived worker flushes and resets.** The automatic flush runs when a `Client` is freed or the process ends. A worker that keeps one `Client` calls `flushPendingRegistrations()` and then `resetRequestState()` after each request or job. [server-rendering.md](./server-rendering.md)
+7. **Locale codes are lowercase `xx-yy`** (`es-es`, `zh-hant-tw`). `setLocale()` and every lookup accept `es_ES` or `es-ES` and normalise them; compare in the lowercase form. [locales.md](./locales.md)
 
 ## Where to read
 
@@ -46,7 +47,7 @@ This is `langsys-php`, step 2 for PHP. It describes `langsys/langsys-php` at the
 | [invariants.md](./invariants.md) | Before writing code: the rules other i18n habits break |
 | [writing.md](./writing.md) | Phrases aren't registering: `canWrite()`, the queue, the flush result, explicit registration |
 | [init-config.md](./init-config.md) | Building the `Client`: environment variables, options, a client without credentials, logging, exceptions |
-| [interpolation.md](./interpolation.md) | Placeholders, how each value type renders, ICU plurals and select, declared value sets |
+| [interpolation.md](./interpolation.md) | Placeholders, how each value type renders, plurals and gender written flat, rendering ICU, declared value sets |
 | [value-markers.md](./value-markers.md) | HTML a template engine printed values into; placeholder names |
 | [messages.md](./messages.md) | Validation errors and other messages your server sends |
 | [migration.md](./migration.md) | Moving off key-based language files: the `migration` option, the import, sync from source, the fallback, snapshots |

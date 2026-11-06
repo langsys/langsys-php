@@ -5,6 +5,23 @@ All notable changes to the Langsys PHP SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.2] - 2026-11-06
+
+### Fixed
+
+- **The skill and the README say never to write ICU.** Write the sentence flat with its
+  `{placeholders}`, `translate('You have {count} new messages', null, 'Inbox', null,
+  ['count' => $count])`, and Langsys makes each language's plural and gender forms, the
+  base language included. A sentence that says something different at zero is its own
+  phrase, chosen in code. The skill's rules, its invariants and its interpolation page
+  say it, and no example writes a plural or a gender select by hand.
+- **The migration warning for a Laravel plural with ranges says to write flat phrases.**
+  A value such as `{0} None|[1,19] Some|[20,*] Many`, whose ranges match no plural
+  form, is registered as written with a warning that said to rewrite it as
+  `{count, plural, ...}`. It now says to write the sentence once with `{count}`, and a
+  range that says something different as its own phrase. That message is the only code
+  change from 2.0.1.
+
 ## [2.0.1] - 2026-10-31
 
 ### Added

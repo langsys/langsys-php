@@ -72,6 +72,15 @@ class LegacyValueTest extends TestCase
         $this->keeps('{1} One|[2,*] Many', 'laravel');
     }
 
+    public function testARangeThatDoesNotMapSaysToWriteFlatPhrasesNotIcu(): void
+    {
+        $result = LegacyValue::convert('{0} None|[1,19] Some|[20,*] Many', 'laravel');
+
+        $this->assertFalse($result['recognised']);
+        $this->assertStringNotContainsString('{count, plural', $result['issue']);
+        $this->assertStringContainsString('its own phrase', $result['issue']);
+    }
+
     public function testVuePipesBecomeIcu(): void
     {
         // vue selects by count, so exact values - never CLDR categories.
