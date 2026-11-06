@@ -14,8 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ['count' => $count])`, and Langsys makes each language's plural and gender forms, the
   base language included. A sentence that says something different at zero is its own
   phrase, chosen in code. The skill's rules, its invariants and its interpolation page
-  lead with this, and no example writes a plural or a gender select by hand. Only
-  documentation changed; the code is the same as 2.0.1's.
+  say it, and no example writes a plural or a gender select by hand.
+- **The migration warning for a Laravel plural with ranges says to write flat phrases.**
+  A value such as `{0} None|[1,19] Some|[20,*] Many`, whose ranges match no plural
+  form, is registered as written with a warning that said to rewrite it as
+  `{count, plural, ...}`. It now says to write the sentence once with `{count}`, and a
+  range that says something different as its own phrase. That message is the only code
+  change from 2.0.1.
 
 ## [2.0.1] - 2026-10-31
 

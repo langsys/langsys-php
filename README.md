@@ -730,17 +730,24 @@ without markers registers what it renders.
 Never write ICU. Write the sentence as it reads, with the count as a placeholder, and
 Langsys makes each language's plural forms, the base language included (Russian's four,
 Arabic's six, and English's `You have 1 new message`): it runs the same plural check on
-the base-language text, so English needs no ICU either.
+the base-language text, so English needs no ICU either. Langsys makes them once it
+has checked the phrase: a translation run checks its own phrases, and an hourly check
+covers the rest. Until then, and until a cached catalog refreshes, the base language
+shows the sentence as written.
 
 ```php
-$client->translate('You have {count} new messages', null, 'Inbox', null, ['count' => $count]);
+$client->translate('You have {count} new messages.', null, 'Inbox', null, ['count' => $count]);
 ```
 
-`You have {count} new messages` is stored for Spanish as
+`You have {count} new messages.` is stored for Spanish as
 `{count, plural, one {Tienes # mensaje nuevo.} other {Tienes # mensajes nuevos.}}`.
 The client asks the API for that ICU form (`X-Langsys-Capabilities: icu`) on every
 request, so a call that passes `count` renders the right form with no change. A
 sentence that says something different at zero is its own phrase, chosen in code.
+
+In a language with grammatical gender, Langsys can turn `{name}` into
+`{name_gender, select, …}` in the translation. Pass `name_gender` beside `name` when you
+know it (`female`, `male`); without it the neutral form renders.
 
 Requires the `intl` extension. If `intl` is disabled at runtime the SDK logs a
 warning naming the phrase and renders without it rather than failing the render: a

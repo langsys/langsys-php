@@ -27,7 +27,7 @@ This is `langsys-php`, step 2 for PHP. It describes `langsys/langsys-php` at the
 - **The source text is the key.** There are no catalog files and no message ids: `$client->translate('Save', null, 'UI')` looks up the phrase `Save` and returns it as-is until a translation exists.
 - **Content is discovered as the app runs.** A request the API lets write registers each phrase and content block it misses, at the end of the request, and the Translation Manager fills in the translations.
 - **The catalog is fetched per project and locale**, held in memory for the request and in the cache (a file by default) across requests.
-- **Untranslated text renders as its source**, so the base language always looks right. That is why most mistakes here are invisible: they show only when someone switches locale or reads what was registered in the Translation Manager.
+- **Untranslated text renders as its source**, so the base language always reads as written, and gains its plural forms once Langsys has checked the phrase. That is why most mistakes here are invisible: they show only when someone switches locale or reads what was registered in the Translation Manager.
 
 ## The rules that matter most
 

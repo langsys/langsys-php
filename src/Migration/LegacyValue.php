@@ -249,7 +249,7 @@ final class LegacyValue
                 continue;
             }
 
-            return self::unrecognised($value, 'uses plural ranges that do not map exactly to ICU; rewrite it as {count, plural, ...}');
+            return self::unrecognised($value, 'uses plural ranges that do not map to plural forms; write the sentence once with {count}, and a range that says something different as its own phrase, chosen in code');
         }
 
         if ($other === null) {

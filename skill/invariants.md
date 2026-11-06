@@ -23,7 +23,7 @@ $client->translate('Welcome back', null, 'Home');  // ✅ the source text is the
 $client->translate('home.welcome');                // ❌ registers the literal text "home.welcome"
 ```
 
-There are no catalog files to create. An untranslated phrase renders as itself, so the base language is always right. An app that already calls by key keeps its source-language file as input through the `migration` option, and then `home.welcome` resolves to its text ([migration.md](./migration.md)). Without that option a key is text like any other.
+There are no catalog files to create. An untranslated phrase renders as itself, so the base language always reads as written. An app that already calls by key keeps its source-language file as input through the `migration` option, and then `home.welcome` resolves to its text ([migration.md](./migration.md)). Without that option a key is text like any other.
 
 ## 3. Never write a plural or a gender form
 
