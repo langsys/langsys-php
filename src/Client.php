@@ -1085,7 +1085,7 @@ class Client
      * @param string|null $previousCategory
      * @return void
      */
-    private function notePreviousCategory($phrase, $category, $customId, $previousCategory)
+    public function notePreviousCategory($phrase, $category, $customId, $previousCategory)
     {
         $previousCategory = TranslatableItems::previousCategoryFor($previousCategory, ($category === null || $category === '' || $category === self::UNCATEGORIZED) ? null : $category);
         if ($previousCategory === null) {
@@ -1723,16 +1723,17 @@ class Client
                 return $this->interpolate($value, $params, $locale);
             }
 
+            // Queued earlier in this request by a call naming no move: the
+            // first previous category named still travels (MOVE-3), whatever
+            // this render is filled from.
+            $this->notePreviousCategory(Canonical::codePhrase($phrase), $category, null, $previousCategory);
+
             $value = $earlier === null ? null : $earlier($categoryTranslations);
             if ($value !== null) {
                 $from = 'catalog';
 
                 return $this->interpolate($value, $params, $locale);
             }
-
-            // Queued earlier in this request by a call naming no move: the
-            // first previous category named still travels (MOVE-3).
-            $this->notePreviousCategory(Canonical::codePhrase($phrase), $category, null, $previousCategory);
 
             // Present with no translation - registered and untranslated, or
             // queued earlier in this request - renders from the previous

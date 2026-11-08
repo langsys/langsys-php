@@ -1918,6 +1918,13 @@ class PageTranslator
             }
             $seen[$key] = true;
 
+            // An item this request already queued, by a call naming no
+            // move, still takes the first previous category named (MOVE-3).
+            // Only a queued item: one the catalog holds is never sent.
+            if ($previous !== null) {
+                $this->client->notePreviousCategory(Canonical::codePhrase($text), $cat, null, $previous);
+            }
+
             // Check if already registered locally
             $catRegistered = isset($registeredItems[$cat]) ? $registeredItems[$cat] : ['phrases' => [], 'contentBlocks' => []];
             if (in_array($text, $catRegistered['phrases'], true)) {
@@ -1960,6 +1967,12 @@ class PageTranslator
         foreach ($contentBlocks as $block) {
             $customId = $block['customId'];
             $cat = isset($block['category']) ? $block['category'] : '__uncategorized__';
+
+            // As for phrases: a block queued earlier in this request takes
+            // the first previous category named (MOVE-3).
+            if (isset($block['previous_category']) && $block['previous_category'] !== null) {
+                $this->client->notePreviousCategory(null, $cat, $customId, $block['previous_category']);
+            }
 
             // Check if already registered locally
             $catRegistered = isset($registeredItems[$cat]) ? $registeredItems[$cat] : ['phrases' => [], 'contentBlocks' => []];

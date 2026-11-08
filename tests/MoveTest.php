@@ -197,6 +197,38 @@ class MoveTest extends TestCase
         $this->assertSame('Header', $sent[0]['previous_category']);
     }
 
+    public function testAPageNamingTheMoveAfterAnUnmovedCallStillSendsIt(): void
+    {
+        $previous = self::blockId('Header', ['Hello', 'world']);
+        $client = $this->client(['Header' => ['Buy now' => 'Comprá ya', $previous => ['Hello' => 'Hola', 'world' => 'mundo']]]);
+        $client->translate('Buy now', null, 'Checkout');
+        $client->translateContentBlock('<p>Hello <b>world</b></p>', 'Checkout');
+        $client->translate('Untouched', null, 'Checkout');
+
+        $page = $client->translatePage('<html><body><p>Buy now</p><p>Hello <b>world</b></p></body></html>', $this->moved('Checkout', 'Header'));
+        $this->assertStringContainsString('Comprá ya', $page);
+
+        $client->flushPendingRegistrations();
+        $sent = [];
+        foreach ($this->sent() as $item) {
+            $sent[$item['type'] === 'phrase' ? $item['phrase'] : $item['custom_id']] = isset($item['previous_category']) ? $item['previous_category'] : null;
+        }
+        $this->assertSame(['Buy now' => 'Header', 'Untouched' => null, self::blockId('Checkout', ['Hello', 'world']) => 'Header'], $sent, 'each sent once; the page adds the move only to what it rendered');
+    }
+
+    public function testARichLineFilledFromItsEarlierKeyStillTakesALaterMove(): void
+    {
+        $client = $this->client(['Checkout' => ['Call {m0o}ACME{m0c} now' => 'Llamá a {m0o}ACME{m0c} ya']]);
+        $line = 'Call <span translate="no">ACME</span> now';
+        $client->translateRich($line, null, 'Checkout');
+        $client->translateRich($line, null, $this->moved('Checkout', 'Header'));
+        $client->flushPendingRegistrations();
+
+        $sent = $this->sent();
+        $this->assertCount(1, $sent);
+        $this->assertSame('Header', $sent[0]['previous_category']);
+    }
+
     // MOVE-4
 
     public function testAPhraseRendersFromItsPreviousCategoryWhileItRegistersUnderTheNewOne(): void
