@@ -77,7 +77,7 @@ class SelectorMatcher
      * 4. Non-override selector match (overrideParentElementCategory=false)
      *
      * @param DOMElement $element The element to match
-     * @return array|null ['category' => string, 'override' => bool] or null if no match
+     * @return array|null ['category' => string, 'override' => bool, 'previous_category' => string|null] or null if no match
      */
     public function matchElement(DOMElement $element)
     {
@@ -87,6 +87,7 @@ class SelectorMatcher
                 return [
                     'category' => $rule['category'],
                     'override' => true,
+                    'previous_category' => $rule['previous_category'],
                 ];
             }
         }
@@ -97,6 +98,7 @@ class SelectorMatcher
                 return [
                     'category' => $rule['category'],
                     'override' => false,
+                    'previous_category' => $rule['previous_category'],
                 ];
             }
         }
@@ -129,6 +131,8 @@ class SelectorMatcher
                 'xpath' => $xpath,
                 'category' => $category,
                 'override' => $override,
+                // The category the selected content moved from (MOVE-1).
+                'previous_category' => isset($config['previous_category']) && is_scalar($config['previous_category']) ? (string) $config['previous_category'] : null,
             ];
 
             if ($override) {

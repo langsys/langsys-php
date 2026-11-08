@@ -205,6 +205,34 @@ Every behaviour change graded here has been seen red: its tests fail with `src/`
 each guard's recorded mutation reddens a named assertion. A regression test never seen red is a
 guess, and a guard no test can turn red is not a proven guard.
 
+## Spec 8.7.0: moving content between categories (MOVE-1 to MOVE-5), not yet graded into Status
+
+The header grades 8.6.0. These rows come from the 8.7.0 text of the MOVE family, read in the API
+repo's `docs/sdk-spec.mdx` at local commit `242181a9`. That commit is not yet in the committed
+spec this file derives its blob from. The table header is deliberately not the Status table's, so
+the counting script in *Computed summary* does not read these rows. They join the Status table at
+the regrade against a committed 8.7.0 blob.
+
+Each rule's property depends on the API accepting and acting on `previous_category`, which is not
+deployed, so every row is `provisional` on mock evidence until a contract run on an SDK test clone
+carrying the change. **Mutation** (MoveTest only, file restored byte for byte after each, recorded
+here, not yet run as a full-suite worktree mutation):
+- never writing `previous_category` onto a wire item reddens 12 of the 20 tests;
+- disabling the previous-category phrase lookup reddens 5;
+- dropping a page element's previous category at extraction reddens 3.
+
+| Rule (8.7.0) | Status | Tier | Evidence |
+|---|---|---|---|
+| MOVE-1 | provisional | mock | Wherever a category is taken, `['category' => ..., 'previous_category' => ...]` names the move: `translate()`, `resolve()`, `translateRich()`, `translateContentBlock()`, `translatePage()`'s default category, `registerContentBlock()`. Also `registerPhrases()` items, selector configs and `data-ls-previous-category` / `data-langsys-previous-category` on a page or nested host. It is sent as `previous_category` beside `category`. `''` is sent as `""`. Null, absent, or equal to the category leaves the key out. `tests/MoveTest.php::testAMovedPhraseRegistersWithItsPreviousCategory`, `::testAPreviousCategoryEqualToTheCategoryIsNoMove`, `::testResolveAndTranslateRichTakeTheMove`, `::testRegisterContentBlockAndRegisterPhrasesSendIt`, `::testAPageSectionNamesItsPreviousCategory`, `::testAPagesDefaultCategoryAndASelectorCanMove`. |
+| MOVE-2 | provisional | mock | `previous_category` never enters the custom_id, the queue keys or the catalog lookup. `::testThePreviousCategoryIsNeverPartOfABlocksIdentity` (same pending block id with and without it; phrase queue key `Checkout::Buy now`). |
+| MOVE-3 | provisional | mock | Sent only on the registration a miss or a sync triggers. An item under its current category is not sent again: `::testAnItemTheCatalogHasUnderItsCategoryIsNotRegisteredAgain` (paired with a miss that is), and on sync `::testASyncHitCarriesItsPreviousCategoryToTheRegistration`. The first previous category named is kept, and an unmoved call never clears it, in either order: `::testTheFirstPreviousCategoryNamedIsKept`, `::testAMovedBlockQueuedTwiceKeepsTheFirstPreviousCategory`. A session that may not write sends nothing, through the existing flush gate. The sync planner reports moves that leave a use behind (`SyncPlan::$leftBehind`): `::testASyncWarnsWhenAMoveLeavesAUseBehind`. |
+| MOVE-4 | provisional | mock | With no translation under the current category (absent, null or empty, including an item queued earlier in the request), the previous category is read last. That comes after the current entry and the TOK-1 earlier key, and for a block after its CID-3 historical ids. It reads the primary id, then the historical ids. `''` reads `__uncategorized__`. Registration is still decided on the current category. `::testAPhraseRendersFromItsPreviousCategoryWhileItRegistersUnderTheNewOne`, `::testTheCurrentCategoryOutranksThePreviousOne`, `::testAnEmptyPreviousCategoryReadsTheNoCategoryBucket`, `::testABlockRendersFromItsPreviousCategoryAndSaysSo`, `::testAPageBlockRendersFromItsPreviousCategory`. |
+| MOVE-5 | provisional | mock | A block filled from its previous category keeps `data-ls-contentblock` as the current id and adds `data-ls-previous-contentblock`. A phrase host gets `data-ls-previous-category`. A host filled from its current category gets neither. A stamped host whose current id has no translation renders from its stamped previous id (either spelling) and registers under the current id with the category holding that id as `previous_category`. `::testABlockRendersFromItsPreviousCategoryAndSaysSo`, `::testABlockFilledFromItsCurrentCategoryCarriesNoPreviousStamp`, `::testAOnePhraseFragmentFilledFromItsPreviousCategoryIsStamped`, `::testAHostStampedWithAPreviousIdRendersFromIt`. |
+
+**Known gaps in this family:**
+- On `translatePage()`, a page item queued earlier in the same request by a call naming no move reads as present, so a later page render naming the move does not add `previous_category` to it. The phrase and block paths do (MOVE-3).
+- `<head>` phrases render from the default category's previous category, but a head phrase host is not stamped (MOVE-5), since the head has no host element to stamp.
+
 ## Tokenizer canonicalization
 
 The identity contract every implementation shares. These rules decide what a *phrase* is, and a

@@ -19,7 +19,10 @@ namespace Langsys\SDK\Sync;
 final class SyncPlan
 {
     /**
-     * @var array<int, array{phrase: string, category: string|null, status: string, translations: array<string, string>, origins: string[]}>
+     * An item that moved carries `previous_category` (MOVE-1), sent when the
+     * item is registered.
+     *
+     * @var array<int, array{phrase: string, category: string|null, status: string, translations: array<string, string>, origins: string[], previous_category?: string}>
      */
     public $items;
 
@@ -57,6 +60,18 @@ final class SyncPlan
     public $viaMessageListing = [];
 
     /**
+     * Moves that leave a use behind (MOVE-1): an item this sync registers
+     * with a previous category while another call still registers the same
+     * text under that category. The move retires the old item for every call,
+     * so the one left behind drops out of the Translation Manager, stats and
+     * machine translation. A warning, not a failure: move the call too, or
+     * drop the previous category.
+     *
+     * @var array<int, array{phrase: string, category: string|null, previous_category: string, origins: string[], left_behind: string[]}>
+     */
+    public $leftBehind = [];
+
+    /**
      * Translations that could not be taken from a language file.
      *
      * @var array<int, array{key: string, locale: string, reason: string}>
@@ -68,8 +83,9 @@ final class SyncPlan
      * @param array $reported
      * @param array $skipped
      */
-    public function __construct(array $items, array $reported, array $skipped, array $viaValidation = [], array $covered = [], array $viaMessageListing = [])
+    public function __construct(array $items, array $reported, array $skipped, array $viaValidation = [], array $covered = [], array $viaMessageListing = [], array $leftBehind = [])
     {
+        $this->leftBehind = $leftBehind;
         $this->viaMessageListing = $viaMessageListing;
         $this->covered = $covered;
         $this->items = $items;

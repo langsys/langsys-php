@@ -933,6 +933,187 @@ class Client
     }
 
     /**
+     * A category argument read as [category, previous category] (MOVE-1).
+     *
+     * Wherever a category is taken, `['category' => 'Checkout',
+     * 'previous_category' => 'Header']` says the content moved there from
+     * Header: the miss registers it with `previous_category`, so the API
+     * hands it Header's translations, and until the catalog has it under
+     * Checkout it renders from Header (MOVE-4). `''` names no category
+     * before, which is a value; a previous category that is null, left out
+     * or the same as the category says the content did not move. A string
+     * is a category that did not move.
+     *
+     * @param string|array|null $category
+     * @return array{0: string|null, 1: string|null} The category, and the previous one or null
+     */
+    protected function splitCategory($category)
+    {
+        if (!is_array($category)) {
+            return [$category, null];
+        }
+
+        $current = isset($category['category']) && is_scalar($category['category']) ? (string) $category['category'] : null;
+        $previous = array_key_exists('previous_category', $category) ? $category['previous_category'] : null;
+
+        return [$current, TranslatableItems::previousCategoryFor($previous, ($current === null || $current === '' || $current === self::UNCATEGORIZED) ? null : $current)];
+    }
+
+    /**
+     * The catalog's key for a previous category: `''` is the no-category
+     * bucket, never a literal '' key (MOVE-4).
+     *
+     * @param string $previousCategory
+     * @return string
+     */
+    protected static function previousCatalogKey($previousCategory)
+    {
+        return $previousCategory === '' ? self::UNCATEGORIZED : $previousCategory;
+    }
+
+    /**
+     * A phrase's translation under its previous category (MOVE-4): the entry
+     * for the same text, then the phrase's earlier key there (TOK-1), by the
+     * display rule - null or empty is none.
+     *
+     * @param array $catalog category => entries
+     * @param mixed $phrase
+     * @param string|null $previousCategory
+     * @param callable|null $earlier
+     * @return string|null
+     */
+    protected function previousPhraseTranslation(array $catalog, $phrase, $previousCategory, ?callable $earlier = null)
+    {
+        if ($previousCategory === null || !(is_string($phrase) || is_int($phrase))) {
+            return null;
+        }
+
+        $key = self::previousCatalogKey($previousCategory);
+        if (!isset($catalog[$key]) || !is_array($catalog[$key])) {
+            return null;
+        }
+
+        $slice = $catalog[$key];
+        if (array_key_exists($phrase, $slice) && is_string($slice[$phrase]) && $slice[$phrase] !== '') {
+            return $slice[$phrase];
+        }
+
+        return $earlier === null ? null : $earlier($slice);
+    }
+
+    /**
+     * A block's translations under its previous category (MOVE-4): the
+     * custom_id that category gives the same tokens, then its historical ids
+     * (CID-3), in that order. Only an entry holding a translation counts.
+     *
+     * @param array $catalog category => entries
+     * @param string|null $previousCategory
+     * @param array $phrases The block's tokens
+     * @param HtmlParser $parser
+     * @return array{0: string, 1: array}|null The id it was found under, and its translations
+     */
+    public function previousContentBlockTranslations(array $catalog, $previousCategory, array $phrases, HtmlParser $parser)
+    {
+        if ($previousCategory === null || $phrases === []) {
+            return null;
+        }
+
+        $key = self::previousCatalogKey($previousCategory);
+        $slice = isset($catalog[$key]) && is_array($catalog[$key]) ? $catalog[$key] : [];
+        if ($slice === []) {
+            return null;
+        }
+
+        $id = $parser->generateCustomId($key, $phrases);
+        $found = $id;
+        $translations = array_key_exists($id, $slice) && is_array($slice[$id])
+            ? $slice[$id]
+            : $this->resolveLegacyContentBlock($slice, $key, $phrases, $parser, $found);
+
+        return self::holdsTranslation($translations) ? [$found, $translations] : null;
+    }
+
+    /**
+     * The translations a block host stamped with a previous custom_id was
+     * filled from (MOVE-5), from whichever category holds that id.
+     *
+     * @param array $catalog category => entries
+     * @param string $previousId
+     * @return array{0: string, 1: array}|null The category holding it, and its translations
+     */
+    public function stampedPreviousBlock(array $catalog, $previousId)
+    {
+        foreach ($catalog as $category => $entries) {
+            if (is_array($entries) && isset($entries[$previousId]) && is_array($entries[$previousId]) && self::holdsTranslation($entries[$previousId])) {
+                return [(string) $category, $entries[$previousId]];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether a block's entry holds any translation: one queued in this
+     * request, or registered and not yet translated, holds none (MOVE-4).
+     *
+     * @param mixed $translations
+     * @return bool
+     */
+    public static function holdsTranslation($translations)
+    {
+        if (!is_array($translations)) {
+            return false;
+        }
+
+        foreach ($translations as $value) {
+            if (is_string($value) && $value !== '') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Give an item already queued in this request the previous category a
+     * later call names, when it has none (MOVE-3): the call that queued it
+     * may have named no move, and every later one reads it as present.
+     *
+     * @param string|null $phrase A phrase's text, or null for a block
+     * @param string $category
+     * @param string|null $customId A block's id
+     * @param string|null $previousCategory
+     * @return void
+     */
+    private function notePreviousCategory($phrase, $category, $customId, $previousCategory)
+    {
+        $previousCategory = TranslatableItems::previousCategoryFor($previousCategory, ($category === null || $category === '' || $category === self::UNCATEGORIZED) ? null : $category);
+        if ($previousCategory === null) {
+            return;
+        }
+
+        if ($customId !== null) {
+            if (isset($this->pendingContentBlocks[$customId]) && !isset($this->pendingContentBlocks[$customId]['previous_category'])) {
+                $this->pendingContentBlocks[$customId]['previous_category'] = $previousCategory;
+            }
+
+            return;
+        }
+
+        $key = $category . '::' . $phrase;
+        if (isset($this->pendingPhrases[$key]) && !isset($this->pendingPhrases[$key]['previous_category'])) {
+            $this->pendingPhrases[$key]['previous_category'] = $previousCategory;
+        }
+    }
+
+    /**
+     * Whether the last translateSource() rendered from the previous category.
+     *
+     * @var bool
+     */
+    private $filledFromPrevious = false;
+
+    /**
      * Get the key type (`read`, `write` or `ip_write`). Whether a request may
      * write is canWrite(), the API's decision, not this.
      *
@@ -1088,14 +1269,18 @@ class Client
      *
      * @param string $phrase The phrase to translate
      * @param string|null $locale Locale code (defaults to getLocale() if not set)
-     * @param string $category Category (default: '__uncategorized__')
+     * @param string|array $category Category (default: '__uncategorized__'), or
+     *                              `['category' => ..., 'previous_category' => ...]`
+     *                              for content that moved (MOVE-1)
      * @param string|null $contentBlockId Content block custom_id (for content block phrases)
      * @param array $params Placeholder values, e.g. ['name' => 'Sarah']
      * @return string The translation, or the original phrase if not found
      */
     public function translate($phrase, $locale = null, $category = '__uncategorized__', $contentBlockId = null, array $params = [])
     {
-        return $this->translateCall($phrase, $locale, $category, $contentBlockId, $params, $from);
+        list($category, $previousCategory) = $this->splitCategory($category);
+
+        return $this->translateCall($phrase, $locale, $category, $contentBlockId, $params, $from, null, null, $previousCategory);
     }
 
     /**
@@ -1113,7 +1298,8 @@ class Client
      */
     public function resolve($phrase, $locale = null, $category = '__uncategorized__', array $params = [])
     {
-        $text = $this->translateCall($phrase, $locale, $category, null, $params, $from);
+        list($category, $previousCategory) = $this->splitCategory($category);
+        $text = $this->translateCall($phrase, $locale, $category, null, $params, $from, null, null, $previousCategory);
 
         return ['text' => $text, 'from' => $from];
     }
@@ -1144,6 +1330,8 @@ class Client
     {
         $this->requireCredentialsAtUse();
 
+        list($category, $previousCategory) = $this->splitCategory($category);
+
         $line = \Langsys\SDK\Html\MarkupTokenizer::readLine((string) $sourceHtml);
         if ($line === null) {
             return ['html' => (string) $sourceHtml, 'from' => 'source'];
@@ -1168,7 +1356,7 @@ class Client
         // The line's own values: never one read inside an element the
         // author excluded.
         // The miss fallback is told the line as the caller wrote it.
-        $rendered = $this->translateCall($encoded['text'], $locale, $category, null, array_merge($markers->sentinels($wrapper), $params, $tokenizer->tokenParams(count($slots))), $from, $this->earlierLookup($tokenizer, $encoded['earlier']), (string) $sourceHtml);
+        $rendered = $this->translateCall($encoded['text'], $locale, $category, null, array_merge($markers->sentinels($wrapper), $params, $tokenizer->tokenParams(count($slots))), $from, $this->earlierLookup($tokenizer, $encoded['earlier']), (string) $sourceHtml, $previousCategory);
 
         if ($from === 'fallback') {
             return ['html' => \Langsys\SDK\Html\ValueMarkers::expandHtml($rendered), 'from' => $from];
@@ -1306,9 +1494,10 @@ class Client
      * @param string|null $from Set to catalog, fallback or source
      * @param callable|null $earlier A miss's lookup under the phrase's earlier key (TOK-1)
      * @param string|null $argument What the caller wrote, for the miss fallback, when it is not $phrase
+     * @param string|null $previousCategory The category the phrase moved from (MOVE-1)
      * @return string
      */
-    protected function translateCall($phrase, $locale, $category, $contentBlockId, array $params, &$from, ?callable $earlier = null, $argument = null)
+    protected function translateCall($phrase, $locale, $category, $contentBlockId, array $params, &$from, ?callable $earlier = null, $argument = null, $previousCategory = null)
     {
         $this->requireCredentialsAtUse();
 
@@ -1348,7 +1537,7 @@ class Client
             }
         }
 
-        return $this->translateSource($phrase, $locale, $category, $contentBlockId, $params, true, $from, $argument, $earlier);
+        return $this->translateSource($phrase, $locale, $category, $contentBlockId, $params, true, $from, $argument, $earlier, $previousCategory);
     }
 
     /**
@@ -1390,11 +1579,19 @@ class Client
      * @param mixed $argument The argument as the caller wrote it
      * @param callable|null $earlier A miss's lookup under the phrase's earlier
      *                              key: category slice => translation or null
+     * @param string|null $previousCategory The category the phrase moved from:
+     *                                      sent on its registration, and read
+     *                                      last while the current category has
+     *                                      no translation (MOVE-1, MOVE-4)
      * @return string
      */
-    protected function translateSource($phrase, $locale, $category, $contentBlockId, array $params, $fromCall = false, &$from = null, $argument = null, ?callable $earlier = null)
+    protected function translateSource($phrase, $locale, $category, $contentBlockId, array $params, $fromCall = false, &$from = null, $argument = null, ?callable $earlier = null, $previousCategory = null)
     {
         $from = 'source';
+        $this->filledFromPrevious = false;
+        if ($contentBlockId !== null) {
+            $previousCategory = null;
+        }
 
         // TOK-2: a code-registered key drops the C0 controls on lookup and on
         // register alike, as every DOM path does.
@@ -1445,6 +1642,10 @@ class Client
                 return $this->interpolate($value, $params, $locale);
             }
 
+            if (($value = $this->previousPhraseTranslation($seed, $phrase, $previousCategory, $earlier)) !== null) {
+                return $this->renderFromPrevious($value, $params, $locale, $from);
+            }
+
             return $this->answerMiss($phrase, $locale, $category, $params, $from, $argument);
         }
 
@@ -1483,6 +1684,10 @@ class Client
                     'locale' => $locale,
                     'error' => $e->getMessage(),
                 ], $e);
+            }
+
+            if ($seed !== null && ($value = $this->previousPhraseTranslation($seed, $phrase, $previousCategory, $earlier)) !== null) {
+                return $this->renderFromPrevious($value, $params, $locale, $from);
             }
 
             return $this->answerMiss($phrase, $locale, $category, $params, $from, $argument);
@@ -1525,6 +1730,17 @@ class Client
                 return $this->interpolate($value, $params, $locale);
             }
 
+            // Queued earlier in this request by a call naming no move: the
+            // first previous category named still travels (MOVE-3).
+            $this->notePreviousCategory(Canonical::codePhrase($phrase), $category, null, $previousCategory);
+
+            // Present with no translation - registered and untranslated, or
+            // queued earlier in this request - renders from the previous
+            // category as the first miss did (MOVE-4).
+            if (($value = $this->previousPhraseTranslation($translations, $phrase, $previousCategory, $earlier)) !== null) {
+                return $this->renderFromPrevious($value, $params, $locale, $from);
+            }
+
             return $this->answerMiss($phrase, $locale, $category, $params, $from, $argument);
         }
 
@@ -1534,7 +1750,7 @@ class Client
         // nothing, except a declared value's sentence the last sync did not
         // see (FRM-7).
         if (!$fromCall || $this->runtimeRegistration || ($template !== null && $this->templateSynced($template, $phrase, $categoryTranslations))) {
-            $this->queuePhraseForRegistration($phrase, $category);
+            $this->queuePhraseForRegistration($phrase, $category, $previousCategory);
         }
 
         // A translation under the phrase's earlier key renders it, while only
@@ -1546,7 +1762,31 @@ class Client
             return $this->interpolate($value, $params, $locale);
         }
 
+        // Last, the previous category's entry, while the miss still
+        // registers under the current one (MOVE-4).
+        if (($value = $this->previousPhraseTranslation($translations, $phrase, $previousCategory, $earlier)) !== null) {
+            return $this->renderFromPrevious($value, $params, $locale, $from);
+        }
+
         return $this->answerMiss($phrase, $locale, $category, $params, $from, $argument);
+    }
+
+    /**
+     * Render a translation read under the previous category (MOVE-4). It is
+     * catalog text, so it reports as `catalog` (FRM-8).
+     *
+     * @param string $value
+     * @param array $params
+     * @param string $locale
+     * @param string|null $from
+     * @return string
+     */
+    private function renderFromPrevious($value, array $params, $locale, &$from)
+    {
+        $from = 'catalog';
+        $this->filledFromPrevious = true;
+
+        return $this->interpolate($value, $params, $locale);
     }
 
     /**
@@ -2200,7 +2440,9 @@ class Client
      * URLs using the configured base_url or detected from $_SERVER.
      *
      * @param string $content HTML content of the content block
-     * @param string|null $category Category for the content block
+     * @param string|array|null $category Category for the content block, or
+     *                                   `['category' => ..., 'previous_category' => ...]`
+     *                                   for a block that moved (MOVE-1)
      * @param string|null $label Human-readable label for the content block
      * @param string|null $customId Custom ID (auto-generated from content hash if null)
      * @return array API response
@@ -2218,7 +2460,9 @@ class Client
         // Resolve relative URLs before registration
         $content = $this->resolveContentBlockUrls($content);
 
-        return $this->translatableItems->createContentBlock($content, $category, $label, $customId);
+        list($category, $previousCategory) = $this->splitCategory($category);
+
+        return $this->translatableItems->createContentBlock($content, $category, $label, $customId, $previousCategory);
     }
 
     /**
@@ -2910,13 +3154,17 @@ class Client
      * and translated as a unit of its own (MARK-4).
      *
      * @param string $html HTML content block
-     * @param string $category Category for the content block (default: '__uncategorized__')
+     * @param string|array $category Category for the content block (default: '__uncategorized__'),
+     *                              or `['category' => ..., 'previous_category' => ...]`
+     *                              for content that moved (MOVE-1)
      * @param array $params Placeholder values applied to text nodes and translatable attributes
      * @return string Translated HTML
      */
     public function translateContentBlock($html, $category = '__uncategorized__', array $params = [])
     {
         $this->requireCredentialsAtUse();
+
+        list($category, $previousCategory) = $this->splitCategory($category);
 
         if (empty($html)) {
             return $html;
@@ -2929,7 +3177,7 @@ class Client
         $source = stripos($html, 'data-ls-') === false && stripos($html, 'data-langsys-') === false ? null : $this->fragmentDocument($html);
         $sourceRoot = \Langsys\SDK\Html\Document::fragmentRoot($source);
 
-        $rendered = $this->translateBlockUnit($html, $category, $params, false);
+        $rendered = $this->translateBlockUnit($html, $category, $params, false, $resolvedId, $previousCategory);
 
         if ($sourceRoot === null || $this->outermostMarkedHosts($sourceRoot) === []) {
             return $rendered;
@@ -2940,7 +3188,7 @@ class Client
         }));
         $singleUnmarkedHost = count($elements) === 1 && !HtmlParser::isMarkedHost($elements[0]);
 
-        return $this->renderNestedHostsIn($rendered, $category, $params, $singleUnmarkedHost);
+        return $this->renderNestedHostsIn($rendered, $category, $params, $singleUnmarkedHost, $previousCategory);
     }
 
     /**
@@ -2952,11 +3200,16 @@ class Client
      * @param array $params
      * @param bool $declared Whether a content-block marker declared this unit a
      *                       block; a declaration outranks the TOK-6 shape
+     * @param string|null $resolvedId Set to the id the unit rendered under
+     * @param string|null $previousCategory The category the unit moved from (MOVE-1)
+     * @param string|null $previousId Set to the previous category's id the
+     *                                block was filled from, if it was (MOVE-5)
      * @return string
      */
-    protected function translateBlockUnit($html, $category, array $params, $declared, &$resolvedId = null)
+    protected function translateBlockUnit($html, $category, array $params, $declared, &$resolvedId = null, $previousCategory = null, &$previousId = null)
     {
         $resolvedId = null;
+        $previousId = null;
 
         $locale = $this->getLocale();
         if ($locale === null) {
@@ -2998,9 +3251,9 @@ class Client
         // param of its name, under any the caller sets.
         if (!$declared && HtmlParser::isPhraseUnit($unit)) {
             $runParams = $markers === null ? [] : $markers->sentinels($unit['root']);
-            $rendered = $this->translateSource($phrases[0], $locale, $category, null, array_merge($runParams, $params));
+            $rendered = $this->translateSource($phrases[0], $locale, $category, null, array_merge($runParams, $params), false, $from, null, null, $previousCategory);
 
-            return $this->replaceFragmentText($html, $phrases[0], $rendered);
+            return $this->replaceFragmentText($html, $phrases[0], $rendered, $this->filledFromPrevious ? $previousCategory : null);
         }
 
         // Placeholders inside a content block are part of the phrase text, so the
@@ -3048,9 +3301,16 @@ class Client
             $categoryTranslations, $category, $phrases, $customId, $parser
         );
 
+        // With no translation under the current category - none of its ids,
+        // or an entry still empty - the previous category's is read last
+        // (MOVE-4), and the host says it was filled from it (MOVE-5).
+        $previous = $previousCategory !== null && !self::holdsTranslation($blockTranslations)
+            ? $this->previousContentBlockTranslations($translations, $previousCategory, $phrases, $parser)
+            : null;
+
         if ($blockTranslations === null) {
             // Content block doesn't exist - queue for registration
-            $this->queueContentBlockForRegistration($html, $category, $customId, $phrases);
+            $this->queueContentBlockForRegistration($html, $category, $customId, $phrases, $previousCategory);
 
             // No translations yet, but the block still HAS an identity, and
             // stamping it is most valuable here: this is the block a later
@@ -3059,7 +3319,22 @@ class Client
             // return used to skip.
             $resolvedId = $customId;
 
+            if ($previous !== null) {
+                $previousId = $previous[0];
+
+                return $this->applyBlockTranslations($html, $previous[1], $parser, $params, $locale, $customId, $previousId);
+            }
+
             return $this->applyBlockTranslations($html, [], $parser, $params, $locale, $customId);
+        }
+
+        $this->notePreviousCategory(null, $category, $customId, $previousCategory);
+
+        if ($previous !== null) {
+            $resolvedId = $customId;
+            $previousId = $previous[0];
+
+            return $this->applyBlockTranslations($html, $previous[1], $parser, $params, $locale, $customId, $previousId);
         }
 
         // Apply translations to HTML. A legacy-resolved block reaches here
@@ -3115,9 +3390,10 @@ class Client
      * @param string $category
      * @param array $phrases Phrases extracted from this block, in order
      * @param HtmlParser $parser
+     * @param string|null $foundId Set to the legacy id the block was found under
      * @return array|null Translation map, or null when there is no legacy block
      */
-    protected function resolveLegacyContentBlock(array $categoryTranslations, $category, array $phrases, HtmlParser $parser)
+    protected function resolveLegacyContentBlock(array $categoryTranslations, $category, array $phrases, HtmlParser $parser, &$foundId = null)
     {
         foreach ($parser->legacyCustomIds($category, $phrases) as $legacyId) {
             if (!array_key_exists($legacyId, $categoryTranslations)) {
@@ -3144,6 +3420,8 @@ class Client
                 'legacy_custom_id' => $legacyId,
                 'category' => $category,
             ]);
+
+            $foundId = $legacyId;
 
             return $candidate;
         }
@@ -3205,13 +3483,18 @@ class Client
      * Never overwrites an existing marker: if the block already carries one,
      * that value is another writer's identity claim and outranks ours.
      *
+     * A block filled from its previous category also carries that
+     * category's id, and a phrase filled from it that category (MOVE-5).
+     *
      * @param \DOMElement $wrapper
      * @param string|null $customId
+     * @param string|null $previousId
+     * @param string|null $previousCategory
      * @return void
      */
-    protected function stampContentBlockId($wrapper, $customId)
+    protected function stampContentBlockId($wrapper, $customId, $previousId = null, $previousCategory = null)
     {
-        if ($customId === null || $customId === '') {
+        if (($customId === null || $customId === '') && $previousCategory === null) {
             return;
         }
 
@@ -3254,6 +3537,7 @@ class Client
         }
 
         HtmlParser::stampIdentity($elements[0], $customId);
+        HtmlParser::stampPrevious($elements[0], $previousId, $previousCategory);
     }
 
     /**
@@ -3264,9 +3548,10 @@ class Client
      * @param array $params
      * @param bool $belowSingleHost Whether to start below the fragment's one
      *                              element, which the render may have stamped
+     * @param string|null $previousCategory
      * @return string
      */
-    protected function renderNestedHostsIn($html, $category, array $params, $belowSingleHost)
+    protected function renderNestedHostsIn($html, $category, array $params, $belowSingleHost, $previousCategory = null)
     {
         $doc = $this->fragmentDocument($html);
         $wrapper = \Langsys\SDK\Html\Document::fragmentRoot($doc);
@@ -3285,7 +3570,7 @@ class Client
             }
         }
 
-        $this->renderNestedHosts($root, $category, $params);
+        $this->renderNestedHosts($root, $category, $params, $previousCategory);
 
         $result = '';
         foreach ($wrapper->childNodes as $child) {
@@ -3304,16 +3589,24 @@ class Client
      * @param \DOMElement $root
      * @param string|null $category
      * @param array $params
+     * @param string|null $previousCategory Inherited with the category: a host
+     *                                      naming its own category names its
+     *                                      own previous one, or none (MOVE-1)
      * @return void
      */
-    protected function renderNestedHosts(\DOMElement $root, $category, array $params)
+    protected function renderNestedHosts(\DOMElement $root, $category, array $params, $previousCategory = null)
     {
         foreach ($this->outermostMarkedHosts($root) as $host) {
             $hostCategory = $host->hasAttribute('data-langsys-category') ? $host->getAttribute('data-langsys-category') : $category;
+            $hostPrevious = $host->hasAttribute('data-langsys-category') ? null : $previousCategory;
+            if (($named = HtmlParser::previousCategoryOf($host)) !== null) {
+                $hostPrevious = $named;
+            }
+            $hostPrevious = TranslatableItems::previousCategoryFor($hostPrevious, ($hostCategory === null || $hostCategory === '' || $hostCategory === self::UNCATEGORIZED) ? null : $hostCategory);
 
             if (HtmlParser::isPhraseMarked($host)) {
-                $this->renderNestedHosts($host, $hostCategory, $params);
-                $this->renderTokenizedHost($host, $hostCategory, $params);
+                $this->renderNestedHosts($host, $hostCategory, $params, $hostPrevious);
+                $this->renderTokenizedHost($host, $hostCategory, $params, $hostPrevious);
                 continue;
             }
 
@@ -3330,15 +3623,16 @@ class Client
                 // server rendered it from the catalog, so it registers nothing;
                 // outside one it registers its content under that id when the
                 // catalog lacks it.
-                $this->replaceChildrenWithHtml($host, $this->renderStampedBlock($inner, $marker['id'], $hostCategory, $params, !HtmlParser::isResolvedScope($host)));
-                $this->renderNestedHosts($host, $hostCategory, $params);
+                $this->replaceChildrenWithHtml($host, $this->renderStampedBlock($inner, $marker['id'], $hostCategory, $params, !HtmlParser::isResolvedScope($host), HtmlParser::previousContentBlockOf($host), $hostPrevious));
+                $this->renderNestedHosts($host, $hostCategory, $params, $hostPrevious);
                 continue;
             }
 
-            $rendered = $this->translateBlockUnit($inner, $hostCategory, $params, true, $resolvedId);
+            $rendered = $this->translateBlockUnit($inner, $hostCategory, $params, true, $resolvedId, $hostPrevious, $previousId);
             $this->replaceChildrenWithHtml($host, $rendered);
             HtmlParser::stampIdentity($host, $resolvedId);
-            $this->renderNestedHosts($host, $hostCategory, $params);
+            HtmlParser::stampPrevious($host, $previousId);
+            $this->renderNestedHosts($host, $hostCategory, $params, $hostPrevious);
         }
     }
 
@@ -3353,9 +3647,13 @@ class Client
      * @param string|null $category
      * @param array $params
      * @param bool $mayRegister Whether the host is outside a resolved scope
+     * @param string|null $previousId The previous custom_id the host was
+     *                                stamped with, read while the current id
+     *                                has no translation (MOVE-5)
+     * @param string|null $previousCategory The previous category its author named
      * @return string
      */
-    protected function renderStampedBlock($html, $customId, $category, array $params, $mayRegister)
+    protected function renderStampedBlock($html, $customId, $category, array $params, $mayRegister, $previousId = null, $previousCategory = null)
     {
         $locale = $this->getLocale();
         $category = $this->normalizeCategory($category);
@@ -3370,12 +3668,25 @@ class Client
                 $translations = $this->getTranslations($locale);
                 if (isset($translations[$category][$customId]) && is_array($translations[$category][$customId])) {
                     $blockTranslations = $translations[$category][$customId];
-                } elseif ($mayRegister && !(isset($translations[$category]) && is_array($translations[$category]) && array_key_exists($customId, $translations[$category]))) {
+                }
+
+                // The id the host was filled from, while its own has no
+                // translation; the category holding it is the one it moved
+                // from (MOVE-5).
+                $filledFrom = $previousId !== null && !self::holdsTranslation($blockTranslations) ? $this->stampedPreviousBlock($translations, $previousId) : null;
+                if ($filledFrom !== null) {
+                    $blockTranslations = $filledFrom[1];
+                    if ($previousCategory === null) {
+                        $previousCategory = $filledFrom[0] === self::UNCATEGORIZED ? '' : $filledFrom[0];
+                    }
+                }
+
+                if ($mayRegister && !(isset($translations[$category]) && is_array($translations[$category]) && array_key_exists($customId, $translations[$category]))) {
                     $parser = new HtmlParser($this->translatableItems->getTranslatableAttributes());
                     $unit = $parser->fragmentUnit($html);
                     $phrases = $unit['tokens'];
                     if ($phrases !== [] && !($unit['markers'] !== null && ($unit['markers']->markerOnly($phrases) || $unit['markers']->unnamedWithin()))) {
-                        $this->queueContentBlockForRegistration($html, $category, $customId, $phrases);
+                        $this->queueContentBlockForRegistration($html, $category, $customId, $phrases, $previousCategory);
                     }
                 }
             } catch (\Throwable $e) {
@@ -3437,7 +3748,7 @@ class Client
      * @param array $params
      * @return void
      */
-    protected function renderTokenizedHost(\DOMElement $host, $category, array $params)
+    protected function renderTokenizedHost(\DOMElement $host, $category, array $params, $previousCategory = null)
     {
         $tokenizer = new \Langsys\SDK\Html\MarkupTokenizer();
         $markers = \Langsys\SDK\Html\ValueMarkers::read($host);
@@ -3445,7 +3756,10 @@ class Client
 
         if ($tokenizer->hasText($encoded['text']) && !$markers->markerOnly([$encoded['text']]) && !$markers->unnamedWithin()) {
             $slots = $encoded['slots'];
-            $rendered = $this->translateSource($encoded['text'], null, $category, null, array_merge($markers->sentinels($host), $params, $tokenizer->tokenParams(count($slots))), false, $from, null, $this->earlierLookup($tokenizer, $encoded['earlier']));
+            $rendered = $this->translateSource($encoded['text'], null, $category, null, array_merge($markers->sentinels($host), $params, $tokenizer->tokenParams(count($slots))), false, $from, null, $this->earlierLookup($tokenizer, $encoded['earlier']), $previousCategory);
+            if ($this->filledFromPrevious) {
+                HtmlParser::stampPrevious($host, null, $previousCategory);
+            }
 
             if ($tokenizer->hasTokens($rendered)) {
                 $rendered = (string) preg_replace('/\{m\d+[oc]\}/', '', $rendered);
@@ -3476,7 +3790,7 @@ class Client
 
                 $value = \Langsys\SDK\Html\Canonical::phrase($target->getAttribute($attr));
                 if ($value !== '') {
-                    $target->setAttribute($attr, $this->translateSource($value, null, $category, null, $params));
+                    $target->setAttribute($attr, $this->translateSource($value, null, $category, null, $params, false, $from, null, null, $previousCategory));
                 }
             }
         }
@@ -3590,9 +3904,11 @@ class Client
      * @param string $html
      * @param string $phrase The canonical text the node holds
      * @param string $rendered
+     * @param string|null $previousCategory Stamped on the fragment's one host
+     *                                      when the phrase was filled from it (MOVE-5)
      * @return string
      */
-    protected function replaceFragmentText($html, $phrase, $rendered)
+    protected function replaceFragmentText($html, $phrase, $rendered, $previousCategory = null)
     {
         $internalErrors = libxml_use_internal_errors(true);
 
@@ -3624,6 +3940,10 @@ class Client
 
         $markers->finish($wrapper);
 
+        if ($previousCategory !== null) {
+            $this->stampContentBlockId($wrapper, null, null, $previousCategory);
+        }
+
         $result = '';
         foreach ($wrapper->childNodes as $child) {
             $result .= \Langsys\SDK\Html\Document::html($child);
@@ -3632,7 +3952,7 @@ class Client
         return $result;
     }
 
-    protected function applyBlockTranslations($html, array $translations, HtmlParser $parser, array $params = [], $locale = null, $customId = null)
+    protected function applyBlockTranslations($html, array $translations, HtmlParser $parser, array $params = [], $locale = null, $customId = null, $previousId = null)
     {
         // Use DOMDocument to properly apply translations
         $internalErrors = libxml_use_internal_errors(true);
@@ -3662,7 +3982,7 @@ class Client
             return $html;
         }
 
-        $this->stampContentBlockId($wrapper, $customId);
+        $this->stampContentBlockId($wrapper, $customId, $previousId);
 
         $result = '';
         foreach ($wrapper->childNodes as $child) {
@@ -3813,9 +4133,11 @@ class Client
      *
      * @param string $phrase
      * @param string|null $category
+     * @param string|null $previousCategory The category it moved from (MOVE-1);
+     *                                      never part of the queue's key (MOVE-2)
      * @return void
      */
-    public function queuePhraseForRegistration($phrase, $category)
+    public function queuePhraseForRegistration($phrase, $category, $previousCategory = null)
     {
         // Nothing could ever send it (WIRE-4).
         if (!$this->isConfigured()) {
@@ -3824,9 +4146,15 @@ class Client
 
         $phrase = Canonical::codePhrase($phrase);
         $key = $category . '::' . $phrase;
+        $previousCategory = TranslatableItems::previousCategoryFor($previousCategory, ($category === null || $category === '' || $category === self::UNCATEGORIZED) ? null : $category);
 
-        // Skip if already queued
+        // Skip if already queued. The first previous category named stays,
+        // and a later call naming none never clears it (MOVE-3).
         if (isset($this->pendingPhrases[$key])) {
+            if ($previousCategory !== null && !isset($this->pendingPhrases[$key]['previous_category'])) {
+                $this->pendingPhrases[$key]['previous_category'] = $previousCategory;
+            }
+
             return;
         }
 
@@ -3837,12 +4165,12 @@ class Client
         $this->pendingPhrases[$key] = [
             'phrase' => $phrase,
             'category' => $category,
-        ];
+        ] + ($previousCategory === null ? [] : ['previous_category' => $previousCategory]);
 
         $this->logger->debug('Phrase queued for registration', [
             'phrase' => $phrase,
             'category' => $category,
-        ]);
+        ] + ($previousCategory === null ? [] : ['previous_category' => $previousCategory]));
 
         // Add to in-memory cache (empty string = no translation yet)
         // This prevents re-queueing the same phrase within the same request
@@ -3928,17 +4256,26 @@ class Client
      * @param string|null $category
      * @param string $customId
      * @param array $phrases
+     * @param string|null $previousCategory The category it moved from (MOVE-1);
+     *                                      never part of its id (MOVE-2)
      * @return void
      */
-    public function queueContentBlockForRegistration($html, $category, $customId, array $phrases)
+    public function queueContentBlockForRegistration($html, $category, $customId, array $phrases, $previousCategory = null)
     {
         // Nothing could ever send it (WIRE-4).
         if (!$this->isConfigured()) {
             return;
         }
 
-        // Skip if already queued
+        $previousCategory = TranslatableItems::previousCategoryFor($previousCategory, ($category === null || $category === '' || $category === self::UNCATEGORIZED) ? null : $category);
+
+        // Skip if already queued, keeping the first previous category named
+        // (MOVE-3).
         if (isset($this->pendingContentBlocks[$customId])) {
+            if ($previousCategory !== null && !isset($this->pendingContentBlocks[$customId]['previous_category'])) {
+                $this->pendingContentBlocks[$customId]['previous_category'] = $previousCategory;
+            }
+
             return;
         }
 
@@ -3954,13 +4291,13 @@ class Client
             'category' => $category,
             'customId' => $customId,
             'phrases' => $phrases,
-        ];
+        ] + ($previousCategory === null ? [] : ['previous_category' => $previousCategory]);
 
         $this->logger->debug('Content block queued for registration', [
             'custom_id' => $customId,
             'category' => $category,
             'phrase_count' => count($phrases),
-        ]);
+        ] + ($previousCategory === null ? [] : ['previous_category' => $previousCategory]));
 
         // Add to in-memory cache (empty strings = no translations yet)
         // This prevents re-queueing the same content block within the same request

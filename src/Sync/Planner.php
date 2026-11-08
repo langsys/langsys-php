@@ -8,6 +8,7 @@ use Langsys\SDK\Messages\MessageCatalog;
 use Langsys\SDK\Messages\ValueSets;
 use Langsys\SDK\Migration\LegacyKeys;
 use Langsys\SDK\Migration\LegacyValue;
+use Langsys\SDK\Resources\TranslatableItems;
 
 /**
  * Decides what a sync registers (FRM-2): every phrase an app's translate calls
@@ -110,7 +111,7 @@ final class Planner
         // A plain line registers as translate() looks it up. A rich line
         // arrives tokenized, already in the collapsed form translateRich()
         // looks up, which codePhrase() leaves as it is.
-        $add = function ($phrase, $category, array $translations, $origin) use (&$items, &$viaValidation) {
+        $add = function ($phrase, $category, array $translations, $origin, $previous = null) use (&$items, &$viaValidation) {
             $phrase = Canonical::codePhrase($phrase);
             if (Canonical::phrase($phrase) === '') {
                 return;
@@ -133,6 +134,13 @@ final class Planner
             }
             $items[$id]['translations'] += $translations;
             $items[$id]['origins'][] = $origin;
+
+            // MOVE-1, MOVE-3: the category the text moved from, never part
+            // of the item's identity; the first one named stays.
+            $previous = TranslatableItems::previousCategoryFor($previous, ($category === null || $category === '' || $category === self::UNCATEGORIZED) ? null : $category);
+            if ($previous !== null && !isset($items[$id]['previous_category'])) {
+                $items[$id]['previous_category'] = $previous;
+            }
         };
 
         foreach ($hits as $hit) {
@@ -206,14 +214,15 @@ final class Planner
             }
 
             $sentences = $this->valueSets === null ? [$phrase] : $this->valueSets->sentences($phrase);
+            $previous = isset($hit['previous_category']) ? $hit['previous_category'] : null;
 
             if ($sentences === [$phrase]) {
-                $add($phrase, $category, $translations, $origin);
+                $add($phrase, $category, $translations, $origin, $previous);
                 continue;
             }
 
             foreach ($sentences as $sentence) {
-                $add($sentence, $category, [], $origin);
+                $add($sentence, $category, [], $origin, $previous);
             }
         }
 
@@ -278,7 +287,47 @@ final class Planner
         // A key several routes reach is reported once for each locale it lacks.
         $skipped = array_values(array_map('unserialize', array_unique(array_map('serialize', $skipped))));
 
-        return new SyncPlan(array_values($items), $reported, $skipped, $viaValidation, $covered, $viaMessageListing);
+        return new SyncPlan(array_values($items), $reported, $skipped, $viaValidation, $covered, $viaMessageListing, self::leftBehind($items));
+    }
+
+    /**
+     * Moves that leave a use behind (MOVE-1): one item stands for every call
+     * registering its text in its category, so a move retires the old item
+     * for all of them, and a call still registering the text under the old
+     * category drops out of the Translation Manager, stats and machine
+     * translation. Only a move this sync sends - an item it registers - is
+     * reported.
+     *
+     * @param array $items
+     * @return array<int, array{phrase: string, category: string|null, previous_category: string, origins: string[], left_behind: string[]}>
+     */
+    private static function leftBehind(array $items)
+    {
+        $byKey = [];
+        foreach ($items as $item) {
+            $category = ($item['category'] === null || $item['category'] === '' || $item['category'] === self::UNCATEGORIZED) ? '' : $item['category'];
+            $byKey[json_encode([$category, $item['phrase']])] = $item;
+        }
+
+        $left = [];
+        foreach ($items as $item) {
+            if (!isset($item['previous_category']) || $item['status'] === 'in_catalog') {
+                continue;
+            }
+
+            $key = json_encode([$item['previous_category'], $item['phrase']]);
+            if (isset($byKey[$key])) {
+                $left[] = [
+                    'phrase' => $item['phrase'],
+                    'category' => $item['category'],
+                    'previous_category' => $item['previous_category'],
+                    'origins' => $item['origins'],
+                    'left_behind' => $byKey[$key]['origins'],
+                ];
+            }
+        }
+
+        return $left;
     }
 
     /**
