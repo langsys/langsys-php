@@ -403,7 +403,7 @@ This option is most often desired to be `true`, ensuring selector-matched elemen
 ```php
 $selectorCategories = [
     // Navigation links and menus
-    'nav a, nav button, .nav-link, .menu-item' => [
+    'nav li, .nav-link, .menu-item' => [
         'category' => 'Navigation',
         'overrideParentElementCategory' => true,
     ],
@@ -438,7 +438,7 @@ anywhere a category is accepted, pass an array.
 $client->translate('Buy now', null, ['category' => 'Checkout', 'previous_category' => 'Header']);
 $client->translateContentBlock($html, ['category' => 'Checkout', 'previous_category' => '']); // '' = it had no category
 echo $client->translatePage($html, ['category' => 'home', 'previous_category' => 'landing'], [
-    'nav a' => ['category' => 'Navigation', 'previous_category' => 'Header', 'overrideParentElementCategory' => true],
+    'nav li' => ['category' => 'Navigation', 'previous_category' => 'Header', 'overrideParentElementCategory' => true],
 ]);
 ```
 

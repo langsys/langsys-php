@@ -355,6 +355,31 @@ class MoveTest extends TestCase
         $this->assertSame(['home/Welcome' => 'old-home', 'Navigation/Sign in' => 'Header'], $sent);
     }
 
+    /**
+     * The README's and the skill's example: a selector on the menu's list
+     * items, whose links are inline and never matched themselves.
+     */
+    public function testTheDocumentedNavLiSelectorMovesTheMenu(): void
+    {
+        $client = $this->client(['Header' => ['Home' => 'Inicio']]);
+
+        $page = $client->translatePage(
+            '<html><body><nav><ul><li><a href="#">Home</a></li><li><a href="#">About</a></li></ul></nav><p>Welcome</p></body></html>',
+            $this->moved('home', 'landing'),
+            ['nav li' => ['category' => 'Navigation', 'previous_category' => 'Header', 'overrideParentElementCategory' => true]]
+        );
+
+        $this->assertStringContainsString('Inicio', $page);
+        $client->flushPendingRegistrations();
+        $sent = [];
+        foreach ($this->sent() as $item) {
+            $sent[$item['category'] . '/' . $item['phrase']] = isset($item['previous_category']) ? $item['previous_category'] : null;
+        }
+        $this->assertSame('Header', $sent['Navigation/Home']);
+        $this->assertSame('Header', $sent['Navigation/About']);
+        $this->assertSame('landing', $sent['home/Welcome']);
+    }
+
     public function testAPageBlockRendersFromItsPreviousCategory(): void
     {
         $previous = self::blockId('Header', ['Hello', 'world']);

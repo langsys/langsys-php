@@ -104,12 +104,12 @@ The category groups phrases for translators. The entry skill says when one is wo
 
 ```php
 echo $client->translatePage($html, 'Homepage', [
-    'nav a, nav button' => ['category' => 'Navigation', 'overrideParentElementCategory' => true],
+    'nav li' => ['category' => 'Navigation', 'overrideParentElementCategory' => true],
     '.promo'            => ['category' => 'Promotions'],
 ]);
 ```
 
-Highest first: a selector with `overrideParentElementCategory: true`, the element's `data-langsys-category`, the inherited category (at the top, `translatePage()`'s argument), a selector without the override, `__uncategorized__`. So a selector without the override applies only where no category reaches the element, which on a page given a category is nowhere. Set the override on purpose. Selectors are tags, classes, ids, attributes (`[type="submit"]`, `[class^="btn-"]`), descendant and child combinators, and comma lists.
+Highest first: a selector with `overrideParentElementCategory: true`, the element's `data-langsys-category`, the inherited category (at the top, `translatePage()`'s argument), a selector without the override, `__uncategorized__`. So a selector without the override applies only where no category reaches the element, which on a page given a category is nowhere. Set the override on purpose. Selectors match block elements (`li`, `p`, `div`, `section` and the like), never inline ones such as `a` or `button`. They are tags, classes, ids, attributes (`[type="submit"]`, `[class^="btn-"]`), descendant and child combinators, and comma lists.
 
 ### Moving content to another category
 
@@ -119,7 +119,7 @@ The category is part of what identifies a phrase or a block, so changing it regi
 $client->translate('Buy now', null, ['category' => 'Checkout', 'previous_category' => 'Header']);
 $client->translateContentBlock($html, ['category' => 'Checkout', 'previous_category' => '']); // '' = it had no category
 echo $client->translatePage($html, ['category' => 'Home', 'previous_category' => 'Landing'], [
-    'nav a' => ['category' => 'Navigation', 'previous_category' => 'Header', 'overrideParentElementCategory' => true],
+    'nav li' => ['category' => 'Navigation', 'previous_category' => 'Header', 'overrideParentElementCategory' => true],
 ]);
 ```
 

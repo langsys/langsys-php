@@ -16,9 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `translatePage()`'s default category and its selector rules. On a page, use
   `data-langsys-previous-category` (or `data-ls-previous-category`). Sync hits take a
   `'previous_category'` key. `''` means the content had no category.
-  - The previous category is sent as `previous_category` only on the registration a miss
-    or a sync triggers, and the first call that names one wins. It never enters a
-    `custom_id` or a queue key.
+  - The previous category is sent as `previous_category` on an explicit registration and
+    on the registration a miss or a sync triggers, and the first call that names one
+    wins. It never enters a `custom_id` or a queue key.
   - While the new category has no translation, the previous category's renders. A host
     filled that way is stamped `data-ls-previous-category` (a phrase) or
     `data-ls-previous-contentblock` (a block).

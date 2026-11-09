@@ -3110,7 +3110,7 @@ class Client
      *         'category' => 'UI Elements',
      *         'overrideParentElementCategory' => true,
      *     ],
-     *     'nav a' => ['category' => 'Navigation', 'overrideParentElementCategory' => true],
+     *     'nav li' => ['category' => 'Navigation', 'overrideParentElementCategory' => true],
      * ]);
      * ```
      *
