@@ -960,6 +960,27 @@ class Client
     }
 
     /**
+     * A phrase call's category argument as [category, previous category],
+     * the previous one as the caller wrote it: whether it names a move is
+     * decided in translateCall(), against the category a key's group gives
+     * (MOVE-1), so a call naming `''` or its own group is read correctly.
+     *
+     * @param mixed $category
+     * @return array{0: string|null, 1: string|null}
+     */
+    private function splitPhraseCategory($category)
+    {
+        if (!is_array($category)) {
+            return [$category, null];
+        }
+
+        $current = isset($category['category']) && is_scalar($category['category']) ? (string) $category['category'] : null;
+        $previous = isset($category['previous_category']) && is_scalar($category['previous_category']) ? (string) $category['previous_category'] : null;
+
+        return [$current, $previous];
+    }
+
+    /**
      * The catalog's key for a previous category: `''` is the no-category
      * bucket, never a literal '' key (MOVE-4).
      *
@@ -1278,7 +1299,7 @@ class Client
      */
     public function translate($phrase, $locale = null, $category = '__uncategorized__', $contentBlockId = null, array $params = [])
     {
-        list($category, $previousCategory) = $this->splitCategory($category);
+        list($category, $previousCategory) = $this->splitPhraseCategory($category);
 
         return $this->translateCall($phrase, $locale, $category, $contentBlockId, $params, $from, null, null, $previousCategory);
     }
@@ -1298,7 +1319,7 @@ class Client
      */
     public function resolve($phrase, $locale = null, $category = '__uncategorized__', array $params = [])
     {
-        list($category, $previousCategory) = $this->splitCategory($category);
+        list($category, $previousCategory) = $this->splitPhraseCategory($category);
         $text = $this->translateCall($phrase, $locale, $category, null, $params, $from, null, null, $previousCategory);
 
         return ['text' => $text, 'from' => $from];
@@ -1330,7 +1351,7 @@ class Client
     {
         $this->requireCredentialsAtUse();
 
-        list($category, $previousCategory) = $this->splitCategory($category);
+        list($category, $previousCategory) = $this->splitPhraseCategory($category);
 
         $line = \Langsys\SDK\Html\MarkupTokenizer::readLine((string) $sourceHtml);
         if ($line === null) {
@@ -1537,11 +1558,14 @@ class Client
             }
         }
 
-        // MOVE-1: a call that names no move takes the configured map's entry
-        // for the category it renders under, the key's group included.
+        // MOVE-1: whether the call names a move is decided against the
+        // category it renders under, a key's group included: `''` names one,
+        // its own category names none. A call that names none takes the
+        // configured map's entry for that category.
+        $key = $this->normalizeCategory($category);
+        $previousCategory = TranslatableItems::previousCategoryFor($previousCategory, $key === self::UNCATEGORIZED ? null : $key);
         if ($previousCategory === null && $contentBlockId === null) {
             $map = $this->config->getPreviousCategories();
-            $key = $this->normalizeCategory($category);
             if (isset($map[$key])) {
                 $previousCategory = TranslatableItems::previousCategoryFor($map[$key], $key === self::UNCATEGORIZED ? null : $key);
             }
@@ -2106,7 +2130,7 @@ class Client
         if (!array_key_exists('previous_categories', $options)) {
             $options['previous_categories'] = $this->config->getPreviousCategories();
         }
-        $messagesPrevious = $this->config->getMessagesPreviousCategory();
+        $messagesPrevious = $this->config->getMessagesPreviousCategoryOption();
         if ($messagesPrevious !== null) {
             $map = \Langsys\SDK\Sync\Planner::previousCategoryMap($options['previous_categories']);
             $category = $this->config->getMessagesCategory();

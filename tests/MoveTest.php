@@ -727,4 +727,38 @@ class MoveTest extends TestCase
         $this->assertSame('Messages', $items['The name is required.']['category']);
         $this->assertSame('Errors', $items['The name is required.']['previous_category']);
     }
+
+    public function testAKeyCallsOwnMoveIsReadAgainstItsGroup(): void
+    {
+        $file = $this->langFile('checkout.php', ['pay' => 'Pay', 'back' => 'Back']);
+        $client = $this->mockClient(['header' => ['Pay' => 'Pagar', 'Back' => 'Volver'], '__uncategorized__' => ['Pay' => 'Pago suelto']], [
+            'migration' => ['files' => [$file]],
+            'previous_categories' => ['checkout' => 'header'],
+        ]);
+        $client->setLocale('es-cr');
+
+        $this->assertSame('Pago suelto', $client->resolve('checkout.pay', null, ['previous_category' => ''])['text'], "'' names a move, which outranks the map");
+        $this->assertSame('Volver', $client->resolve('checkout.back', null, ['previous_category' => 'checkout'])['text'], 'naming its own group names none, so the map applies');
+
+        $client->flushPendingRegistrations();
+        $sent = array_column($this->sent(), null, 'phrase');
+        $this->assertSame('', $sent['Pay']['previous_category'], 'the same move a sync of that hit plans');
+        $this->assertSame('header', $sent['Back']['previous_category']);
+    }
+
+    public function testAnExplicitSyncMapIsNotOverriddenByTheConfiguredMapsMessagesEntry(): void
+    {
+        $file = $this->langFile('Messages.php', ['required' => 'The name is required.']);
+        $auth = ['key_type' => 'write', 'write_enabled' => true, 'base_locale' => 'en-us', 'target_locales' => ['es-es']];
+        $client = $this->mockClient([], ['migration' => ['files' => [$file]], 'messages_category' => 'Messages', 'previous_categories' => ['Messages' => 'Old']], $auth);
+
+        $default = array_column($client->planSync([])->items, null, 'phrase');
+        $this->assertSame('Old', $default['The name is required.']['previous_category'], 'the configured map by default');
+
+        $none = array_column($client->planSync([], [], ['previous_categories' => []])->items, null, 'phrase');
+        $this->assertArrayNotHasKey('previous_category', $none['The name is required.']);
+
+        $other = array_column($client->planSync([], [], ['previous_categories' => ['Messages' => 'X']])->items, null, 'phrase');
+        $this->assertSame('X', $other['The name is required.']['previous_category']);
+    }
 }

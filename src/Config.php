@@ -361,6 +361,18 @@ class Config
     }
 
     /**
+     * The `messages_previous_category` option itself (or its environment
+     * variable), without the `previous_categories` map's entry: what a sync
+     * given its own map lays over it.
+     *
+     * @return string|null
+     */
+    public function getMessagesPreviousCategoryOption()
+    {
+        return $this->messagesPreviousCategory;
+    }
+
+    /**
      * Categories the app renamed, each with the category it was before
      * (MOVE-1), keyed by catalog category (`__uncategorized__` for none):
      * the `previous_categories` option. A phrase rendered under one names
