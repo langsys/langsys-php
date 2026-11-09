@@ -960,6 +960,27 @@ class Client
     }
 
     /**
+     * A phrase call's category argument as [category, previous category],
+     * the previous one as the caller wrote it: whether it names a move is
+     * decided in translateCall(), against the category a key's group gives
+     * (MOVE-1), so a call naming `''` or its own group is read correctly.
+     *
+     * @param mixed $category
+     * @return array{0: string|null, 1: string|null}
+     */
+    private function splitPhraseCategory($category)
+    {
+        if (!is_array($category)) {
+            return [$category, null];
+        }
+
+        $current = isset($category['category']) && is_scalar($category['category']) ? (string) $category['category'] : null;
+        $previous = isset($category['previous_category']) && is_scalar($category['previous_category']) ? (string) $category['previous_category'] : null;
+
+        return [$current, $previous];
+    }
+
+    /**
      * The catalog's key for a previous category: `''` is the no-category
      * bucket, never a literal '' key (MOVE-4).
      *
@@ -1278,7 +1299,7 @@ class Client
      */
     public function translate($phrase, $locale = null, $category = '__uncategorized__', $contentBlockId = null, array $params = [])
     {
-        list($category, $previousCategory) = $this->splitCategory($category);
+        list($category, $previousCategory) = $this->splitPhraseCategory($category);
 
         return $this->translateCall($phrase, $locale, $category, $contentBlockId, $params, $from, null, null, $previousCategory);
     }
@@ -1298,7 +1319,7 @@ class Client
      */
     public function resolve($phrase, $locale = null, $category = '__uncategorized__', array $params = [])
     {
-        list($category, $previousCategory) = $this->splitCategory($category);
+        list($category, $previousCategory) = $this->splitPhraseCategory($category);
         $text = $this->translateCall($phrase, $locale, $category, null, $params, $from, null, null, $previousCategory);
 
         return ['text' => $text, 'from' => $from];
@@ -1330,7 +1351,7 @@ class Client
     {
         $this->requireCredentialsAtUse();
 
-        list($category, $previousCategory) = $this->splitCategory($category);
+        list($category, $previousCategory) = $this->splitPhraseCategory($category);
 
         $line = \Langsys\SDK\Html\MarkupTokenizer::readLine((string) $sourceHtml);
         if ($line === null) {
@@ -1534,6 +1555,19 @@ class Client
                 if (($category === null || $category === '' || $category === self::UNCATEGORIZED) && $entry['category'] !== null) {
                     $category = $entry['category'];
                 }
+            }
+        }
+
+        // MOVE-1: whether the call names a move is decided against the
+        // category it renders under, a key's group included: `''` names one,
+        // its own category names none. A call that names none takes the
+        // configured map's entry for that category.
+        $key = $this->normalizeCategory($category);
+        $previousCategory = TranslatableItems::previousCategoryFor($previousCategory, $key === self::UNCATEGORIZED ? null : $key);
+        if ($previousCategory === null && $contentBlockId === null) {
+            $map = $this->config->getPreviousCategories();
+            if (isset($map[$key])) {
+                $previousCategory = TranslatableItems::previousCategoryFor($map[$key], $key === self::UNCATEGORIZED ? null : $key);
             }
         }
 
@@ -2077,7 +2111,11 @@ class Client
      * @param array $options `covered_groups`: groups whose base-language lines
      *                       register another way, so a key built at runtime in
      *                       one is covered even though the `migration` files
-     *                       do not hold it (Laravel's validation lines)
+     *                       do not hold it (Laravel's validation lines);
+     *                       `previous_categories`: category => the category it
+     *                       was before, so a renamed key group moves every line
+     *                       registered under it (MOVE-1); the rest as
+     *                       Planner::plan() takes them
      * @return \Langsys\SDK\Sync\SyncPlan
      * @throws LangsysException When a locale is not a target of the project
      */
@@ -2086,6 +2124,19 @@ class Client
         $this->assertConfigured('plan a sync');
 
         $planner = new \Langsys\SDK\Sync\Planner($this->getLegacyKeys(), $this->valueSets);
+
+        // The configured map is the default (MOVE-1), and the messages
+        // category's own previous one wins over any entry it has (MSG-6).
+        if (!array_key_exists('previous_categories', $options)) {
+            $options['previous_categories'] = $this->config->getPreviousCategories();
+        }
+        $messagesPrevious = $this->config->getMessagesPreviousCategoryOption();
+        if ($messagesPrevious !== null) {
+            $map = \Langsys\SDK\Sync\Planner::previousCategoryMap($options['previous_categories']);
+            $category = $this->config->getMessagesCategory();
+            $map[($category === '' || $category === null) ? self::UNCATEGORIZED : $category] = $messagesPrevious;
+            $options['previous_categories'] = $map;
+        }
 
         return $planner->plan($hits, $this->targetReaders($targets), $this->syncCatalog(), $options);
     }
@@ -2199,7 +2250,8 @@ class Client
         }
 
         $category = $this->normalizeCategory($this->config->getMessagesCategory());
-        $found = $this->lookupMessageTemplate($entry->getTemplate(), $category, $locale);
+        $previousCategory = $this->config->getMessagesPreviousCategory();
+        $found = $this->lookupMessageTemplate($entry->getTemplate(), $category, $locale, $previousCategory);
 
         if ($found === null) {
             return $entry->getMessage();
@@ -2209,12 +2261,11 @@ class Client
 
         list($listed, $translation) = $found;
 
-        if (!$listed) {
-            if ($this->runtimeRegistration) {
-                $this->queuePhraseForRegistration($entry->getTemplate(), $category);
-            }
-
-            return $entry->getMessage();
+        // A miss under the messages category registers there, naming where
+        // the template was before; until it is translated there, the previous
+        // category's translation renders (MOVE-3, MOVE-4).
+        if (!$listed && $this->runtimeRegistration) {
+            $this->queuePhraseForRegistration($entry->getTemplate(), $category, $previousCategory);
         }
 
         if ($translation === null) {
@@ -2252,10 +2303,11 @@ class Client
         }
 
         $category = $this->normalizeCategory($this->config->getMessagesCategory());
-        $found = $this->lookupMessageTemplate($message->getTemplate(), $category, $locale);
+        $previousCategory = $this->config->getMessagesPreviousCategory();
+        $found = $this->lookupMessageTemplate($message->getTemplate(), $category, $locale, $previousCategory);
 
         if ($found !== null && !$found[0] && $this->runtimeRegistration) {
-            $this->queuePhraseForRegistration($message->getTemplate(), $category);
+            $this->queuePhraseForRegistration($message->getTemplate(), $category, $previousCategory);
         }
 
         if ($found !== null) {
@@ -2340,20 +2392,28 @@ class Client
     /**
      * Whether the catalog lists a template, and its translation.
      *
+     * Listed is decided under the messages category alone (MOVE-4: a miss
+     * there still registers). With no translation there, the template's entry
+     * under the category the messages were in before is the translation, read
+     * last, from the same catalog.
+     *
      * @param string $template
      * @param string $category
      * @param string $locale
+     * @param string|null $previousCategory The messages category's previous one (MSG-6, MOVE-1)
      * @return array|null [bool $listed, string|null $translation], or null when the catalog could not be read
      */
-    protected function lookupMessageTemplate($template, $category, $locale)
+    protected function lookupMessageTemplate($template, $category, $locale, $previousCategory = null)
     {
         $template = Canonical::codePhrase($template);
+        $previousKey = $previousCategory === null ? null : self::previousCatalogKey($previousCategory);
+        if ($previousKey === $category) {
+            $previousKey = null;
+        }
 
         $seed = $this->seedCatalog($locale);
         if ($seed !== null && isset($seed[$category]) && is_array($seed[$category]) && array_key_exists($template, $seed[$category])) {
-            $value = $seed[$category][$template];
-
-            return [true, (is_string($value) && $value !== '') ? $value : null];
+            return [true, self::messageTranslationIn($seed, $category, $template, $previousKey)];
         }
 
         try {
@@ -2369,15 +2429,33 @@ class Client
             return null;
         }
 
-        $categoryTranslations = (isset($translations[$category]) && is_array($translations[$category])) ? $translations[$category] : [];
+        $listed = isset($translations[$category]) && is_array($translations[$category]) && array_key_exists($template, $translations[$category]);
 
-        if (!array_key_exists($template, $categoryTranslations)) {
-            return [false, null];
+        return [$listed, self::messageTranslationIn($translations, $category, $template, $previousKey)];
+    }
+
+    /**
+     * A template's translation in one catalog: its entry under the messages
+     * category, else under the previous one (MOVE-4); null or empty is none.
+     *
+     * @param array $catalog category => entries
+     * @param string $category
+     * @param string $template
+     * @param string|null $previousKey The previous category's catalog key
+     * @return string|null
+     */
+    private static function messageTranslationIn(array $catalog, $category, $template, $previousKey)
+    {
+        foreach ($previousKey === null ? [$category] : [$category, $previousKey] as $key) {
+            if (isset($catalog[$key]) && is_array($catalog[$key]) && array_key_exists($template, $catalog[$key])) {
+                $value = $catalog[$key][$template];
+                if (is_string($value) && $value !== '') {
+                    return $value;
+                }
+            }
         }
 
-        $value = $categoryTranslations[$template];
-
-        return [true, (is_string($value) && $value !== '') ? $value : null];
+        return null;
     }
 
     /**

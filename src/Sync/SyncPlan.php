@@ -72,6 +72,16 @@ final class SyncPlan
     public $leftBehind = [];
 
     /**
+     * Items whose calls name different previous categories (MOVE-1). The
+     * first in read order - files in path order, then lines - is the one
+     * sent; the rest are listed with where they sit. A strict sync fails on
+     * any: one item can only have moved from one place.
+     *
+     * @var array<int, array{phrase: string, category: string|null, previous_categories: string[], origins: string[]}>
+     */
+    public $moveConflicts = [];
+
+    /**
      * Translations that could not be taken from a language file.
      *
      * @var array<int, array{key: string, locale: string, reason: string}>
@@ -83,8 +93,9 @@ final class SyncPlan
      * @param array $reported
      * @param array $skipped
      */
-    public function __construct(array $items, array $reported, array $skipped, array $viaValidation = [], array $covered = [], array $viaMessageListing = [], array $leftBehind = [])
+    public function __construct(array $items, array $reported, array $skipped, array $viaValidation = [], array $covered = [], array $viaMessageListing = [], array $leftBehind = [], array $moveConflicts = [])
     {
+        $this->moveConflicts = $moveConflicts;
         $this->leftBehind = $leftBehind;
         $this->viaMessageListing = $viaMessageListing;
         $this->covered = $covered;
@@ -122,12 +133,13 @@ final class SyncPlan
     }
 
     /**
-     * Whether a strict run fails: any call was reported (FRM-2's --strict).
+     * Whether a strict run fails: any call was reported (FRM-2's --strict),
+     * or calls disagree on where an item moved from (MOVE-1).
      *
      * @return bool
      */
     public function failsStrict()
     {
-        return $this->reported !== [];
+        return $this->reported !== [] || $this->moveConflicts !== [];
     }
 }

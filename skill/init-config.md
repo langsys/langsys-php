@@ -23,6 +23,7 @@ Build one `Client` per request, or one per worker that flushes and resets per re
 | `LANGSYS_LOG_PATH` | none | A JSON Lines log file |
 | `LANGSYS_LOG_LEVEL` | `info` | `debug`, `info`, `warning` or `error` |
 | `LANGSYS_MESSAGES_CATEGORY` | `Errors` | The category of server message templates |
+| `LANGSYS_MESSAGES_PREVIOUS_CATEGORY` | none | The category the templates were under before the messages category was renamed. Empty is unset |
 
 ## Options
 
@@ -46,6 +47,8 @@ Each option overrides its variable where it has one.
 | `error_log` | `true` | `false` stops warnings and errors going to PHP's error log when there is no log file |
 | `warn_runtime_requirements` | `true` | With `error_log` `false`, `false` keeps the setup warnings out of PHP's error log too ([Logging](#logging)) |
 | `messages_category` | `LANGSYS_MESSAGES_CATEGORY` | The category of server message templates ([messages.md](./messages.md)) |
+| `previous_categories` | none | Categories you renamed, `['checkout' => 'header']` (`''` for none), so their content keeps its translations; applied when rendering and as `planSync()`'s default ([primitives.md](./primitives.md#moving-content-to-another-category)) |
+| `messages_previous_category` | `LANGSYS_MESSAGES_PREVIOUS_CATEGORY` | The category the templates were under before the messages category was renamed; `''` if they had none ([messages.md](./messages.md)) |
 | `require_credentials` | `false` | Throw at first use when the key or project id is missing |
 | `request_locale` | the URL, cookie, session and header steps | Where the request's locale is read from ([locales.md](./locales.md)) |
 | `runtime_registration` | `true` | `false` registers from a sync only ([writing.md](./writing.md)) |

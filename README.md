@@ -88,6 +88,7 @@ Set these environment variables to configure the SDK:
 | `LANGSYS_LOG_PATH` | No | - | Path to log file (without it, warnings and errors go to PHP's error log) |
 | `LANGSYS_LOG_LEVEL` | No | `info` | Minimum log level: `debug`, `info`, `warning`, `error` |
 | `LANGSYS_MESSAGES_CATEGORY` | No | `Errors` | Category server message templates are registered and looked up under |
+| `LANGSYS_MESSAGES_PREVIOUS_CATEGORY` | No | - | After renaming the messages category, the one the templates were under before, so they keep their translations |
 
 ### Constructor Options
 
@@ -107,6 +108,8 @@ $client = new Client(
         'log_path' => '/var/log/langsys.log', // Enable logging
         'log_level' => 'info',                // Minimum level to log
         'messages_category' => 'Errors',      // Category for server message templates
+        // 'messages_previous_category' => 'Errors', // After renaming messages_category: where the templates were
+        // 'previous_categories' => ['checkout' => 'header'], // Renamed categories, for translate() and planSync()
         'require_credentials' => false,       // Throw at first use when the key or project ID is missing
         // 'logger' => $logger,               // A Langsys\SDK\Log\LoggerInterface, used instead of log_path
         'warn_runtime_requirements' => true,  // Write setup warnings straight to PHP's error log too
@@ -454,7 +457,13 @@ echo $client->translatePage($html, ['category' => 'home', 'previous_category' =>
   `data-ls-previous-contentblock` (a block) so a JavaScript SDK hydrating the page keeps it.
 - Once the new category holds a translation, the previous category is ignored, so it can stay
   in place for a release and be removed afterwards. It never changes a `custom_id`.
-- `planSync()` hits take a `'previous_category'` key. `$plan->leftBehind` lists moves where
+- A whole renamed category, such as a key group whose language file was renamed, is one Client
+  option: `'previous_categories' => ['checkout' => 'header']`. `translate()`, `resolve()` and
+  `translateRich()` apply it to any call that names no move, and `planSync()` uses it as its
+  default map. A renamed messages category takes `messages_previous_category`.
+- `planSync()` hits take a `'previous_category'` key. Hits naming different previous categories
+  for one item are listed in `$plan->moveConflicts` and fail `failsStrict()`; the first in file
+  path and line order is sent. `$plan->leftBehind` lists moves where
   another call still uses the same text under the old category; the move retires the old item
   for every call, so move that call too or drop the previous category.
 - Needs the Langsys API v0.108.4 or later. An older API ignores the field, and the content
