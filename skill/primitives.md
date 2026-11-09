@@ -110,3 +110,21 @@ echo $client->translatePage($html, 'Homepage', [
 ```
 
 Highest first: a selector with `overrideParentElementCategory: true`, the element's `data-langsys-category`, the inherited category (at the top, `translatePage()`'s argument), a selector without the override, `__uncategorized__`. So a selector without the override applies only where no category reaches the element, which on a page given a category is nowhere. Set the override on purpose. Selectors are tags, classes, ids, attributes (`[type="submit"]`, `[class^="btn-"]`), descendant and child combinators, and comma lists.
+
+### Moving content to another category
+
+The category is part of what identifies a phrase or a block, so changing it registers new content, which has no translations. Name the category it came from instead: wherever a category is accepted, pass an array.
+
+```php
+$client->translate('Buy now', null, ['category' => 'Checkout', 'previous_category' => 'Header']);
+$client->translateContentBlock($html, ['category' => 'Checkout', 'previous_category' => '']); // '' = it had no category
+echo $client->translatePage($html, ['category' => 'Home', 'previous_category' => 'Landing'], [
+    'nav a' => ['category' => 'Navigation', 'previous_category' => 'Header', 'overrideParentElementCategory' => true],
+]);
+```
+
+- **On a page,** put `data-langsys-previous-category="Header"` beside `data-langsys-category` (`data-ls-previous-category` is read too). It is inherited the same way, and a descendant's own `data-langsys-category` stops it.
+- **In a sync,** give a hit a `'previous_category'` key. `$plan->leftBehind` lists moves where another call still uses the text under the old category: the move retires the old item for every call, so move that call too or drop the previous category.
+- The new item is registered with `previous_category` and the API carries the old item's translations over to it. Until they arrive, the old category's translation renders. Once the new category holds a translation, the previous category is ignored, so you can leave it in place for a release and remove it afterwards.
+- It never changes an id: a block's `custom_id` comes from its current category only.
+- The API needs version 0.108.4 or later. An older API ignores the field, and the content registers as new.

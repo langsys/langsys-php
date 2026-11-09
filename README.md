@@ -428,6 +428,38 @@ $selectorCategories = [
 ];
 ```
 
+### Moving Content to Another Category
+
+A phrase's or block's category is part of what identifies it, so moving it to a new category
+would register new content with no translations. Name the category it came from instead:
+anywhere a category is accepted, pass an array.
+
+```php
+$client->translate('Buy now', null, ['category' => 'Checkout', 'previous_category' => 'Header']);
+$client->translateContentBlock($html, ['category' => 'Checkout', 'previous_category' => '']); // '' = it had no category
+echo $client->translatePage($html, ['category' => 'home', 'previous_category' => 'landing'], [
+    'nav a' => ['category' => 'Navigation', 'previous_category' => 'Header', 'overrideParentElementCategory' => true],
+]);
+```
+
+```html
+<section data-langsys-category="Checkout" data-langsys-previous-category="Header">
+    <p>Buy now</p>
+</section>
+```
+
+- The new item is registered with `previous_category`, and the API carries the old item's
+  translations over to it. Until they arrive, the previous category's translation renders,
+  and the element is stamped `data-ls-previous-category` (a phrase) or
+  `data-ls-previous-contentblock` (a block) so a JavaScript SDK hydrating the page keeps it.
+- Once the new category holds a translation, the previous category is ignored, so it can stay
+  in place for a release and be removed afterwards. It never changes a `custom_id`.
+- `planSync()` hits take a `'previous_category'` key. `$plan->leftBehind` lists moves where
+  another call still uses the same text under the old category; the move retires the old item
+  for every call, so move that call too or drop the previous category.
+- Needs the Langsys API v0.108.4 or later. An older API ignores the field, and the content
+  registers as new.
+
 ### Forcing Content Block with `data-langsys-contentblock`
 
 By default, `translatePage()` decomposes nested content into individual phrases where possible. Use `data-langsys-contentblock` to treat an element and all its children as a single content block:

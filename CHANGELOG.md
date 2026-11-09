@@ -5,6 +5,29 @@ All notable changes to the Langsys PHP SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-11-09
+
+### Added
+
+- **Content can move to another category and keep its translations** (spec 8.7.0,
+  MOVE-1 to MOVE-5). Anywhere a category is accepted, pass
+  `['category' => 'Checkout', 'previous_category' => 'Header']`: `translate()`,
+  `resolve()`, `translateRich()`, `translateContentBlock()`, `registerContentBlock()`,
+  `translatePage()`'s default category and its selector rules. On a page, use
+  `data-langsys-previous-category` (or `data-ls-previous-category`). Sync hits take a
+  `'previous_category'` key. `''` means the content had no category.
+  - The previous category is sent as `previous_category` only on the registration a miss
+    or a sync triggers, and the first call that names one wins. It never enters a
+    `custom_id` or a queue key.
+  - While the new category has no translation, the previous category's renders. A host
+    filled that way is stamped `data-ls-previous-category` (a phrase) or
+    `data-ls-previous-contentblock` (a block).
+  - `SyncPlan::$leftBehind` warns when another call still registers the same text under
+    the old category: the move retires the old item for that call too.
+  - It is an array rather than a new parameter, so subclasses that override `translate()`
+    or `translatePage()` keep working. It needs the Langsys API v0.108.4 or later; an
+    older API ignores it, and the content registers as new.
+
 ## [2.0.2] - 2026-11-06
 
 ### Fixed
@@ -598,6 +621,8 @@ First tagged release.
   pollutes the catalog shared with every other Langsys SDK. Use `$params`
   instead. This cannot be detected at runtime; see README.
 
+[2.1.0]: https://github.com/langsys/langsys-php/compare/v2.0.2...v2.1.0
+[2.0.2]: https://github.com/langsys/langsys-php/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/langsys/langsys-php/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/langsys/langsys-php/compare/v1.3.1...v2.0.0
 [1.3.1]: https://github.com/langsys/langsys-php/compare/v1.3.0...v1.3.1
