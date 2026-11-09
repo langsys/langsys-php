@@ -3,6 +3,7 @@
 namespace Langsys\SDK\Html;
 
 use Langsys\SDK\Locale\LocaleDetector;
+use Langsys\SDK\Resources\TranslatableItems;
 
 use Langsys\SDK\Log\LoggerInterface;
 use Langsys\SDK\Log\NullLogger;
@@ -61,6 +62,28 @@ class PageTranslator
      * @var \Langsys\SDK\Client
      */
     protected $client;
+
+    /**
+     * The previous category of the page's default category, for this call
+     * (MOVE-1).
+     *
+     * @var string|null
+     */
+    private $defaultPreviousCategory = null;
+
+    /**
+     * Each element's previous category, decided beside its category.
+     *
+     * @var \SplObjectStorage|null
+     */
+    private $previousCategories = null;
+
+    /**
+     * Whether the last lookupTranslation() read the previous category.
+     *
+     * @var bool
+     */
+    private $lastFromPrevious = false;
 
     /**
      * @var HtmlParser
@@ -163,6 +186,14 @@ class PageTranslator
         // written from it (WIRE-3).
         $locale = LocaleDetector::normalize($locale);
 
+        // `['category' => ..., 'previous_category' => ...]` names the
+        // category the page's content moved from (MOVE-1).
+        $previous = null;
+        if (is_array($defaultCategory)) {
+            $previous = array_key_exists('previous_category', $defaultCategory) ? $defaultCategory['previous_category'] : null;
+            $defaultCategory = isset($defaultCategory['category']) && is_scalar($defaultCategory['category']) ? (string) $defaultCategory['category'] : null;
+        }
+
         // An empty category is no category, as in Client::normalizeCategory().
         if ($defaultCategory === '') {
             $defaultCategory = null;
@@ -172,6 +203,8 @@ class PageTranslator
         $this->params = $params;
         $this->currentLocale = $locale;
         $this->markers = null;
+        $this->defaultPreviousCategory = TranslatableItems::previousCategoryFor($previous, $defaultCategory === '__uncategorized__' ? null : $defaultCategory);
+        $this->previousCategories = new \SplObjectStorage();
 
         try {
             return $this->translateDocument($html, $locale, $defaultCategory, $selectorCategories, $params);
@@ -182,6 +215,8 @@ class PageTranslator
             $this->params = [];
             $this->currentLocale = null;
             $this->markers = null;
+            $this->defaultPreviousCategory = null;
+            $this->previousCategories = null;
         }
     }
 
@@ -252,7 +287,7 @@ class PageTranslator
         // resolve here too, or <title> and meta description ship raw {name}
         // to the browser while the body renders correctly.
         $this->headHandler->useInterpolation($this->client->getInterpolator(), $params, $locale);
-        $this->headHandler->process($doc, $locale, $translations, $defaultCategory);
+        $this->headHandler->process($doc, $locale, $this->withPreviousHead($translations, $headPhrases, $defaultCategory), $defaultCategory);
 
         if ($fromSeed) {
             $this->applyBodyTranslations($doc, $bodyPhrases, $contentBlocks, $translations, $defaultCategory);
@@ -277,7 +312,7 @@ class PageTranslator
         // registration candidate: its text is output, not source (GATE-10).
         $heads = $doc->getElementsByTagName('head');
         $newHeadPhrases = ($heads->length > 0 && HtmlParser::isResolvedScope($heads->item(0))) ? [] : $this->findNewPhrasesWithCategory(
-            $this->addCategoryToPhrases($headPhrases, $defaultCategory),
+            $this->withDefaultPrevious($this->addCategoryToPhrases($headPhrases, $defaultCategory)),
             $translations,
             $registeredItems
         );
@@ -323,6 +358,61 @@ class PageTranslator
 
         // Return translated HTML
         return $this->saveHtml($doc);
+    }
+
+    /**
+     * The head's phrases carry the default category's previous category
+     * (MOVE-1).
+     *
+     * @param array $phrases With categories
+     * @return array
+     */
+    private function withDefaultPrevious(array $phrases)
+    {
+        if ($this->defaultPreviousCategory === null) {
+            return $phrases;
+        }
+
+        foreach ($phrases as $i => $phrase) {
+            $phrases[$i]['previous_category'] = $this->defaultPreviousCategory;
+        }
+
+        return $phrases;
+    }
+
+    /**
+     * The catalog the head renders from: each head phrase with no
+     * translation under the default category takes its previous category's,
+     * read last (MOVE-4). Rendering only; registration reads the catalog.
+     *
+     * @param array $translations
+     * @param array $headPhrases
+     * @param string|null $defaultCategory
+     * @return array
+     */
+    private function withPreviousHead(array $translations, array $headPhrases, $defaultCategory)
+    {
+        if ($this->defaultPreviousCategory === null) {
+            return $translations;
+        }
+
+        $cat = $defaultCategory !== null ? $defaultCategory : '__uncategorized__';
+        $prev = $this->defaultPreviousCategory === '' ? '__uncategorized__' : $this->defaultPreviousCategory;
+
+        foreach ($headPhrases as $phrase) {
+            $text = is_string($phrase) ? $phrase : (isset($phrase['text']) ? $phrase['text'] : null);
+            if ($text === null) {
+                continue;
+            }
+
+            $current = isset($translations[$cat][$text]) ? $translations[$cat][$text] : null;
+            $value = isset($translations[$prev][$text]) ? $translations[$prev][$text] : null;
+            if (!(is_string($current) && $current !== '') && is_string($value) && $value !== '') {
+                $translations[$cat][$text] = $value;
+            }
+        }
+
+        return $translations;
     }
 
     /**
@@ -770,11 +860,14 @@ class PageTranslator
 
         $itemCategory = $effectiveCategory !== null ? $effectiveCategory : '__uncategorized__';
 
+        $previous = $this->previousCategoryOf($element, $itemCategory);
+
         if (HtmlParser::isPhraseUnit($unit)) {
             $phrases[] = [
                 'text' => $unit['tokens'][0],
                 'element' => $element,
                 'category' => $itemCategory,
+                'previous_category' => $previous,
             ];
 
             return;
@@ -792,6 +885,7 @@ class PageTranslator
             'element' => $element,
             'html' => $html,
             'category' => $itemCategory,
+            'previous_category' => $previous,
         ];
     }
 
@@ -813,6 +907,7 @@ class PageTranslator
     {
         $encoded = $this->markupTokenizer->encode($element);
         $category = $effectiveCategory !== null ? $effectiveCategory : '__uncategorized__';
+        $previous = $this->previousCategoryOf($element, $category);
 
         // A run with no text of its own - only elements kept whole - is no
         // phrase (TOK-1), but its attributes still are.
@@ -822,6 +917,7 @@ class PageTranslator
                 'text' => $encoded['text'],
                 'element' => $element,
                 'category' => $category,
+                'previous_category' => $previous,
                 'slots' => $encoded['slots'],
                 'tokenized' => true,
             ];
@@ -837,6 +933,7 @@ class PageTranslator
                 'element' => null,
                 'scope' => $element,
                 'category' => $category,
+                'previous_category' => $previous,
                 'attributeOnly' => true,
             ] + ($hasText ? [] : ['host' => $element]);
         }
@@ -908,6 +1005,8 @@ class PageTranslator
             'element' => $element,
             'html' => $innerHtml,
             'category' => $itemCategory,
+            'previous_category' => $this->previousCategoryOf($element, $itemCategory),
+            'previous_id' => $stamped ? HtmlParser::previousContentBlockOf($element) : null,
             'stamped' => $stamped,
         ];
     }
@@ -928,10 +1027,73 @@ class PageTranslator
      */
     protected function determineEffectiveCategory(DOMElement $element, $inheritedCategory)
     {
+        $category = $this->decideCategory($element, $inheritedCategory, $previous);
+
+        // A previous category the element names outranks what it inherits
+        // or a selector gives (MOVE-1).
+        if (($named = HtmlParser::previousCategoryOf($element)) !== null) {
+            $previous = $named;
+        }
+
+        if ($this->previousCategories !== null) {
+            $this->previousCategories[$element] = $previous;
+        }
+
+        return $category;
+    }
+
+    /**
+     * The previous category of an item read from $element (MOVE-1): the one
+     * decided with the category it is registered under, never one equal to it.
+     *
+     * @param DOMElement $element
+     * @param string $itemCategory
+     * @return string|null
+     */
+    protected function previousCategoryOf(DOMElement $element, $itemCategory)
+    {
+        $previous = ($this->previousCategories !== null && $this->previousCategories->contains($element)) ? $this->previousCategories[$element] : $this->inheritedPrevious($element);
+
+        return TranslatableItems::previousCategoryFor($previous, $itemCategory === '__uncategorized__' ? null : $itemCategory);
+    }
+
+    /**
+     * The previous category that comes down to $element with an inherited
+     * category: its nearest ancestor's that was decided, or the page's.
+     *
+     * @param DOMNode $element
+     * @return string|null
+     */
+    private function inheritedPrevious(DOMNode $element)
+    {
+        for ($node = $element->parentNode; $node instanceof DOMElement; $node = $node->parentNode) {
+            if ($this->previousCategories !== null && $this->previousCategories->contains($node)) {
+                return $this->previousCategories[$node];
+            }
+        }
+
+        return $this->defaultPreviousCategory;
+    }
+
+    /**
+     * determineEffectiveCategory()'s rules, with the previous category that
+     * goes with the category decided.
+     *
+     * @param DOMElement $element
+     * @param string|null $inheritedCategory
+     * @param string|null $previous
+     * @return string|null
+     */
+    private function decideCategory(DOMElement $element, $inheritedCategory, &$previous)
+    {
+        $previous = null;
+
         // Check for selector with override=true (highest priority)
         if ($this->selectorMatcher !== null) {
             $selectorMatch = $this->selectorMatcher->matchElement($element);
             if ($selectorMatch !== null && $selectorMatch['override']) {
+                $previous = isset($selectorMatch['previous_category']) ? $selectorMatch['previous_category'] : null;
+
                 return $this->categoryOrUncategorized($selectorMatch['category']);
             }
         }
@@ -943,6 +1105,8 @@ class PageTranslator
 
         // Use inherited category if set
         if ($inheritedCategory !== null) {
+            $previous = $this->inheritedPrevious($element);
+
             return $inheritedCategory;
         }
 
@@ -950,11 +1114,15 @@ class PageTranslator
         if ($this->selectorMatcher !== null) {
             $selectorMatch = $this->selectorMatcher->matchElement($element);
             if ($selectorMatch !== null && !$selectorMatch['override']) {
+                $previous = isset($selectorMatch['previous_category']) ? $selectorMatch['previous_category'] : null;
+
                 return $this->categoryOrUncategorized($selectorMatch['category']);
             }
         }
 
         // Return null to let caller use default
+        $previous = $this->defaultPreviousCategory;
+
         return null;
     }
 
@@ -1055,6 +1223,21 @@ class PageTranslator
                     $categoryTranslations, $cat, $block['phrases'], $customId, $this->htmlParser
                 );
 
+            // With no translation under the current category, the previous
+            // category's is read last (MOVE-4): a stamped host by the previous
+            // id it carries, any other by the id its previous category gives
+            // the same tokens. The host says so (MOVE-5).
+            $previousId = null;
+            if (!\Langsys\SDK\Client::holdsTranslation($blockTranslations)) {
+                $filled = !empty($block['stamped'])
+                    ? (isset($block['previous_id']) && $block['previous_id'] !== null ? $this->client->stampedPreviousBlock($translations, $block['previous_id']) : null)
+                    : (isset($block['previous_category']) && $block['previous_category'] !== null ? $this->client->previousContentBlockTranslations($translations, $block['previous_category'], $block['phrases'], $this->htmlParser) : null);
+                if ($filled !== null) {
+                    $previousId = !empty($block['stamped']) ? $block['previous_id'] : $filled[0];
+                    $blockTranslations = $filled[1];
+                }
+            }
+
             if (!is_array($blockTranslations) || empty($blockTranslations)) {
                 // No translations for this content block, but placeholders in the
                 // original markup should still resolve.
@@ -1067,6 +1250,7 @@ class PageTranslator
 
             // MARK-1: the rendered host carries the id it was rendered from.
             HtmlParser::stampIdentity($block['element'], $customId);
+            HtmlParser::stampPrevious($block['element'], $previousId);
         }
 
         // Then phrases, innermost first: a phrase host nested in another
@@ -1079,7 +1263,7 @@ class PageTranslator
             if (isset($phraseData['host']) && $phraseData['host'] instanceof DOMElement) {
                 if (!$attributesApplied->contains($phraseData['host'])) {
                     $attributesApplied->attach($phraseData['host']);
-                    $this->applyAttributeTranslations($phraseData['host'], isset($phraseData['category']) ? $phraseData['category'] : $defaultCategory, $translations);
+                    $this->applyAttributeTranslations($phraseData['host'], isset($phraseData['category']) ? $phraseData['category'] : $defaultCategory, $translations, isset($phraseData['previous_category']) ? $phraseData['previous_category'] : null);
                 }
                 continue;
             }
@@ -1098,7 +1282,11 @@ class PageTranslator
                 continue;
             }
 
-            $translated = $this->interp($this->lookupTranslation($originalText, $itemCategory, $translations), $phraseData['element']);
+            $previous = isset($phraseData['previous_category']) ? $phraseData['previous_category'] : null;
+            $translated = $this->interp($this->lookupTranslation($originalText, $itemCategory, $translations, null, $previous), $phraseData['element']);
+            if ($this->lastFromPrevious) {
+                HtmlParser::stampPrevious($phraseData['element'], null, $previous);
+            }
 
             if ($translated !== $originalText) {
                 // Replace text content while preserving structure (br tags, etc.)
@@ -1136,10 +1324,30 @@ class PageTranslator
         // it. Only the current key is ever registered.
         $cat = $itemCategory !== null ? $itemCategory : '__uncategorized__';
         $current = isset($translations[$cat][$phraseData['text']]) ? $translations[$cat][$phraseData['text']] : null;
-        if ($encoded['earlier'] !== null && !(is_string($current) && $current !== '')) {
+        $found = is_string($current) && $current !== '';
+        if ($encoded['earlier'] !== null && !$found) {
             $value = isset($translations[$cat][$encoded['earlier']['text']]) ? $translations[$cat][$encoded['earlier']['text']] : null;
             if (is_string($value) && $value !== '') {
                 $translated = $this->markupTokenizer->fromEarlier($value, $encoded['earlier']);
+                $found = true;
+            }
+        }
+
+        // Last, the previous category: the same text, then its earlier key
+        // there (MOVE-4); the host says so (MOVE-5).
+        $previous = isset($phraseData['previous_category']) ? $phraseData['previous_category'] : null;
+        if (!$found && $previous !== null) {
+            $prev = $previous === '' ? '__uncategorized__' : $previous;
+            $value = isset($translations[$prev][$phraseData['text']]) ? $translations[$prev][$phraseData['text']] : null;
+            if (is_string($value) && $value !== '') {
+                $translated = $value;
+                HtmlParser::stampPrevious($element, null, $previous);
+            } elseif ($encoded['earlier'] !== null) {
+                $value = isset($translations[$prev][$encoded['earlier']['text']]) ? $translations[$prev][$encoded['earlier']['text']] : null;
+                if (is_string($value) && $value !== '') {
+                    $translated = $this->markupTokenizer->fromEarlier($value, $encoded['earlier']);
+                    HtmlParser::stampPrevious($element, null, $previous);
+                }
             }
         }
 
@@ -1170,7 +1378,7 @@ class PageTranslator
         }
 
         // Attributes live outside the tokenized text, so translate them here.
-        $this->applyAttributeTranslations($element, $itemCategory, $translations);
+        $this->applyAttributeTranslations($element, $itemCategory, $translations, $previous);
     }
 
     /**
@@ -1179,9 +1387,10 @@ class PageTranslator
      * @param DOMElement $element
      * @param string|null $itemCategory
      * @param array $translations
+     * @param string|null $previousCategory Read last (MOVE-4)
      * @return void
      */
-    protected function applyAttributeTranslations(DOMElement $element, $itemCategory, array $translations)
+    protected function applyAttributeTranslations(DOMElement $element, $itemCategory, array $translations, $previousCategory = null)
     {
         $attributes = $this->htmlParser->getTranslatableAttributes();
 
@@ -1200,7 +1409,7 @@ class PageTranslator
                     continue;
                 }
 
-                $translated = $this->interp($this->lookupTranslation($value, $itemCategory, $translations));
+                $translated = $this->interp($this->lookupTranslation($value, $itemCategory, $translations, null, $previousCategory));
 
                 if ($translated !== $value) {
                     $target->setAttribute($attr, $translated);
@@ -1463,10 +1672,13 @@ class PageTranslator
      * @param string|null $category The category
      * @param array $translations Translation map
      * @param string|null $contentBlockId Content block ID for nested lookup
+     * @param string|null $previousCategory A standalone phrase's previous
+     *                                      category, read last (MOVE-4)
      * @return string Translated phrase or original if not found/empty
      */
-    protected function lookupTranslation($phrase, $category, array $translations, $contentBlockId = null)
+    protected function lookupTranslation($phrase, $category, array $translations, $contentBlockId = null, $previousCategory = null)
     {
+        $this->lastFromPrevious = false;
         $cat = $category !== null ? $category : '__uncategorized__';
 
         if ($contentBlockId !== null) {
@@ -1483,6 +1695,16 @@ class PageTranslator
                 $value = $translations[$cat][$phrase];
                 // Only return if it's a string (not content block) and not empty
                 if (!is_array($value) && $value !== '' && $value !== null) {
+                    return $value;
+                }
+            }
+
+            if ($previousCategory !== null) {
+                $prev = $previousCategory === '' ? '__uncategorized__' : $previousCategory;
+                $value = isset($translations[$prev][$phrase]) ? $translations[$prev][$phrase] : null;
+                if (is_string($value) && $value !== '') {
+                    $this->lastFromPrevious = true;
+
                     return $value;
                 }
             }
@@ -1684,12 +1906,24 @@ class PageTranslator
 
             $cat = isset($phraseData['category']) ? $phraseData['category'] : '__uncategorized__';
             $key = $cat . '::' . $text;
+            $previous = is_array($phraseData) && isset($phraseData['previous_category']) ? $phraseData['previous_category'] : null;
 
-            // Skip duplicates within this batch
+            // Skip duplicates within this batch, keeping the first previous
+            // category named (MOVE-3).
             if (isset($seen[$key])) {
+                if ($previous !== null && $seen[$key] !== true && !isset($newPhrases[$seen[$key]]['previous_category'])) {
+                    $newPhrases[$seen[$key]]['previous_category'] = $previous;
+                }
                 continue;
             }
             $seen[$key] = true;
+
+            // An item this request already queued, by a call naming no
+            // move, still takes the first previous category named (MOVE-3).
+            // Only a queued item: one the catalog holds is never sent.
+            if ($previous !== null) {
+                $this->client->notePreviousCategory(Canonical::codePhrase($text), $cat, null, $previous);
+            }
 
             // Check if already registered locally
             $catRegistered = isset($registeredItems[$cat]) ? $registeredItems[$cat] : ['phrases' => [], 'contentBlocks' => []];
@@ -1708,10 +1942,11 @@ class PageTranslator
                 continue;
             }
 
+            $seen[$key] = count($newPhrases);
             $newPhrases[] = [
                 'text' => $text,
                 'category' => $cat,
-            ];
+            ] + ($previous === null ? [] : ['previous_category' => $previous]);
         }
 
         return $newPhrases;
@@ -1733,6 +1968,12 @@ class PageTranslator
             $customId = $block['customId'];
             $cat = isset($block['category']) ? $block['category'] : '__uncategorized__';
 
+            // As for phrases: a block queued earlier in this request takes
+            // the first previous category named (MOVE-3).
+            if (isset($block['previous_category']) && $block['previous_category'] !== null) {
+                $this->client->notePreviousCategory(null, $cat, $customId, $block['previous_category']);
+            }
+
             // Check if already registered locally
             $catRegistered = isset($registeredItems[$cat]) ? $registeredItems[$cat] : ['phrases' => [], 'contentBlocks' => []];
             if (in_array($customId, $catRegistered['contentBlocks'], true)) {
@@ -1745,6 +1986,14 @@ class PageTranslator
             if (!empty($block['stamped'])) {
                 $categoryTranslations = isset($translations[$cat]) ? $translations[$cat] : [];
                 if (!is_array($categoryTranslations) || !array_key_exists($customId, $categoryTranslations)) {
+                    // A host filled from its previous category moved from
+                    // the category holding the id it carries (MOVE-5).
+                    if ((!isset($block['previous_category']) || $block['previous_category'] === null) && !empty($block['previous_id'])) {
+                        $filled = $this->client->stampedPreviousBlock($translations, $block['previous_id']);
+                        if ($filled !== null) {
+                            $block['previous_category'] = $filled[0] === '__uncategorized__' ? '' : $filled[0];
+                        }
+                    }
                     $newBlocks[] = $block;
                 }
                 continue;
@@ -1799,7 +2048,7 @@ class PageTranslator
         // The write-permission check is deliberately NOT repeated here; the flush
         // performs it once and clears the queue silently on a read-only key.
         foreach ($newPhrases as $phrase) {
-            $this->client->queuePhraseForRegistration($phrase['text'], $phrase['category']);
+            $this->client->queuePhraseForRegistration($phrase['text'], $phrase['category'], isset($phrase['previous_category']) ? $phrase['previous_category'] : null);
         }
 
         foreach ($newContentBlocks as $block) {
@@ -1807,7 +2056,8 @@ class PageTranslator
                 $block['html'],
                 $block['category'],
                 $block['customId'],
-                isset($block['phrases']) ? $block['phrases'] : []
+                isset($block['phrases']) ? $block['phrases'] : [],
+                isset($block['previous_category']) ? $block['previous_category'] : null
             );
         }
     }

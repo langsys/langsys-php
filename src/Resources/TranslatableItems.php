@@ -161,12 +161,13 @@ class TranslatableItems
         $items = [];
 
         foreach ($phrases as $phrase) {
-            $items[] = [
+            $item = [
                 'type' => 'phrase',
                 'phrase' => \Langsys\SDK\Html\Canonical::codePhrase(is_string($phrase) ? $phrase : $phrase['phrase']),
                 'category' => is_string($phrase) ? null : $this->normalizeCategory(isset($phrase['category']) ? $phrase['category'] : null),
                 'translatable' => is_string($phrase) ? true : (isset($phrase['translatable']) ? $phrase['translatable'] : true),
             ];
+            $items[] = is_string($phrase) ? $item : $this->withPreviousCategory($item, $phrase);
         }
 
         $this->logger->debug('Creating phrases', ['count' => count($items)]);
@@ -209,6 +210,7 @@ class TranslatableItems
                 'category' => $this->normalizeCategory(isset($item['category']) ? $item['category'] : null),
                 'translatable' => true,
             ];
+            $entry = $this->withPreviousCategory($entry, $item);
 
             if (!empty($item['translations'])) {
                 $entry['translations'] = [];
@@ -259,6 +261,48 @@ class TranslatableItems
     }
 
     /**
+     * The category an item was registered under before it moved (MOVE-1),
+     * as the wire carries it: `''` for none, which is a value, and null when
+     * the item did not move - as does one naming the category it is in now.
+     *
+     * @param mixed $previous
+     * @param string|null $category The item's category, normalized for the wire
+     * @return string|null
+     */
+    public static function previousCategoryFor($previous, $category)
+    {
+        if ($previous === null || !is_scalar($previous)) {
+            return null;
+        }
+
+        $previous = (string) $previous === '__uncategorized__' ? '' : (string) $previous;
+
+        return $previous === ($category === null ? '' : (string) $category) ? null : $previous;
+    }
+
+    /**
+     * An item with its `previous_category` beside `category` when its
+     * source names one (MOVE-1); left out when it does not.
+     *
+     * @param array $item Wire item, `category` already normalized
+     * @param array $source The queued or caller's entry
+     * @return array
+     */
+    protected function withPreviousCategory(array $item, array $source)
+    {
+        $previous = self::previousCategoryFor(
+            isset($source['previous_category']) ? $source['previous_category'] : null,
+            isset($item['category']) ? $item['category'] : null
+        );
+
+        if ($previous !== null) {
+            $item['previous_category'] = $previous;
+        }
+
+        return $item;
+    }
+
+    /**
      * Normalize HTML content by trimming and collapsing whitespace.
      *
      * @param string $html
@@ -286,9 +330,10 @@ class TranslatableItems
      * @param string|null $category Category for the content block
      * @param string|null $label Label to identify the content block
      * @param string|null $customId Custom ID to identify the content block (auto-generated if null)
+     * @param string|null $previousCategory The category it was registered under before (MOVE-1)
      * @return array
      */
-    public function createContentBlock($content, $category = null, $label = null, $customId = null)
+    public function createContentBlock($content, $category = null, $label = null, $customId = null, $previousCategory = null)
     {
         $parser = new HtmlParser($this->translatableAttributes);
 
@@ -304,7 +349,7 @@ class TranslatableItems
 
             return $this->http->post('translatable-items', [
                 'project_id' => $this->projectId,
-                'translatable_items' => [$phraseItem],
+                'translatable_items' => [$this->withPreviousCategory($phraseItem, ['previous_category' => $previousCategory])],
             ]);
         }
 
@@ -343,6 +388,8 @@ class TranslatableItems
             $item['label'] = $label;
         }
 
+        $item = $this->withPreviousCategory($item, ['previous_category' => $previousCategory]);
+
         return $this->http->post('translatable-items', [
             'project_id' => $this->projectId,
             'translatable_items' => [$item],
@@ -374,7 +421,7 @@ class TranslatableItems
             $html = $this->normalizeHtmlContent($html);
 
             if ($customId === null && ($phraseItem = $this->phraseItemFor($parser, $html, $category)) !== null) {
-                $requestItems[] = $phraseItem;
+                $requestItems[] = $this->withPreviousCategory($phraseItem, $block);
                 continue;
             }
 
@@ -407,7 +454,7 @@ class TranslatableItems
                 $item['label'] = $label;
             }
 
-            $requestItems[] = $item;
+            $requestItems[] = $this->withPreviousCategory($item, $block);
         }
 
         $this->logger->debug('Creating content blocks batch', [

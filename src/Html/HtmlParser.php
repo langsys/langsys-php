@@ -691,6 +691,78 @@ class HtmlParser
     }
 
     /**
+     * Both spellings of the category a host's content was registered under
+     * before it moved, canonical form first (MOVE-1, MOVE-5). An author
+     * writes it beside `data-langsys-category`; a renderer stamps it on a
+     * phrase host it filled from that category. Writers emit the first.
+     */
+    const PREVIOUS_CATEGORY_MARKERS = ['data-ls-previous-category', 'data-langsys-previous-category'];
+
+    /**
+     * Both spellings of the custom_id a block host was filled from when that
+     * was its previous category's (MOVE-5). Writers emit the first.
+     */
+    const PREVIOUS_CONTENT_BLOCK_MARKERS = ['data-ls-previous-contentblock', 'data-langsys-previous-contentblock'];
+
+    /**
+     * The previous category an element names, `''` for none, or null when
+     * it names none (MOVE-1).
+     *
+     * @param DOMElement $element
+     * @return string|null
+     */
+    public static function previousCategoryOf(DOMElement $element)
+    {
+        foreach (self::PREVIOUS_CATEGORY_MARKERS as $attribute) {
+            if ($element->hasAttribute($attribute)) {
+                return trim($element->getAttribute($attribute));
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The previous custom_id a block host was stamped with, or null (MOVE-5).
+     *
+     * @param DOMElement $element
+     * @return string|null
+     */
+    public static function previousContentBlockOf(DOMElement $element)
+    {
+        foreach (self::PREVIOUS_CONTENT_BLOCK_MARKERS as $attribute) {
+            if ($element->hasAttribute($attribute)) {
+                $id = trim($element->getAttribute($attribute));
+
+                return $id === '' ? null : $id;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Stamp a host filled from its previous category with the identity it
+     * was filled from (MOVE-5): the previous custom_id on a block, the
+     * previous category on a phrase. Either spelling already there is kept.
+     *
+     * @param DOMElement $host
+     * @param string|null $previousId Previous custom_id, for a block
+     * @param string|null $previousCategory Previous category, for a phrase
+     * @return void
+     */
+    public static function stampPrevious(DOMElement $host, $previousId = null, $previousCategory = null)
+    {
+        if ($previousId !== null && $previousId !== '' && self::previousContentBlockOf($host) === null) {
+            $host->setAttribute(self::PREVIOUS_CONTENT_BLOCK_MARKERS[0], $previousId);
+        }
+
+        if ($previousCategory !== null && self::previousCategoryOf($host) === null) {
+            $host->setAttribute(self::PREVIOUS_CATEGORY_MARKERS[0], $previousCategory === '__uncategorized__' ? '' : $previousCategory);
+        }
+    }
+
+    /**
      * Both spellings of the resolved marker, canonical form first (GATE-10).
      * Writers emit the first.
      */

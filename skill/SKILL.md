@@ -3,7 +3,7 @@ name: langsys-php
 description: The Langsys PHP core skill, for langsys/langsys-php and every Langsys PHP binding built on it. Part of the Langsys skill set, read in order - the entry skill langsys first, then this one, then the framework's own skill (langsys-laravel). Covers translate(), translateRich(), translatePage() and translateContentBlock(), the data-langsys-* attributes, whether a request registers (write_enabled, canWrite()), the Client's options, interpolation and plurals, value markers, server messages, key-based language files, sync and snapshots, the request's locale and Vary, reference lists, caching, and long-lived workers.
 metadata:
   package: langsys/langsys-php
-  version: 2.0.2
+  version: 2.1.0
 ---
 
 # Langsys PHP core
@@ -43,7 +43,7 @@ This is `langsys-php`, step 2 for PHP. It describes `langsys/langsys-php` at the
 
 | Read | When |
 |---|---|
-| [primitives.md](./primitives.md) | Before marking any content: the four calls, the `data-langsys-*` attributes, opting out, categories |
+| [primitives.md](./primitives.md) | Before marking any content: the four calls, the `data-langsys-*` attributes, opting out, categories and moving content between them |
 | [invariants.md](./invariants.md) | Before writing code: the rules other i18n habits break |
 | [writing.md](./writing.md) | Phrases aren't registering: `canWrite()`, the queue, the flush result, explicit registration |
 | [init-config.md](./init-config.md) | Building the `Client`: environment variables, options, a client without credentials, logging, exceptions |
