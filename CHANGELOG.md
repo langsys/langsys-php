@@ -5,6 +5,18 @@ All notable changes to the Langsys PHP SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.1] - 2026-11-09
+
+### Fixed
+
+- **A keyless dry run plans a renamed messages category's move.** `Planner::offline()` and
+  `plan()` take `messages_category` and `messages_previous_category` options, and the
+  messages category's previous one wins over the `previous_categories` entry for it, as
+  `planSync()` already did from the Client. Before, an offline plan in CI left that move out,
+  with any conflict or left-behind warning it causes, so `--strict` could pass offline and
+  fail on the real sync. `planSync()` now passes the Client's settings through the same path.
+- A move conflict's origin naming no category reads `app.php:3 => ''`, not `app.php:3 => `.
+
 ## [2.2.0] - 2026-11-09
 
 ### Added
@@ -644,6 +656,7 @@ First tagged release.
   pollutes the catalog shared with every other Langsys SDK. Use `$params`
   instead. This cannot be detected at runtime; see README.
 
+[2.2.1]: https://github.com/langsys/langsys-php/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/langsys/langsys-php/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/langsys/langsys-php/compare/v2.0.2...v2.1.0
 [2.0.2]: https://github.com/langsys/langsys-php/compare/v2.0.1...v2.0.2

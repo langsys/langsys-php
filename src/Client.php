@@ -2130,12 +2130,11 @@ class Client
         if (!array_key_exists('previous_categories', $options)) {
             $options['previous_categories'] = $this->config->getPreviousCategories();
         }
-        $messagesPrevious = $this->config->getMessagesPreviousCategoryOption();
-        if ($messagesPrevious !== null) {
-            $map = \Langsys\SDK\Sync\Planner::previousCategoryMap($options['previous_categories']);
-            $category = $this->config->getMessagesCategory();
-            $map[($category === '' || $category === null) ? self::UNCATEGORIZED : $category] = $messagesPrevious;
-            $options['previous_categories'] = $map;
+        if (!array_key_exists('messages_previous_category', $options)) {
+            $options['messages_previous_category'] = $this->config->getMessagesPreviousCategoryOption();
+        }
+        if (!array_key_exists('messages_category', $options)) {
+            $options['messages_category'] = $this->config->getMessagesCategory();
         }
 
         return $planner->plan($hits, $this->targetReaders($targets), $this->syncCatalog(), $options);

@@ -90,7 +90,11 @@ final class Planner
      *                       `previous_categories`: category => the category
      *                       it was before (MOVE-1), for every item registered
      *                       under it whose hit names none (`''` for
-     *                       uncategorised, as a key or a value)
+     *                       uncategorised, as a key or a value);
+     *                       `messages_previous_category`: the messages
+     *                       category's previous one, which wins over the
+     *                       map's entry for `messages_category` (`Errors` by
+     *                       default) (MSG-6)
      * @return SyncPlan
      */
     public function plan(array $hits, array $readers = [], ?array $catalog = null, array $options = [])
@@ -300,7 +304,7 @@ final class Planner
                     'category' => $items[$id]['category'],
                     'previous_categories' => $distinct,
                     'origins' => array_map(function ($move) {
-                        return $move['file'] . ':' . $move['line'] . ' => ' . $move['previous_category'];
+                        return $move['file'] . ':' . $move['line'] . ' => ' . ($move['previous_category'] === '' ? "''" : $move['previous_category']);
                     }, $named),
                 ];
             }
@@ -346,7 +350,18 @@ final class Planner
      */
     private static function previousCategories(array $options)
     {
-        return self::previousCategoryMap(isset($options['previous_categories']) ? $options['previous_categories'] : null);
+        $map = self::previousCategoryMap(isset($options['previous_categories']) ? $options['previous_categories'] : null);
+
+        // MSG-6: the messages category's own previous one wins over the
+        // map's entry for it, offline as on a client.
+        if (isset($options['messages_previous_category']) && is_string($options['messages_previous_category'])) {
+            $category = isset($options['messages_category']) && is_scalar($options['messages_category'])
+                ? (string) $options['messages_category']
+                : \Langsys\SDK\Config::DEFAULT_MESSAGES_CATEGORY;
+            $map[$category === '' ? self::UNCATEGORIZED : $category] = $options['messages_previous_category'];
+        }
+
+        return $map;
     }
 
     /**

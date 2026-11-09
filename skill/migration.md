@@ -80,6 +80,8 @@ $plan = Planner::offline($hits, ['files' => ['lang/en.json']], [], ['covered_gro
 exit($plan->failsStrict() ? 1 : 0);
 ```
 
+With no Client, pass the moves it would have taken from its options in the fourth argument, so the offline verdict matches the real sync: `previous_categories`, and `messages_category` with `messages_previous_category` for a renamed messages category.
+
 ## Language files as the fallback
 
 ```php
