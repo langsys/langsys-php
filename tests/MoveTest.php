@@ -761,4 +761,41 @@ class MoveTest extends TestCase
         $other = array_column($client->planSync([], [], ['previous_categories' => ['Messages' => 'X']])->items, null, 'phrase');
         $this->assertSame('X', $other['The name is required.']['previous_category']);
     }
+
+    public function testAnOfflinePlanTakesTheMessagesPreviousCategoryOverTheMap(): void
+    {
+        $file = $this->langFile('Messages.php', ['oops' => 'Oops']);
+        $second = $this->hits("__('Messages.oops');");
+        $second[0]['previous_category'] = 'Legacy';
+
+        $plan = Planner::offline($second, ['files' => [$file]], [], [
+            'previous_categories' => ['Messages' => 'Old'],
+            'messages_category' => 'Messages',
+            'messages_previous_category' => 'Errors',
+        ]);
+
+        $this->assertSame('Legacy', $plan->items[0]['previous_category'], "the call's own move still comes first");
+
+        $plan = Planner::offline($this->hits("__('Messages.oops');"), ['files' => [$file]], [], [
+            'previous_categories' => ['Messages' => 'Old'],
+            'messages_category' => 'Messages',
+            'messages_previous_category' => 'Errors',
+        ]);
+        $this->assertSame('Errors', $plan->items[0]['previous_category'], 'messages_previous_category wins over the map entry offline');
+
+        $plan = Planner::offline($this->hits("__('Messages.oops');"), ['files' => [$file]], [], ['messages_category' => 'Messages']);
+        $this->assertArrayNotHasKey('previous_category', $plan->items[0], 'no move without one');
+    }
+
+    public function testAConflictOriginNamingNoCategoryShowsIt(): void
+    {
+        $file = $this->langFile('checkout.php', ['a' => 'Alpha']);
+        $hits = $this->hits("__('checkout.a');\n__('checkout.a');");
+        $hits[0]['previous_category'] = '';
+        $hits[1]['previous_category'] = 'nav';
+
+        $plan = Planner::offline($hits, ['files' => [$file]]);
+
+        $this->assertSame(["app.php:2 => ''", 'app.php:3 => nav'], $plan->moveConflicts[0]['origins']);
+    }
 }
