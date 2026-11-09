@@ -75,6 +75,18 @@ class Config
     protected $messagesCategory;
 
     /**
+     * @var string|null The category server message templates were under
+     *                  before the messages category was renamed (MOVE-1)
+     */
+    protected $messagesPreviousCategory;
+
+    /**
+     * @var array<string, string> category => the category it was before
+     *                            (MOVE-1), keyed by catalog category
+     */
+    protected $previousCategories = [];
+
+    /**
      * @var array|null Legacy-key migration mode, or null when it is off
      */
     protected $migration;
@@ -130,6 +142,17 @@ class Config
         $this->messagesCategory = isset($options['messages_category'])
             ? (string) $options['messages_category']
             : (string) $this->getEnv('LANGSYS_MESSAGES_CATEGORY', self::DEFAULT_MESSAGES_CATEGORY);
+
+        $this->previousCategories = \Langsys\SDK\Sync\Planner::previousCategoryMap(isset($options['previous_categories']) ? $options['previous_categories'] : null);
+
+        // '' is a value in the option (the templates had no category), but an
+        // empty environment variable is an unset one, as .env files write it.
+        if (array_key_exists('messages_previous_category', $options)) {
+            $this->messagesPreviousCategory = is_scalar($options['messages_previous_category']) ? (string) $options['messages_previous_category'] : null;
+        } else {
+            $env = $this->getEnv('LANGSYS_MESSAGES_PREVIOUS_CATEGORY');
+            $this->messagesPreviousCategory = ($env === null || $env === '') ? null : (string) $env;
+        }
 
         $this->migration = (isset($options['migration']) && is_array($options['migration'])
             && (!empty($options['migration']['files']) || !empty($options['migration']['fallback_files']) || !empty($options['migration']['namespaces'])))
@@ -313,6 +336,42 @@ class Config
     public function getMessagesCategory()
     {
         return $this->messagesCategory;
+    }
+
+    /**
+     * The category server message templates were under before the messages
+     * category was renamed, or null when it was not (MOVE-1, MSG-6). Templates
+     * register with it as `previous_category`, and one with no translation
+     * under the messages category renders its entry there.
+     *
+     * The `messages_previous_category` option wins over any entry the
+     * `previous_categories` map has for the messages category (MOVE-1).
+     *
+     * @return string|null
+     */
+    public function getMessagesPreviousCategory()
+    {
+        if ($this->messagesPreviousCategory !== null) {
+            return $this->messagesPreviousCategory;
+        }
+
+        $category = ($this->messagesCategory === '' || $this->messagesCategory === null) ? '__uncategorized__' : $this->messagesCategory;
+
+        return isset($this->previousCategories[$category]) ? $this->previousCategories[$category] : null;
+    }
+
+    /**
+     * Categories the app renamed, each with the category it was before
+     * (MOVE-1), keyed by catalog category (`__uncategorized__` for none):
+     * the `previous_categories` option. A phrase rendered under one names
+     * that move unless its call names its own, and planSync() takes it as
+     * its default map.
+     *
+     * @return array<string, string>
+     */
+    public function getPreviousCategories()
+    {
+        return $this->previousCategories;
     }
 
     /**

@@ -84,9 +84,14 @@ final class MessageCatalogCommand
             return !array_key_exists($template, $listed);
         }));
 
+        // A renamed messages category names where the templates were before,
+        // so they keep their translations (MSG-6, MOVE-1).
+        $previousCategory = $client->getConfig()->getMessagesPreviousCategory();
+
         if ($missing !== []) {
-            $client->registerPhrases(array_map(function ($template) use ($category) {
-                return ['phrase' => $template, 'category' => $category];
+            $client->registerPhrases(array_map(function ($template) use ($category, $previousCategory) {
+                return ['phrase' => $template, 'category' => $category]
+                    + ($previousCategory === null ? [] : ['previous_category' => $previousCategory]);
             }, $missing));
         }
 

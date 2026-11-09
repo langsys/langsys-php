@@ -86,7 +86,11 @@ final class Planner
      *                       inherits the contract names it nowhere a scan
      *                       can see; `listed_templates`: the templates the
      *                       messages listing lists (MessageCatalog::templates()),
-     *                       whose sentences a call anywhere is covered by
+     *                       whose sentences a call anywhere is covered by;
+     *                       `previous_categories`: category => the category
+     *                       it was before (MOVE-1), for every item registered
+     *                       under it whose hit names none (`''` for
+     *                       uncategorised, as a key or a value)
      * @return SyncPlan
      */
     public function plan(array $hits, array $readers = [], ?array $catalog = null, array $options = [])
@@ -107,11 +111,13 @@ final class Planner
         $viaValidation = [];
         $covered = [];
         $viaMessageListing = [];
+        $moves = [];
+        $moveConflicts = [];
 
         // A plain line registers as translate() looks it up. A rich line
         // arrives tokenized, already in the collapsed form translateRich()
         // looks up, which codePhrase() leaves as it is.
-        $add = function ($phrase, $category, array $translations, $origin, $previous = null) use (&$items, &$viaValidation) {
+        $add = function ($phrase, $category, array $translations, $origin, $previous = null, ?array $at = null) use (&$items, &$viaValidation, &$moves) {
             $phrase = Canonical::codePhrase($phrase);
             if (Canonical::phrase($phrase) === '') {
                 return;
@@ -136,10 +142,12 @@ final class Planner
             $items[$id]['origins'][] = $origin;
 
             // MOVE-1, MOVE-3: the category the text moved from, never part
-            // of the item's identity; the first one named stays.
+            // of the item's identity. Every call naming one is kept with
+            // where it sits, so the first in read order wins and a
+            // disagreement is reported, whatever order the hits came in.
             $previous = TranslatableItems::previousCategoryFor($previous, ($category === null || $category === '' || $category === self::UNCATEGORIZED) ? null : $category);
-            if ($previous !== null && !isset($items[$id]['previous_category'])) {
-                $items[$id]['previous_category'] = $previous;
+            if ($previous !== null) {
+                $moves[$id][] = ['file' => $at === null ? '' : (string) $at[0], 'line' => $at === null ? 0 : (int) $at[1], 'previous_category' => $previous];
             }
         };
 
@@ -217,12 +225,12 @@ final class Planner
             $previous = isset($hit['previous_category']) ? $hit['previous_category'] : null;
 
             if ($sentences === [$phrase]) {
-                $add($phrase, $category, $translations, $origin, $previous);
+                $add($phrase, $category, $translations, $origin, $previous, [$hit['file'], $hit['line']]);
                 continue;
             }
 
             foreach ($sentences as $sentence) {
-                $add($sentence, $category, [], $origin, $previous);
+                $add($sentence, $category, [], $origin, $previous, [$hit['file'], $hit['line']]);
             }
         }
 
@@ -275,6 +283,46 @@ final class Planner
             }
         }
 
+        // MOVE-1: the calls reaching an item come before any map. The first
+        // in read order - files in path order, then lines - wins, and calls
+        // naming different previous categories are a conflict, reported and
+        // failing a strict sync.
+        foreach ($moves as $id => $named) {
+            usort($named, function ($a, $b) {
+                return [$a['file'], $a['line']] <=> [$b['file'], $b['line']];
+            });
+            $items[$id]['previous_category'] = $named[0]['previous_category'];
+
+            $distinct = array_values(array_unique(array_column($named, 'previous_category')));
+            if (count($distinct) > 1) {
+                $moveConflicts[] = [
+                    'phrase' => $items[$id]['phrase'],
+                    'category' => $items[$id]['category'],
+                    'previous_categories' => $distinct,
+                    'origins' => array_map(function ($move) {
+                        return $move['file'] . ':' . $move['line'] . ' => ' . $move['previous_category'];
+                    }, $named),
+                ];
+            }
+        }
+
+        // MOVE-1: a whole category the app renamed - a language file's group,
+        // say - names its previous category once, for every item registered
+        // under it, the lines no literal call names included. An entry that
+        // named its own keeps it.
+        $previousCategories = self::previousCategories($options);
+        foreach ($items as $id => $item) {
+            $category = ($item['category'] === null || $item['category'] === '') ? self::UNCATEGORIZED : $item['category'];
+            if (isset($items[$id]['previous_category']) || !array_key_exists($category, $previousCategories)) {
+                continue;
+            }
+
+            $previous = TranslatableItems::previousCategoryFor($previousCategories[$category], $category === self::UNCATEGORIZED ? null : $category);
+            if ($previous !== null) {
+                $items[$id]['previous_category'] = $previous;
+            }
+        }
+
         foreach ($items as $id => $item) {
             $category = ($item['category'] === null || $item['category'] === '') ? self::UNCATEGORIZED : $item['category'];
             if ($catalog !== null && isset($catalog[$category]) && is_array($catalog[$category]) && array_key_exists($item['phrase'], $catalog[$category])) {
@@ -287,7 +335,46 @@ final class Planner
         // A key several routes reach is reported once for each locale it lacks.
         $skipped = array_values(array_map('unserialize', array_unique(array_map('serialize', $skipped))));
 
-        return new SyncPlan(array_values($items), $reported, $skipped, $viaValidation, $covered, $viaMessageListing, self::leftBehind($items));
+        return new SyncPlan(array_values($items), $reported, $skipped, $viaValidation, $covered, $viaMessageListing, self::leftBehind($items), $moveConflicts);
+    }
+
+    /**
+     * The `previous_categories` option, keyed by catalog category.
+     *
+     * @param array $options
+     * @return array<string, string> category => previous category
+     */
+    private static function previousCategories(array $options)
+    {
+        return self::previousCategoryMap(isset($options['previous_categories']) ? $options['previous_categories'] : null);
+    }
+
+    /**
+     * A `{current: previous}` map (MOVE-1) keyed by catalog category: `''`
+     * and `__uncategorized__` both name the uncategorised items, and a `''`
+     * value says the category had none before. A missing entry, or a value
+     * that is not a string (`null` included), is no move.
+     *
+     * @param mixed $raw
+     * @return array<string, string> category => previous category
+     */
+    public static function previousCategoryMap($raw)
+    {
+        $map = [];
+        if (!is_array($raw)) {
+            return $map;
+        }
+
+        foreach ($raw as $category => $previous) {
+            // A null value, like a missing entry, is no move.
+            if (!is_string($previous)) {
+                continue;
+            }
+
+            $map[(string) $category === '' ? self::UNCATEGORIZED : (string) $category] = $previous;
+        }
+
+        return $map;
     }
 
     /**

@@ -38,7 +38,7 @@ foreach ($messages->forField('password') as $entry) {
 }
 ```
 
-`translateMessage()` looks the template up under the messages category (`Errors`, or the `messages_category` option) and never uses the filled message as a key. `general()` gives the entries with no field, and `MessageSet::fromException($e)` reads them from a `ValidationException` the SDK threw.
+`translateMessage()` looks the template up under the messages category (`Errors`, or the `messages_category` option) and never uses the filled message as a key. Renaming the messages category? Set `messages_previous_category` to the old one (`''` if the templates had none): templates register under the new category with `previous_category`, keeping their translations, and render the old category's translation until the new one has its own ([primitives.md](./primitives.md#moving-content-to-another-category)). `general()` gives the entries with no field, and `MessageSet::fromException($e)` reads them from a `ValidationException` the SDK threw.
 
 ## Register every template ahead of time
 

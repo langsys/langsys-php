@@ -67,6 +67,7 @@ $client->applySync($plan);   // registers what the catalog lacks
 - Only a literal is a phrase. `__($message)` is reported and never registered.
 - A key built inside a literal group, `__("validation.$key")`, is in `$plan->covered`: every line of that group in your files registers anyway. Name a group whose lines register another way with `['covered_groups' => ['validation']]` as `planSync()`'s third argument.
 - A phrase your other languages' files translate registers with those translations, as human translations.
+- Renamed a key group, say `lang/en/header.php` to `checkout.php`? Set the Client's `previous_categories` option to `['checkout' => 'header']` (or pass it in `planSync()`'s third argument, which replaces the Client's), and every line registered under `checkout` moves from `header` with its translations, the lines no literal call names included. A hit's own `'previous_category'` wins over the map, and hits naming different ones are in `$plan->moveConflicts`, which fails `--strict` ([primitives.md](./primitives.md#moving-content-to-another-category)).
 - A line holding a label placeholder (`:attribute`) is in `$plan->viaValidation`: it registers through your validation listing, once per field.
 - A template-printed line (`getHtml()`, `choiceHtml()`) registers tokenized, `Read our {m0o}terms{m0c}`, the key `translateRich()` looks up.
 
