@@ -265,13 +265,22 @@ class Interpolator
         $icuLocale = $this->resolveLocale($locale);
 
         // MessageFormatter wants scalars/timestamps; DateTime is not accepted.
-        // A date in a plain `{d}` is written as the simple path writes it: as
-        // a timestamp, intl would print the number.
+        // A date or number in a plain `{d}` / `{n}` is written as the simple
+        // path writes it: intl would print a date's timestamp, and PHP's
+        // MessageFormatter prints an untyped number unformatted (`1234.5` in
+        // de-DE, not `1.234,5`). A typed argument (`{n, plural}`, `{n, number}`)
+        // stays a number, so plural rules and `#` still see it.
         $icuParams = [];
         foreach ($params as $key => $value) {
-            $icuParams[$key] = $value instanceof \DateTimeInterface && !$this->isTypedArgument($text, $key)
-                ? $this->formatDate($value, $locale)
-                : $this->toIcuValue($value);
+            if ($value instanceof \DateTimeInterface && !$this->isTypedArgument($text, $key)) {
+                $icuParams[$key] = $this->formatDate($value, $locale);
+                continue;
+            }
+
+            $icuValue = $this->toIcuValue($value);
+            $icuParams[$key] = (is_int($icuValue) || is_float($icuValue)) && !$this->isTypedArgument($text, $key)
+                ? $this->formatNumber($icuValue, $locale)
+                : $icuValue;
         }
 
         // intl can THROW rather than return a falsy value: MessageFormatter

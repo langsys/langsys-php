@@ -5,6 +5,17 @@ All notable changes to the Langsys PHP SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **A number in a plain `{n}` is locale-formatted in an ICU phrase too.** Once a
+  translation held a `plural` or `select`, PHP's `MessageFormatter` printed an untyped
+  number as written: `Ana zahlte 1234.5` in de-DE where the same `{n}` outside ICU gives
+  `1.234,5`. It is now formatted like it is outside ICU. A typed argument
+  (`{n, plural}`, `{n, number}`) stays a number, so plural selection and `#` are unchanged,
+  and a string still passes through as written.
+
 ## [2.2.1] - 2026-11-09
 
 ### Fixed

@@ -1322,6 +1322,36 @@ class InterpolatorTest extends TestCase
         ];
     }
 
+    /**
+     * A number in a plain `{n}` is locale-formatted in a phrase that MessageFormatter
+     * formats, as it is outside ICU: PHP's formatter prints an untyped number as
+     * `1234.5`. A typed argument stays a number, so a plural still selects and
+     * `#` still formats.
+     *
+     * @dataProvider numberInAnIcuPhraseProvider
+     */
+    public function testANumberInAPlainPlaceholderOfAnIcuPhraseIsLocaleFormatted($template, array $params, $expected)
+    {
+        $this->requireIntl();
+
+        $interpolator = new Interpolator();
+
+        // Positive control: the same value outside ICU is formatted.
+        $this->assertSame('Summe 1.234,5', $interpolator->interpolate('Summe {n}', ['n' => 1234.5], 'de-DE'));
+        $this->assertSame($expected, $interpolator->interpolate($template, $params, 'de-DE'));
+    }
+
+    public function numberInAnIcuPhraseProvider()
+    {
+        return [
+            'float in a select branch'  => ['{g, select, female {Ana zahlte {n}} other {Er zahlte {n}}}', ['g' => 'female', 'n' => 1234.5], 'Ana zahlte 1.234,5'],
+            'int beside a plural'       => ['{c, plural, one {# Artikel} other {# Artikel}} für {n}', ['c' => 3, 'n' => 1234567], '3 Artikel für 1.234.567'],
+            'plural count with #'       => ['{c, plural, one {# Artikel} other {# Artikel}}', ['c' => 1234], '1.234 Artikel'],
+            'plural still selects one'  => ['{c, plural, one {ein Artikel} other {# Artikel}}', ['c' => 1], 'ein Artikel'],
+            'a string stays as written' => ['{g, select, other {Nr. {n}}}', ['g' => 'x', 'n' => '1234.5'], 'Nr. 1234.5'],
+        ];
+    }
+
     // =========================================================================
     // TOK-5 — %name% is an accepted spelling of {name}
     // =========================================================================
