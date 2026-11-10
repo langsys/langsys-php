@@ -3,7 +3,7 @@ name: langsys-php
 description: The Langsys PHP core skill, for langsys/langsys-php and every Langsys PHP binding built on it. Part of the Langsys skill set, read in order - the entry skill langsys first, then this one, then the framework's own skill (langsys-laravel). Covers translate(), translateRich(), translatePage() and translateContentBlock(), the data-langsys-* attributes, whether a request registers (write_enabled, canWrite()), the Client's options, interpolation and plurals, value markers, server messages, key-based language files, sync and snapshots, the request's locale and Vary, reference lists, caching, and long-lived workers.
 metadata:
   package: langsys/langsys-php
-  version: 2.2.1
+  version: 2.2.2
 ---
 
 # Langsys PHP core

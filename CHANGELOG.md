@@ -5,7 +5,7 @@ All notable changes to the Langsys PHP SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.2.2] - 2026-11-09
 
 ### Fixed
 
@@ -667,6 +667,7 @@ First tagged release.
   pollutes the catalog shared with every other Langsys SDK. Use `$params`
   instead. This cannot be detected at runtime; see README.
 
+[2.2.2]: https://github.com/langsys/langsys-php/compare/v2.2.1...v2.2.2
 [2.2.1]: https://github.com/langsys/langsys-php/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/langsys/langsys-php/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/langsys/langsys-php/compare/v2.0.2...v2.1.0
