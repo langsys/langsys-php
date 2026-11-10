@@ -1349,6 +1349,10 @@ class InterpolatorTest extends TestCase
             'plural count with #'       => ['{c, plural, one {# Artikel} other {# Artikel}}', ['c' => 1234], '1.234 Artikel'],
             'plural still selects one'  => ['{c, plural, one {ein Artikel} other {# Artikel}}', ['c' => 1], 'ein Artikel'],
             'a string stays as written' => ['{g, select, other {Nr. {n}}}', ['g' => 'x', 'n' => '1234.5'], 'Nr. 1234.5'],
+            // ICU reads a right-to-left mark or line separator as whitespace,
+            // so the count is still typed and selects its branch.
+            'RLM after a plural name'   => ["{c\u{200F}, plural, one {ein Artikel} other {# Artikel}}", ['c' => 1234], '1.234 Artikel'],
+            'LS before a plural name'   => ["{\u{2028}c, plural, one {ein Artikel} other {# Artikel}}", ['c' => 1234], '1.234 Artikel'],
         ];
     }
 

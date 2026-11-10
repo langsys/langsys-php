@@ -456,7 +456,20 @@ class Interpolator
      */
     protected function isTypedArgument($text, $name)
     {
-        return preg_match('/\{\s*' . preg_quote((string) $name, '/') . '\s*,/', $text) === 1;
+        // ICU's Pattern_White_Space, not PCRE's \s: a right-to-left mark
+        // between a name and its comma (common in Arabic and Hebrew
+        // translations) still types the argument. Missing it would format a
+        // plural's count into a string and select the wrong branch.
+        $name = preg_quote((string) $name, '/');
+        $space = '[\s\x{85}\x{200E}\x{200F}\x{2028}\x{2029}]*';
+        $typed = @preg_match('/\{' . $space . $name . $space . ',/u', $text);
+
+        // Text that is not valid UTF-8 cannot be read with /u: read its bytes.
+        if ($typed === false) {
+            $typed = preg_match('/\{\s*' . $name . '\s*,/', $text);
+        }
+
+        return $typed === 1;
     }
 
     /**
