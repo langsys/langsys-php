@@ -265,13 +265,22 @@ class Interpolator
         $icuLocale = $this->resolveLocale($locale);
 
         // MessageFormatter wants scalars/timestamps; DateTime is not accepted.
-        // A date in a plain `{d}` is written as the simple path writes it: as
-        // a timestamp, intl would print the number.
+        // A date or number in a plain `{d}` / `{n}` is written as the simple
+        // path writes it: intl would print a date's timestamp, and PHP's
+        // MessageFormatter prints an untyped number unformatted (`1234.5` in
+        // de-DE, not `1.234,5`). A typed argument (`{n, plural}`, `{n, number}`)
+        // stays a number, so plural rules and `#` still see it.
         $icuParams = [];
         foreach ($params as $key => $value) {
-            $icuParams[$key] = $value instanceof \DateTimeInterface && !$this->isTypedArgument($text, $key)
-                ? $this->formatDate($value, $locale)
-                : $this->toIcuValue($value);
+            if ($value instanceof \DateTimeInterface && !$this->isTypedArgument($text, $key)) {
+                $icuParams[$key] = $this->formatDate($value, $locale);
+                continue;
+            }
+
+            $icuValue = $this->toIcuValue($value);
+            $icuParams[$key] = (is_int($icuValue) || is_float($icuValue)) && !$this->isTypedArgument($text, $key)
+                ? $this->formatNumber($icuValue, $locale)
+                : $icuValue;
         }
 
         // intl can THROW rather than return a falsy value: MessageFormatter
@@ -447,7 +456,20 @@ class Interpolator
      */
     protected function isTypedArgument($text, $name)
     {
-        return preg_match('/\{\s*' . preg_quote((string) $name, '/') . '\s*,/', $text) === 1;
+        // ICU's Pattern_White_Space, not PCRE's \s: a right-to-left mark
+        // between a name and its comma (common in Arabic and Hebrew
+        // translations) still types the argument. Missing it would format a
+        // plural's count into a string and select the wrong branch.
+        $name = preg_quote((string) $name, '/');
+        $space = '[\s\x{85}\x{200E}\x{200F}\x{2028}\x{2029}]*';
+        $typed = @preg_match('/\{' . $space . $name . $space . ',/u', $text);
+
+        // Text that is not valid UTF-8 cannot be read with /u: read its bytes.
+        if ($typed === false) {
+            $typed = preg_match('/\{\s*' . $name . '\s*,/', $text);
+        }
+
+        return $typed === 1;
     }
 
     /**
