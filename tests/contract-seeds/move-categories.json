@@ -1,0 +1,1488 @@
+{
+    "projects": [
+        {
+            "id": "77000f00-0001-4000-8000-000000000000",
+            "title": "php move-categories moved#1 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Header",
+                    "phrase": "Buy now",
+                    "translations": {
+                        "es-es": "Comprá ya"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Sign in",
+                    "translations": {
+                        "es-es": "Ingresá"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Add to cart",
+                    "translations": {
+                        "es-es": "Agregar al carrito"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Not moved",
+                    "translations": {
+                        "es-es": "No movida"
+                    }
+                },
+                {
+                    "category": null,
+                    "phrase": "Contact us",
+                    "translations": {
+                        "es-es": "Contáctanos"
+                    }
+                }
+            ],
+            "blocks": [
+                {
+                    "category": "Header",
+                    "custom_id": "ff3e44def085ca5b7e961dbf7bb3a119",
+                    "content": "<div><p>Moved block</p><p>Second paragraph</p></div>",
+                    "phrases": [
+                        {
+                            "phrase": "Moved block",
+                            "translations": {
+                                "es-es": "Bloque movido"
+                            }
+                        },
+                        {
+                            "phrase": "Second paragraph",
+                            "translations": {
+                                "es-es": "Segundo párrafo"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "user": {
+                "token": "127001|62815b1daf0bf03fabd2b347f2df51c492e952e1",
+                "device_id": "php-move-categories-1"
+            }
+        },
+        {
+            "id": "77000f00-0002-4000-8000-000000000000",
+            "title": "php move-categories moved#2 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Header",
+                    "phrase": "Buy now",
+                    "translations": {
+                        "es-es": "Comprá ya"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Sign in",
+                    "translations": {
+                        "es-es": "Ingresá"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Add to cart",
+                    "translations": {
+                        "es-es": "Agregar al carrito"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Not moved",
+                    "translations": {
+                        "es-es": "No movida"
+                    }
+                },
+                {
+                    "category": null,
+                    "phrase": "Contact us",
+                    "translations": {
+                        "es-es": "Contáctanos"
+                    }
+                }
+            ],
+            "blocks": [
+                {
+                    "category": "Header",
+                    "custom_id": "ff3e44def085ca5b7e961dbf7bb3a119",
+                    "content": "<div><p>Moved block</p><p>Second paragraph</p></div>",
+                    "phrases": [
+                        {
+                            "phrase": "Moved block",
+                            "translations": {
+                                "es-es": "Bloque movido"
+                            }
+                        },
+                        {
+                            "phrase": "Second paragraph",
+                            "translations": {
+                                "es-es": "Segundo párrafo"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "user": {
+                "token": "127002|a8edbbbea5af4a4e6d5c34ae199c9379624c130b",
+                "device_id": "php-move-categories-2"
+            }
+        },
+        {
+            "id": "77000f00-0003-4000-8000-000000000000",
+            "title": "php move-categories moved#3 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Header",
+                    "phrase": "Buy now",
+                    "translations": {
+                        "es-es": "Comprá ya"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Sign in",
+                    "translations": {
+                        "es-es": "Ingresá"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Add to cart",
+                    "translations": {
+                        "es-es": "Agregar al carrito"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Not moved",
+                    "translations": {
+                        "es-es": "No movida"
+                    }
+                },
+                {
+                    "category": null,
+                    "phrase": "Contact us",
+                    "translations": {
+                        "es-es": "Contáctanos"
+                    }
+                }
+            ],
+            "blocks": [
+                {
+                    "category": "Header",
+                    "custom_id": "ff3e44def085ca5b7e961dbf7bb3a119",
+                    "content": "<div><p>Moved block</p><p>Second paragraph</p></div>",
+                    "phrases": [
+                        {
+                            "phrase": "Moved block",
+                            "translations": {
+                                "es-es": "Bloque movido"
+                            }
+                        },
+                        {
+                            "phrase": "Second paragraph",
+                            "translations": {
+                                "es-es": "Segundo párrafo"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "user": {
+                "token": "127003|7ea58de2c502397d786948faf46fbb60b88d9902",
+                "device_id": "php-move-categories-3"
+            }
+        },
+        {
+            "id": "77000f00-0004-4000-8000-000000000000",
+            "title": "php move-categories moved#4 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Header",
+                    "phrase": "Buy now",
+                    "translations": {
+                        "es-es": "Comprá ya"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Sign in",
+                    "translations": {
+                        "es-es": "Ingresá"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Add to cart",
+                    "translations": {
+                        "es-es": "Agregar al carrito"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Not moved",
+                    "translations": {
+                        "es-es": "No movida"
+                    }
+                },
+                {
+                    "category": null,
+                    "phrase": "Contact us",
+                    "translations": {
+                        "es-es": "Contáctanos"
+                    }
+                }
+            ],
+            "blocks": [
+                {
+                    "category": "Header",
+                    "custom_id": "ff3e44def085ca5b7e961dbf7bb3a119",
+                    "content": "<div><p>Moved block</p><p>Second paragraph</p></div>",
+                    "phrases": [
+                        {
+                            "phrase": "Moved block",
+                            "translations": {
+                                "es-es": "Bloque movido"
+                            }
+                        },
+                        {
+                            "phrase": "Second paragraph",
+                            "translations": {
+                                "es-es": "Segundo párrafo"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "user": {
+                "token": "127004|fe1af31e0bc2c79c311cf2bba8f4e09c21955756",
+                "device_id": "php-move-categories-4"
+            }
+        },
+        {
+            "id": "77000f00-0005-4000-8000-000000000000",
+            "title": "php move-categories moved#5 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Header",
+                    "phrase": "Buy now",
+                    "translations": {
+                        "es-es": "Comprá ya"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Sign in",
+                    "translations": {
+                        "es-es": "Ingresá"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Add to cart",
+                    "translations": {
+                        "es-es": "Agregar al carrito"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Not moved",
+                    "translations": {
+                        "es-es": "No movida"
+                    }
+                },
+                {
+                    "category": null,
+                    "phrase": "Contact us",
+                    "translations": {
+                        "es-es": "Contáctanos"
+                    }
+                }
+            ],
+            "blocks": [
+                {
+                    "category": "Header",
+                    "custom_id": "ff3e44def085ca5b7e961dbf7bb3a119",
+                    "content": "<div><p>Moved block</p><p>Second paragraph</p></div>",
+                    "phrases": [
+                        {
+                            "phrase": "Moved block",
+                            "translations": {
+                                "es-es": "Bloque movido"
+                            }
+                        },
+                        {
+                            "phrase": "Second paragraph",
+                            "translations": {
+                                "es-es": "Segundo párrafo"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "user": {
+                "token": "127005|8782cbf0356555206158121a100817b23821318d",
+                "device_id": "php-move-categories-5"
+            }
+        },
+        {
+            "id": "77000f00-0006-4000-8000-000000000000",
+            "title": "php move-categories moved#6 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Header",
+                    "phrase": "Buy now",
+                    "translations": {
+                        "es-es": "Comprá ya"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Sign in",
+                    "translations": {
+                        "es-es": "Ingresá"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Add to cart",
+                    "translations": {
+                        "es-es": "Agregar al carrito"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Not moved",
+                    "translations": {
+                        "es-es": "No movida"
+                    }
+                },
+                {
+                    "category": null,
+                    "phrase": "Contact us",
+                    "translations": {
+                        "es-es": "Contáctanos"
+                    }
+                }
+            ],
+            "blocks": [
+                {
+                    "category": "Header",
+                    "custom_id": "ff3e44def085ca5b7e961dbf7bb3a119",
+                    "content": "<div><p>Moved block</p><p>Second paragraph</p></div>",
+                    "phrases": [
+                        {
+                            "phrase": "Moved block",
+                            "translations": {
+                                "es-es": "Bloque movido"
+                            }
+                        },
+                        {
+                            "phrase": "Second paragraph",
+                            "translations": {
+                                "es-es": "Segundo párrafo"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "user": {
+                "token": "127006|0c3380c4d0e0c26bfbf2bf784d4270e23a54a762",
+                "device_id": "php-move-categories-6"
+            }
+        },
+        {
+            "id": "77000f00-0007-4000-8000-000000000000",
+            "title": "php move-categories moved#7 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Header",
+                    "phrase": "Buy now",
+                    "translations": {
+                        "es-es": "Comprá ya"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Sign in",
+                    "translations": {
+                        "es-es": "Ingresá"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Add to cart",
+                    "translations": {
+                        "es-es": "Agregar al carrito"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Not moved",
+                    "translations": {
+                        "es-es": "No movida"
+                    }
+                },
+                {
+                    "category": null,
+                    "phrase": "Contact us",
+                    "translations": {
+                        "es-es": "Contáctanos"
+                    }
+                }
+            ],
+            "blocks": [
+                {
+                    "category": "Header",
+                    "custom_id": "ff3e44def085ca5b7e961dbf7bb3a119",
+                    "content": "<div><p>Moved block</p><p>Second paragraph</p></div>",
+                    "phrases": [
+                        {
+                            "phrase": "Moved block",
+                            "translations": {
+                                "es-es": "Bloque movido"
+                            }
+                        },
+                        {
+                            "phrase": "Second paragraph",
+                            "translations": {
+                                "es-es": "Segundo párrafo"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "user": {
+                "token": "127007|163d9c6f66c4856619038cd5a86454c5847b62e6",
+                "device_id": "php-move-categories-7"
+            }
+        },
+        {
+            "id": "77000f00-0008-4000-8000-000000000000",
+            "title": "php move-categories moved#8 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Header",
+                    "phrase": "Buy now",
+                    "translations": {
+                        "es-es": "Comprá ya"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Sign in",
+                    "translations": {
+                        "es-es": "Ingresá"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Add to cart",
+                    "translations": {
+                        "es-es": "Agregar al carrito"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Not moved",
+                    "translations": {
+                        "es-es": "No movida"
+                    }
+                },
+                {
+                    "category": null,
+                    "phrase": "Contact us",
+                    "translations": {
+                        "es-es": "Contáctanos"
+                    }
+                }
+            ],
+            "blocks": [
+                {
+                    "category": "Header",
+                    "custom_id": "ff3e44def085ca5b7e961dbf7bb3a119",
+                    "content": "<div><p>Moved block</p><p>Second paragraph</p></div>",
+                    "phrases": [
+                        {
+                            "phrase": "Moved block",
+                            "translations": {
+                                "es-es": "Bloque movido"
+                            }
+                        },
+                        {
+                            "phrase": "Second paragraph",
+                            "translations": {
+                                "es-es": "Segundo párrafo"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "user": {
+                "token": "127008|9de2c8e2877463af5a347cad75d950cd903c3ad8",
+                "device_id": "php-move-categories-8"
+            }
+        },
+        {
+            "id": "77000f00-0009-4000-8000-000000000000",
+            "title": "php move-categories moved#9 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Header",
+                    "phrase": "Buy now",
+                    "translations": {
+                        "es-es": "Comprá ya"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Sign in",
+                    "translations": {
+                        "es-es": "Ingresá"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Add to cart",
+                    "translations": {
+                        "es-es": "Agregar al carrito"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Not moved",
+                    "translations": {
+                        "es-es": "No movida"
+                    }
+                },
+                {
+                    "category": null,
+                    "phrase": "Contact us",
+                    "translations": {
+                        "es-es": "Contáctanos"
+                    }
+                }
+            ],
+            "blocks": [
+                {
+                    "category": "Header",
+                    "custom_id": "ff3e44def085ca5b7e961dbf7bb3a119",
+                    "content": "<div><p>Moved block</p><p>Second paragraph</p></div>",
+                    "phrases": [
+                        {
+                            "phrase": "Moved block",
+                            "translations": {
+                                "es-es": "Bloque movido"
+                            }
+                        },
+                        {
+                            "phrase": "Second paragraph",
+                            "translations": {
+                                "es-es": "Segundo párrafo"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "user": {
+                "token": "127009|a234e046dd9342fb5a61ac98cd3391b883a2f252",
+                "device_id": "php-move-categories-9"
+            }
+        },
+        {
+            "id": "77000f00-000a-4000-8000-000000000000",
+            "title": "php move-categories moved#10 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Header",
+                    "phrase": "Buy now",
+                    "translations": {
+                        "es-es": "Comprá ya"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Sign in",
+                    "translations": {
+                        "es-es": "Ingresá"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Add to cart",
+                    "translations": {
+                        "es-es": "Agregar al carrito"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Not moved",
+                    "translations": {
+                        "es-es": "No movida"
+                    }
+                },
+                {
+                    "category": null,
+                    "phrase": "Contact us",
+                    "translations": {
+                        "es-es": "Contáctanos"
+                    }
+                }
+            ],
+            "blocks": [
+                {
+                    "category": "Header",
+                    "custom_id": "ff3e44def085ca5b7e961dbf7bb3a119",
+                    "content": "<div><p>Moved block</p><p>Second paragraph</p></div>",
+                    "phrases": [
+                        {
+                            "phrase": "Moved block",
+                            "translations": {
+                                "es-es": "Bloque movido"
+                            }
+                        },
+                        {
+                            "phrase": "Second paragraph",
+                            "translations": {
+                                "es-es": "Segundo párrafo"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "user": {
+                "token": "127010|f4a47f8bd7116ed686bed4751c54e6cfe5e69c04",
+                "device_id": "php-move-categories-10"
+            }
+        },
+        {
+            "id": "77000f00-000b-4000-8000-000000000000",
+            "title": "php move-categories moved#11 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Header",
+                    "phrase": "Buy now",
+                    "translations": {
+                        "es-es": "Comprá ya"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Sign in",
+                    "translations": {
+                        "es-es": "Ingresá"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Add to cart",
+                    "translations": {
+                        "es-es": "Agregar al carrito"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Not moved",
+                    "translations": {
+                        "es-es": "No movida"
+                    }
+                },
+                {
+                    "category": null,
+                    "phrase": "Contact us",
+                    "translations": {
+                        "es-es": "Contáctanos"
+                    }
+                }
+            ],
+            "blocks": [
+                {
+                    "category": "Header",
+                    "custom_id": "ff3e44def085ca5b7e961dbf7bb3a119",
+                    "content": "<div><p>Moved block</p><p>Second paragraph</p></div>",
+                    "phrases": [
+                        {
+                            "phrase": "Moved block",
+                            "translations": {
+                                "es-es": "Bloque movido"
+                            }
+                        },
+                        {
+                            "phrase": "Second paragraph",
+                            "translations": {
+                                "es-es": "Segundo párrafo"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "user": {
+                "token": "127011|2e744ab2d2a29b4189092da4fb7c029d220ac2c4",
+                "device_id": "php-move-categories-11"
+            }
+        },
+        {
+            "id": "77000f00-000c-4000-8000-000000000000",
+            "title": "php move-categories moved#12 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Header",
+                    "phrase": "Buy now",
+                    "translations": {
+                        "es-es": "Comprá ya"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Sign in",
+                    "translations": {
+                        "es-es": "Ingresá"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Add to cart",
+                    "translations": {
+                        "es-es": "Agregar al carrito"
+                    }
+                },
+                {
+                    "category": "Header",
+                    "phrase": "Not moved",
+                    "translations": {
+                        "es-es": "No movida"
+                    }
+                },
+                {
+                    "category": null,
+                    "phrase": "Contact us",
+                    "translations": {
+                        "es-es": "Contáctanos"
+                    }
+                }
+            ],
+            "blocks": [
+                {
+                    "category": "Header",
+                    "custom_id": "ff3e44def085ca5b7e961dbf7bb3a119",
+                    "content": "<div><p>Moved block</p><p>Second paragraph</p></div>",
+                    "phrases": [
+                        {
+                            "phrase": "Moved block",
+                            "translations": {
+                                "es-es": "Bloque movido"
+                            }
+                        },
+                        {
+                            "phrase": "Second paragraph",
+                            "translations": {
+                                "es-es": "Segundo párrafo"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "user": {
+                "token": "127012|90e4a4165bafda07250620ec09e79a5cae41fcb4",
+                "device_id": "php-move-categories-12"
+            }
+        },
+        {
+            "id": "77000f00-000d-4000-8000-000000000000",
+            "title": "php move-categories renamed-group#1 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "header",
+                    "phrase": "Pay",
+                    "translations": {
+                        "es-es": "Pagar"
+                    }
+                },
+                {
+                    "category": "header",
+                    "phrase": "Back",
+                    "translations": {
+                        "es-es": "Volver"
+                    }
+                }
+            ],
+            "user": {
+                "token": "127013|5f110ad7040f0e870dbb69b73489f93e31997c8b",
+                "device_id": "php-move-categories-13"
+            }
+        },
+        {
+            "id": "77000f00-000e-4000-8000-000000000000",
+            "title": "php move-categories renamed-group#2 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "header",
+                    "phrase": "Pay",
+                    "translations": {
+                        "es-es": "Pagar"
+                    }
+                },
+                {
+                    "category": "header",
+                    "phrase": "Back",
+                    "translations": {
+                        "es-es": "Volver"
+                    }
+                }
+            ],
+            "user": {
+                "token": "127014|e558f16135378bf6747216298866a225cf6c293b",
+                "device_id": "php-move-categories-14"
+            }
+        },
+        {
+            "id": "77000f00-000f-4000-8000-000000000000",
+            "title": "php move-categories renamed-group#3 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "header",
+                    "phrase": "Pay",
+                    "translations": {
+                        "es-es": "Pagar"
+                    }
+                },
+                {
+                    "category": "header",
+                    "phrase": "Back",
+                    "translations": {
+                        "es-es": "Volver"
+                    }
+                }
+            ],
+            "user": {
+                "token": "127015|cfd3f11c171367ddb30b42abb2b0249ea943d097",
+                "device_id": "php-move-categories-15"
+            }
+        },
+        {
+            "id": "77000f00-0010-4000-8000-000000000000",
+            "title": "php move-categories renamed-group#4 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "header",
+                    "phrase": "Pay",
+                    "translations": {
+                        "es-es": "Pagar"
+                    }
+                },
+                {
+                    "category": "header",
+                    "phrase": "Back",
+                    "translations": {
+                        "es-es": "Volver"
+                    }
+                }
+            ],
+            "user": {
+                "token": "127016|4c455322a86ca615fd7dce3d0b09f106e0bb0e8b",
+                "device_id": "php-move-categories-16"
+            }
+        },
+        {
+            "id": "77000f00-0011-4000-8000-000000000000",
+            "title": "php move-categories renamed-group#5 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "header",
+                    "phrase": "Pay",
+                    "translations": {
+                        "es-es": "Pagar"
+                    }
+                },
+                {
+                    "category": "header",
+                    "phrase": "Back",
+                    "translations": {
+                        "es-es": "Volver"
+                    }
+                }
+            ],
+            "user": {
+                "token": "127017|ffbaccac3a7c718052af272e5b7ac154a00371a5",
+                "device_id": "php-move-categories-17"
+            }
+        },
+        {
+            "id": "77000f00-0012-4000-8000-000000000000",
+            "title": "php move-categories renamed-group#6 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "header",
+                    "phrase": "Pay",
+                    "translations": {
+                        "es-es": "Pagar"
+                    }
+                },
+                {
+                    "category": "header",
+                    "phrase": "Back",
+                    "translations": {
+                        "es-es": "Volver"
+                    }
+                }
+            ],
+            "user": {
+                "token": "127018|95bd064dec90bb429cabf59e641721cd5b170690",
+                "device_id": "php-move-categories-18"
+            }
+        },
+        {
+            "id": "77000f00-0013-4000-8000-000000000000",
+            "title": "php move-categories renamed-messages#1 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Errors",
+                    "phrase": "The name is required.",
+                    "translations": {
+                        "es-es": "El nombre es obligatorio."
+                    }
+                },
+                {
+                    "category": "Errors",
+                    "phrase": "The email is invalid.",
+                    "translations": {
+                        "es-es": "El correo no es válido."
+                    }
+                },
+                {
+                    "category": "Errors",
+                    "phrase": "The code expired.",
+                    "translations": {
+                        "es-es": "El código venció."
+                    }
+                }
+            ],
+            "user": {
+                "token": "127019|2520a9726e09716803b91c03f137cb8ae47bcae4",
+                "device_id": "php-move-categories-19"
+            }
+        },
+        {
+            "id": "77000f00-0014-4000-8000-000000000000",
+            "title": "php move-categories renamed-messages#2 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Errors",
+                    "phrase": "The name is required.",
+                    "translations": {
+                        "es-es": "El nombre es obligatorio."
+                    }
+                },
+                {
+                    "category": "Errors",
+                    "phrase": "The email is invalid.",
+                    "translations": {
+                        "es-es": "El correo no es válido."
+                    }
+                },
+                {
+                    "category": "Errors",
+                    "phrase": "The code expired.",
+                    "translations": {
+                        "es-es": "El código venció."
+                    }
+                }
+            ],
+            "user": {
+                "token": "127020|6e933c93152670c87efec592ce6a33ec4d8b25a6",
+                "device_id": "php-move-categories-20"
+            }
+        },
+        {
+            "id": "77000f00-0015-4000-8000-000000000000",
+            "title": "php move-categories renamed-messages#3 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Errors",
+                    "phrase": "The name is required.",
+                    "translations": {
+                        "es-es": "El nombre es obligatorio."
+                    }
+                },
+                {
+                    "category": "Errors",
+                    "phrase": "The email is invalid.",
+                    "translations": {
+                        "es-es": "El correo no es válido."
+                    }
+                },
+                {
+                    "category": "Errors",
+                    "phrase": "The code expired.",
+                    "translations": {
+                        "es-es": "El código venció."
+                    }
+                }
+            ],
+            "user": {
+                "token": "127021|d10a2d4d62f1fea8621f40d4019fb5a810fdfe4e",
+                "device_id": "php-move-categories-21"
+            }
+        },
+        {
+            "id": "77000f00-0016-4000-8000-000000000000",
+            "title": "php move-categories renamed-messages#4 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Errors",
+                    "phrase": "The name is required.",
+                    "translations": {
+                        "es-es": "El nombre es obligatorio."
+                    }
+                },
+                {
+                    "category": "Errors",
+                    "phrase": "The email is invalid.",
+                    "translations": {
+                        "es-es": "El correo no es válido."
+                    }
+                },
+                {
+                    "category": "Errors",
+                    "phrase": "The code expired.",
+                    "translations": {
+                        "es-es": "El código venció."
+                    }
+                }
+            ],
+            "user": {
+                "token": "127022|cc5035e230e19d0f522e4b4ac0f9d824bc023100",
+                "device_id": "php-move-categories-22"
+            }
+        },
+        {
+            "id": "77000f00-0017-4000-8000-000000000000",
+            "title": "php move-categories renamed-messages#5 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Errors",
+                    "phrase": "The name is required.",
+                    "translations": {
+                        "es-es": "El nombre es obligatorio."
+                    }
+                },
+                {
+                    "category": "Errors",
+                    "phrase": "The email is invalid.",
+                    "translations": {
+                        "es-es": "El correo no es válido."
+                    }
+                },
+                {
+                    "category": "Errors",
+                    "phrase": "The code expired.",
+                    "translations": {
+                        "es-es": "El código venció."
+                    }
+                }
+            ],
+            "user": {
+                "token": "127023|66e200910c3598dce354dd07bc5b6c9f95332036",
+                "device_id": "php-move-categories-23"
+            }
+        },
+        {
+            "id": "77000f00-0018-4000-8000-000000000000",
+            "title": "php move-categories renamed-messages#6 p1",
+            "target_locales": [
+                "es-es"
+            ],
+            "phrases": [
+                {
+                    "category": "Errors",
+                    "phrase": "The name is required.",
+                    "translations": {
+                        "es-es": "El nombre es obligatorio."
+                    }
+                },
+                {
+                    "category": "Errors",
+                    "phrase": "The email is invalid.",
+                    "translations": {
+                        "es-es": "El correo no es válido."
+                    }
+                },
+                {
+                    "category": "Errors",
+                    "phrase": "The code expired.",
+                    "translations": {
+                        "es-es": "El código venció."
+                    }
+                }
+            ],
+            "user": {
+                "token": "127024|638bc51b76ef92910501fa9f1a0f112d2af5e861",
+                "device_id": "php-move-categories-24"
+            }
+        }
+    ],
+    "keys": [
+        {
+            "id": "77000f01-0001-4000-8000-000000000000",
+            "key": "php-move-categories-1-write",
+            "type": "write",
+            "project": "77000f00-0001-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0002-4000-8000-000000000000",
+            "key": "php-move-categories-1-read",
+            "type": "read",
+            "project": "77000f00-0001-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0003-4000-8000-000000000000",
+            "key": "php-move-categories-2-write",
+            "type": "write",
+            "project": "77000f00-0002-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0004-4000-8000-000000000000",
+            "key": "php-move-categories-2-read",
+            "type": "read",
+            "project": "77000f00-0002-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0005-4000-8000-000000000000",
+            "key": "php-move-categories-3-write",
+            "type": "write",
+            "project": "77000f00-0003-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0006-4000-8000-000000000000",
+            "key": "php-move-categories-3-read",
+            "type": "read",
+            "project": "77000f00-0003-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0007-4000-8000-000000000000",
+            "key": "php-move-categories-4-write",
+            "type": "write",
+            "project": "77000f00-0004-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0008-4000-8000-000000000000",
+            "key": "php-move-categories-4-read",
+            "type": "read",
+            "project": "77000f00-0004-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0009-4000-8000-000000000000",
+            "key": "php-move-categories-5-write",
+            "type": "write",
+            "project": "77000f00-0005-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-000a-4000-8000-000000000000",
+            "key": "php-move-categories-5-read",
+            "type": "read",
+            "project": "77000f00-0005-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-000b-4000-8000-000000000000",
+            "key": "php-move-categories-6-write",
+            "type": "write",
+            "project": "77000f00-0006-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-000c-4000-8000-000000000000",
+            "key": "php-move-categories-6-read",
+            "type": "read",
+            "project": "77000f00-0006-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-000d-4000-8000-000000000000",
+            "key": "php-move-categories-7-write",
+            "type": "write",
+            "project": "77000f00-0007-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-000e-4000-8000-000000000000",
+            "key": "php-move-categories-7-read",
+            "type": "read",
+            "project": "77000f00-0007-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-000f-4000-8000-000000000000",
+            "key": "php-move-categories-8-write",
+            "type": "write",
+            "project": "77000f00-0008-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0010-4000-8000-000000000000",
+            "key": "php-move-categories-8-read",
+            "type": "read",
+            "project": "77000f00-0008-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0011-4000-8000-000000000000",
+            "key": "php-move-categories-9-write",
+            "type": "write",
+            "project": "77000f00-0009-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0012-4000-8000-000000000000",
+            "key": "php-move-categories-9-read",
+            "type": "read",
+            "project": "77000f00-0009-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0013-4000-8000-000000000000",
+            "key": "php-move-categories-10-write",
+            "type": "write",
+            "project": "77000f00-000a-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0014-4000-8000-000000000000",
+            "key": "php-move-categories-10-read",
+            "type": "read",
+            "project": "77000f00-000a-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0015-4000-8000-000000000000",
+            "key": "php-move-categories-11-write",
+            "type": "write",
+            "project": "77000f00-000b-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0016-4000-8000-000000000000",
+            "key": "php-move-categories-11-read",
+            "type": "read",
+            "project": "77000f00-000b-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0017-4000-8000-000000000000",
+            "key": "php-move-categories-12-write",
+            "type": "write",
+            "project": "77000f00-000c-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0018-4000-8000-000000000000",
+            "key": "php-move-categories-12-read",
+            "type": "read",
+            "project": "77000f00-000c-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0019-4000-8000-000000000000",
+            "key": "php-move-categories-13-write",
+            "type": "write",
+            "project": "77000f00-000d-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-001a-4000-8000-000000000000",
+            "key": "php-move-categories-13-read",
+            "type": "read",
+            "project": "77000f00-000d-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-001b-4000-8000-000000000000",
+            "key": "php-move-categories-14-write",
+            "type": "write",
+            "project": "77000f00-000e-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-001c-4000-8000-000000000000",
+            "key": "php-move-categories-14-read",
+            "type": "read",
+            "project": "77000f00-000e-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-001d-4000-8000-000000000000",
+            "key": "php-move-categories-15-write",
+            "type": "write",
+            "project": "77000f00-000f-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-001e-4000-8000-000000000000",
+            "key": "php-move-categories-15-read",
+            "type": "read",
+            "project": "77000f00-000f-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-001f-4000-8000-000000000000",
+            "key": "php-move-categories-16-write",
+            "type": "write",
+            "project": "77000f00-0010-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0020-4000-8000-000000000000",
+            "key": "php-move-categories-16-read",
+            "type": "read",
+            "project": "77000f00-0010-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0021-4000-8000-000000000000",
+            "key": "php-move-categories-17-write",
+            "type": "write",
+            "project": "77000f00-0011-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0022-4000-8000-000000000000",
+            "key": "php-move-categories-17-read",
+            "type": "read",
+            "project": "77000f00-0011-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0023-4000-8000-000000000000",
+            "key": "php-move-categories-18-write",
+            "type": "write",
+            "project": "77000f00-0012-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0024-4000-8000-000000000000",
+            "key": "php-move-categories-18-read",
+            "type": "read",
+            "project": "77000f00-0012-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0025-4000-8000-000000000000",
+            "key": "php-move-categories-19-write",
+            "type": "write",
+            "project": "77000f00-0013-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0026-4000-8000-000000000000",
+            "key": "php-move-categories-19-read",
+            "type": "read",
+            "project": "77000f00-0013-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0027-4000-8000-000000000000",
+            "key": "php-move-categories-20-write",
+            "type": "write",
+            "project": "77000f00-0014-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0028-4000-8000-000000000000",
+            "key": "php-move-categories-20-read",
+            "type": "read",
+            "project": "77000f00-0014-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0029-4000-8000-000000000000",
+            "key": "php-move-categories-21-write",
+            "type": "write",
+            "project": "77000f00-0015-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-002a-4000-8000-000000000000",
+            "key": "php-move-categories-21-read",
+            "type": "read",
+            "project": "77000f00-0015-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-002b-4000-8000-000000000000",
+            "key": "php-move-categories-22-write",
+            "type": "write",
+            "project": "77000f00-0016-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-002c-4000-8000-000000000000",
+            "key": "php-move-categories-22-read",
+            "type": "read",
+            "project": "77000f00-0016-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-002d-4000-8000-000000000000",
+            "key": "php-move-categories-23-write",
+            "type": "write",
+            "project": "77000f00-0017-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-002e-4000-8000-000000000000",
+            "key": "php-move-categories-23-read",
+            "type": "read",
+            "project": "77000f00-0017-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-002f-4000-8000-000000000000",
+            "key": "php-move-categories-24-write",
+            "type": "write",
+            "project": "77000f00-0018-4000-8000-000000000000"
+        },
+        {
+            "id": "77000f01-0030-4000-8000-000000000000",
+            "key": "php-move-categories-24-read",
+            "type": "read",
+            "project": "77000f00-0018-4000-8000-000000000000"
+        }
+    ]
+}
