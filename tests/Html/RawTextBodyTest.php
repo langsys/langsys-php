@@ -391,6 +391,74 @@ class RawTextBodyTest extends TestCase
         }
     }
 
+    public function sentenceAgainAfterPlaintextProvider()
+    {
+        // [what comes before the start tag, the start tag, everything after it]
+        return [
+            'the sentence again' => ['<p>Hello world</p>', '<plaintext>', 'Hello world'],
+            'after an end tag a browser reads as text' => ['<p>Hello world</p>', '<plaintext>', 'x</plaintext><p>Hello world</p>'],
+            'markup, a reference and a stray end tag' => ['<div><p>Hello world</p>', '<PLAINTEXT class=k>', 'Hello <b>world</b> &amp; < 3</div><p>Hello world'],
+            'nothing at all' => ['<p>Hello world</p>', '<plaintext>', ''],
+        ];
+    }
+
+    /**
+     * A sentence in ordinary markup and again after a <plaintext> start tag,
+     * which a browser reads as text to the end of the input, is one phrase,
+     * the ordinary one, on the block, page and rich paths, and the text after
+     * the start tag comes back as written, with nothing after it: an end tag
+     * written there, for the element or one around it, a browser would show
+     * as text.
+     *
+     * @dataProvider sentenceAgainAfterPlaintextProvider
+     */
+    public function testASentenceAgainAfterPlaintextIsOnePhraseAndTheTextAfterItComesBackAsWritten($before, $start, $after): void
+    {
+        $html = $before . $start . $after;
+        $tag = strtolower(substr($start, 0, 10));
+
+        $this->assertSame(['Hello world'], array_values((new HtmlParser())->extractPhrases($html)), 'the block walk');
+
+        $registering = $this->client();
+        $registering->translateContentBlock($html, 'UI');
+        $this->assertSame(['Hello world'], self::registered($registering), 'the block registers the ordinary phrase alone');
+
+        $registering = $this->client();
+        $registering->translatePage('<html><body>' . $html, 'UI');
+        $this->assertSame(['Hello world'], self::registered($registering), 'the page registers the ordinary phrase alone');
+
+        $registering = $this->client();
+        $registering->translateRich('Read ' . $html, null, 'UI');
+        $this->assertCount(1, self::registered($registering), 'the rich line is one phrase');
+
+        $client = $this->client(['Hello world' => 'Hola mundo']);
+        $block = $client->translateContentBlock($html, 'UI');
+        $page = $client->translatePage('<html><body>' . $html, 'UI');
+        $rich = $client->translateRich('Read ' . $html, null, 'UI')['html'];
+
+        foreach (['block' => $block, 'page' => $page, 'rich' => $rich] as $route => $out) {
+            $this->assertStringEndsWith($start === '<plaintext>' ? '<plaintext>' . $after : '<plaintext class="k">' . $after, $out, "$route: the text after the start tag, as written, ends the output");
+            $this->assertSame(1, substr_count(strtolower($out), $tag), "$route: one start tag");
+        }
+        $this->assertStringContainsString('<p>Hola mundo</p>', $block, 'the ordinary sentence is translated');
+        $this->assertStringContainsString('<p>Hola mundo</p>', $page);
+    }
+
+    /**
+     * Every phrase a client has queued, standalone or in a block, in order.
+     *
+     * @return string[]
+     */
+    private static function registered(Client $client)
+    {
+        $phrases = array_column($client->getPendingPhrases(), 'phrase');
+        foreach ($client->getPendingContentBlocks() as $block) {
+            $phrases = array_merge($phrases, array_column($block['phrases'], 'phrase'));
+        }
+
+        return array_values($phrases);
+    }
+
     /**
      * A title in svg is the drawing's element, and its body is read as
      * markup once, as a browser reads it: a reference is decoded once, a `<`

@@ -1753,7 +1753,8 @@ class PageTranslator
             $html .= Document::html($child);
         }
 
-        return $html === '' ? '' : $html . "\n";
+        // A <plaintext> body ends the page as written, a newline included.
+        return $html === '' || Document::endsInPlaintext($doc) ? $html : $html . "\n";
     }
 
     /**

@@ -267,6 +267,75 @@ final class Document
      */
     public static function html(\DOMNode $node)
     {
+        return self::restorePlaintext(self::written($node));
+    }
+
+    /**
+     * What a <plaintext> start tag is followed by as load() reads it: the
+     * text after it, to the end of the input, as a token libxml2 reads as
+     * text on every version and nothing on any path translates, since the
+     * element is excluded. A browser reads that text as written and ends the
+     * document with it, so html() writes it back as written and nothing after
+     * it: no end tag for the element or any around it, which a browser would
+     * show as text.
+     *
+     * @param string $text
+     * @return string
+     */
+    private static function holdPlaintext($text)
+    {
+        return self::plaintextMark() . bin2hex($text) . 'q';
+    }
+
+    /**
+     * $html with the text a held <plaintext> body stands for written back
+     * where the token is, and everything after it left out.
+     *
+     * @param string $html
+     * @return string
+     */
+    private static function restorePlaintext($html)
+    {
+        $mark = self::plaintextMark();
+        $at = strpos($html, $mark);
+        if ($at === false || !preg_match('/\G' . $mark . '((?:[0-9a-f]{2})*)q/', $html, $m, 0, $at)) {
+            return $html;
+        }
+
+        return substr($html, 0, $at) . hex2bin($m[1]);
+    }
+
+    /**
+     * Whether $node holds a <plaintext> body load() held, which ends what
+     * html() writes of it: nothing written after it is read as anything but
+     * its text.
+     *
+     * @param \DOMNode $node
+     * @return bool
+     */
+    public static function endsInPlaintext(\DOMNode $node)
+    {
+        $node = $node instanceof DOMDocument ? $node->documentElement : $node;
+
+        return $node !== null && strpos((string) $node->textContent, self::plaintextMark()) !== false;
+    }
+
+    /** The token a held <plaintext> body opens with, one no page can know. */
+    private static function plaintextMark()
+    {
+        static $mark = null;
+
+        return $mark !== null ? $mark : ($mark = 'ls' . bin2hex(random_bytes(8)) . 'q');
+    }
+
+    /**
+     * $node as html() writes it, before a held <plaintext> body is restored.
+     *
+     * @param \DOMNode $node
+     * @return string
+     */
+    private static function written(\DOMNode $node)
+    {
         $doc = $node instanceof DOMDocument ? $node : $node->ownerDocument;
         $html = (string) ($node instanceof DOMDocument ? $node->saveHTML() : $doc->saveHTML($node));
         if (stripos($html, '<xmp') === false && stripos($html, '<iframe') === false && stripos($html, '<noembed') === false && stripos($html, '<noframes') === false) {
@@ -674,6 +743,10 @@ final class Document
                 continue;
             }
             if ($name === 'plaintext') {
+                // Everything after the start tag is text to the end of the
+                // input, which libxml2 2.9 parses as markup and 2.14 reads as
+                // text: held out of it, it is the same on every libxml2.
+                $edits[] = [$at, strlen($html) - $at, self::holdPlaintext(substr($html, $at))];
                 break;
             }
             if (!in_array($name, self::VOID, true)) {

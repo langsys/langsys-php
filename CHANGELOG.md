@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The text after a `<plaintext>` start tag comes back as written, and none of it is
+  read as markup.** A browser reads everything after the tag as text, to the end of the
+  page. On libxml2 before 2.14 a sentence written after an end tag in that text
+  registered as a second phrase, changing the block's id, and the page path translated
+  it. On every libxml2 the output wrote end tags after the text (`</plaintext>`, and
+  `</body></html>` and a newline on a page), which a browser shows as text. The text
+  after the tag is now kept out of libxml2 and written back byte for byte, and nothing
+  follows it.
 - **UPGRADING.md names the form 1.x received for a plural Langsys generated.** Without
   ICU support the API flattens a plural to the form its language uses for a handful of
   things (`other` in English and Spanish, `many` in Russian, `few` in Arabic), and a
