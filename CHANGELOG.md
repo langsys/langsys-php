@@ -5,6 +5,16 @@ All notable changes to the Langsys PHP SDK are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **UPGRADING.md names the form 1.x received for a plural Langsys generated.** Without
+  ICU support the API flattens a plural to the form its language uses for a handful of
+  things (`other` in English and Spanish, `many` in Russian, `few` in Arabic), and a
+  select to its `other` branch. The guide said every plural came back as its `other`
+  branch.
+
 ## [2.2.2] - 2026-11-09
 
 ### Fixed
@@ -667,6 +677,7 @@ First tagged release.
   pollutes the catalog shared with every other Langsys SDK. Use `$params`
   instead. This cannot be detected at runtime; see README.
 
+[Unreleased]: https://github.com/langsys/langsys-php/compare/v2.2.2...HEAD
 [2.2.2]: https://github.com/langsys/langsys-php/compare/v2.2.1...v2.2.2
 [2.2.1]: https://github.com/langsys/langsys-php/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/langsys/langsys-php/compare/v2.1.0...v2.2.0

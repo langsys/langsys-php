@@ -64,7 +64,10 @@ and it is never registered again.
   source; wrap direct calls in `try`.
 - **`Client::getTranslations()` and `Translations::getTranslationMap()`** return a plural
   or select Langsys generated for a locale, the base language included, as ICU MessageFormat
-  (`{count, plural, one {…} other {…}}`), where they returned its `other` branch.
+  (`{count, plural, one {…} other {…}}`), where they returned it flattened to one form: a
+  plural to the form its language uses for a handful of things (`other` in English and
+  Spanish, `many` in Russian, `few` in Arabic) with `#` written as `{count}`, and a select
+  to its `other` branch.
   `translate()`, `translatePage()` and `translateContentBlock()` format it; code that
   renders those strings itself should pass them through
   `$client->getInterpolator()->interpolate($text, $params, $locale)`. A catalog cached

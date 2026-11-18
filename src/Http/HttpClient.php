@@ -110,8 +110,9 @@ class HttpClient
      *
      * `X-Langsys-Capabilities: icu` asks for raw ICU MessageFormat. Langsys turns a
      * flat phrase into a plural or select in the target locales that need one, and
-     * without the header the API flattens it to its `other` branch, so a count of 1
-     * would render the plural ("Tienes 1 mensajes nuevos."). The Interpolator
+     * without the header the API flattens it to one form (a plural to the form its
+     * language uses for a handful of things, `many` in Russian, `other` in Spanish),
+     * so a count of 1 would render that form ("Tienes 1 mensajes nuevos."). The Interpolator
      * formats ICU, so every request asks for it.
      *
      * @return array
