@@ -216,6 +216,55 @@ class MoveTest extends TestCase
         $this->assertSame(['Buy now' => 'Header', 'Untouched' => null, self::blockId('Checkout', ['Hello', 'world']) => 'Header'], $sent, 'each sent once; the page adds the move only to what it rendered');
     }
 
+    /**
+     * A binding queues items itself: queued twice before a send, an item
+     * keeps the first previous category named, whichever call names it, and
+     * a later call naming none or another never replaces it.
+     */
+    public function testAnItemQueuedTwiceDirectlyKeepsTheFirstPreviousCategoryNamed(): void
+    {
+        $html = '<div><p>Moved block</p></div>';
+        foreach ([['Header', null], ['Header', 'Nav'], [null, 'Header']] as $case) {
+            list($first, $second) = $case;
+            $label = var_export($first, true) . ' then ' . var_export($second, true);
+
+            $client = $this->client([]);
+            $client->queuePhraseForRegistration('Buy now', 'Checkout', $first);
+            $client->queuePhraseForRegistration('Buy now', 'Checkout', $second);
+            $id = self::blockId('Checkout', ['Moved block']);
+            $client->queueContentBlockForRegistration($html, 'Checkout', $id, ['Moved block'], $first);
+            $client->queueContentBlockForRegistration($html, 'Checkout', $id, ['Moved block'], $second);
+            $client->flushPendingRegistrations();
+
+            $sent = $this->sent();
+            $this->assertCount(2, $sent, $label);
+            foreach ($sent as $item) {
+                $this->assertSame('Header', isset($item['previous_category']) ? $item['previous_category'] : null, $label . ': ' . $item['type']);
+            }
+        }
+    }
+
+    /**
+     * One page naming the same phrase twice in one category sends it once,
+     * with the first previous category an element names.
+     */
+    public function testAPageNamingAPhraseTwiceSendsTheFirstMoveItNames(): void
+    {
+        $cases = [
+            'an unmoved element first' => ['<div data-langsys-category="Nav"><p>Sign in</p></div><div data-langsys-category="Nav" data-langsys-previous-category="Header"><p>Sign in</p></div>', 'Header'],
+            'two moves' => ['<div data-langsys-category="Nav" data-langsys-previous-category="Header"><p>Sign in</p></div><div data-langsys-category="Nav" data-langsys-previous-category="Footer"><p>Sign in</p></div>', 'Header'],
+        ];
+        foreach ($cases as $label => $case) {
+            $client = $this->client(['Other' => ['Unrelated' => 'Ajeno']]);
+            $client->translatePage('<html><body>' . $case[0] . '</body></html>');
+            $client->flushPendingRegistrations();
+
+            $sent = $this->sent();
+            $this->assertCount(1, $sent, $label);
+            $this->assertSame(['Sign in', 'Nav', $case[1]], [$sent[0]['phrase'], $sent[0]['category'], isset($sent[0]['previous_category']) ? $sent[0]['previous_category'] : null], $label);
+        }
+    }
+
     public function testARichLineFilledFromItsEarlierKeyStillTakesALaterMove(): void
     {
         $client = $this->client(['Checkout' => ['Call {m0o}ACME{m0c} now' => 'Llamá a {m0o}ACME{m0c} ya']]);
@@ -251,6 +300,44 @@ class MoveTest extends TestCase
 
         $this->assertSame('Comprar', $client->translate('Buy now', null, $this->moved('Checkout', 'Header')));
         $this->assertSame('Pagá', $client->translate('Pay', null, $this->moved('Checkout', 'Header')), 'present with no translation reads the previous category');
+    }
+
+    /**
+     * The earlier key (TOK-1) is a lookup under the current category, so it
+     * comes before the previous category.
+     */
+    public function testTheEarlierKeyUnderTheCurrentCategoryOutranksThePreviousOne(): void
+    {
+        $client = $this->client([
+            'Checkout' => ['Call {m0o}ACME{m0c} now' => 'Llamá a {m0o}ACME{m0c} ya'],
+            'Header' => ['Call {m0o}{m0c} now' => 'Header {m0o}{m0c}'],
+        ]);
+        $line = 'Call <span translate="no">ACME</span> now';
+
+        $this->assertStringStartsWith('Llamá a ', $client->translateRich($line, null, $this->moved('Checkout', 'Header'))['html']);
+
+        $control = $this->client(['Header' => ['Call {m0o}{m0c} now' => 'Header {m0o}{m0c}']]);
+        $this->assertStringStartsWith('Header ', $control->translateRich($line, null, $this->moved('Checkout', 'Header'))['html'], 'with no earlier key, the previous category renders');
+    }
+
+    /**
+     * Under the previous category a block is read by its primary id, then by
+     * its historical ids (CID-3), as under the current one.
+     */
+    public function testABlockIsReadUnderItsPreviousCategorysHistoricalId(): void
+    {
+        $html = '<div><h2>Welcome to our shop</h2><p>Free delivery</p></div>';
+        $legacyId = md5(implode('|', ['Header', 'Welcome to our shop', 'Free delivery']));
+        $client = $this->client(['Header' => [$legacyId => ['Welcome to our shop' => 'Bienvenido a nuestra tienda', 'Free delivery' => 'Envío gratis']]]);
+
+        $out = $client->translateContentBlock($html, $this->moved('Checkout', 'Header'));
+
+        $this->assertStringContainsString('Bienvenido a nuestra tienda', $out);
+        $this->assertStringContainsString('data-ls-previous-contentblock="' . $legacyId . '"', $out);
+        $client->flushPendingRegistrations();
+        $sent = $this->sent();
+        $this->assertCount(1, $sent);
+        $this->assertSame(['Checkout', 'Header'], [$sent[0]['category'], $sent[0]['previous_category']], 'it registers under the current category, naming the move');
     }
 
     public function testAnEmptyPreviousCategoryReadsTheNoCategoryBucket(): void
@@ -353,6 +440,30 @@ class MoveTest extends TestCase
             $sent[$item['category'] . '/' . $item['phrase']] = isset($item['previous_category']) ? $item['previous_category'] : null;
         }
         $this->assertSame(['home/Welcome' => 'old-home', 'Navigation/Sign in' => 'Header'], $sent);
+    }
+
+    /**
+     * A selector that leaves a parent's category in place still moves what
+     * it matches where no category comes down to it.
+     */
+    public function testASelectorThatDoesNotOverrideCarriesItsMove(): void
+    {
+        $client = $this->client(['Header' => ['Sign in' => 'Ingresar']]);
+
+        $page = $client->translatePage(
+            '<html><body><nav><p>Sign in</p></nav><p>Welcome</p></body></html>',
+            null,
+            ['nav' => ['category' => 'Navigation', 'previous_category' => 'Header']]
+        );
+
+        $this->assertStringContainsString('>Ingresar</p>', $page);
+        $client->flushPendingRegistrations();
+        $sent = [];
+        foreach ($this->sent() as $item) {
+            $sent[$item['phrase']] = [isset($item['category']) ? $item['category'] : null, isset($item['previous_category']) ? $item['previous_category'] : null];
+        }
+        $this->assertSame(['Navigation', 'Header'], $sent['Sign in']);
+        $this->assertNull($sent['Welcome'][1], 'the control, outside the selector, names no move');
     }
 
     /**
