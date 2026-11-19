@@ -13,7 +13,7 @@ it runs on the 1.x line and does not wrap this release.
 |---|---|
 | **Spec revision read** | langsys2 79a215d43c9cd0063d80349649079a629313e5f4, docs/sdk-spec.mdx blob bdcc95b4afe0cc782c69d894f884bc02ffd85a72 |
 | **Profiles** | all, server |
-| **Contract fixture** | `tests/contract-fixture/`, langsys-js-typescript v0.7.0 tree `f72fab59caae1822687ca0a61f6711dcfefc4e6d` (`git rev-parse <commit>:contract-fixture`), forwarding to an SDK test clone running langsys `2eb1115520ffb47a893c8acb183499203ebaff77` and langsys-ai `8a0d594f893380c9b53894be7fea314a79dbdcee`; the category-move cases (`tests/Contract/MoveContractTest.php`) on langsys `dfc8976c489731c7c5236f53312dcca4b02aed6b` and langsys-ai `090cc41c7e04857941e6dcd3e67812dfdc5b9a08` |
+| **Contract fixture** | `tests/contract-fixture/`, langsys-js-typescript v0.7.0 tree `f72fab59caae1822687ca0a61f6711dcfefc4e6d` (`git rev-parse <commit>:contract-fixture`), forwarding to an SDK test clone. Every contract test passes on langsys `dfc8976c489731c7c5236f53312dcca4b02aed6b` and langsys-ai `72fe7c1ca2409e416abfad009e07b9b09d876005`. The clone mutations the rows record ran on langsys `2eb1115520ffb47a893c8acb183499203ebaff77` and langsys-ai `8a0d594f893380c9b53894be7fea314a79dbdcee`, the category moves' on langsys `dfc8976c489731c7c5236f53312dcca4b02aed6b` and langsys-ai `090cc41c7e04857941e6dcd3e67812dfdc5b9a08` |
 
 **Coverage: every one of the spec's rule ids is accounted for exactly once**, binding or not —
 rules that do not bind this SDK are rowed `n/a` with the profile named, rather than left out.
