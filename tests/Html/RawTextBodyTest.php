@@ -4,6 +4,7 @@ namespace Langsys\SDK\Tests\Html;
 
 use Langsys\SDK\Cache\NullCache;
 use Langsys\SDK\Client;
+use Langsys\SDK\Html\Document;
 use Langsys\SDK\Html\HtmlParser;
 use Langsys\SDK\Tests\Mock\MockHttpClient;
 use PHPUnit\Framework\TestCase;
@@ -399,6 +400,9 @@ class RawTextBodyTest extends TestCase
             'after an end tag a browser reads as text' => ['<p>Hello world</p>', '<plaintext>', 'x</plaintext><p>Hello world</p>'],
             'markup, a reference and a stray end tag' => ['<div><p>Hello world</p>', '<PLAINTEXT class=k>', 'Hello <b>world</b> &amp; < 3</div><p>Hello world'],
             'nothing at all' => ['<p>Hello world</p>', '<plaintext>', ''],
+            // A sentence of its own, which a reader that walked into the
+            // markup after the tag would register beside the ordinary one.
+            'another sentence after an end tag' => ['<p>Hello world</p>', '<plaintext>', 'x</plaintext><p>Goodbye world</p>'],
         ];
     }
 
@@ -419,17 +423,23 @@ class RawTextBodyTest extends TestCase
 
         $this->assertSame(['Hello world'], array_values((new HtmlParser())->extractPhrases($html)), 'the block walk');
 
+        // A block lists each of its phrases as often as it holds it, so the
+        // sentence read a second time would show; a lead sentence makes it a
+        // block rather than one phrase.
         $registering = $this->client();
-        $registering->translateContentBlock($html, 'UI');
-        $this->assertSame(['Hello world'], self::registered($registering), 'the block registers the ordinary phrase alone');
+        $registering->translateContentBlock('<div><p>Lead</p>' . $html, 'UI');
+        $this->assertSame([], $registering->getPendingPhrases(), 'the block registers no phrase of its own');
+        $this->assertSame([['Lead', 'Hello world']], array_values(array_column($registering->getPendingContentBlocks(), 'phrases')), 'the block registers the ordinary phrase alone');
 
         $registering = $this->client();
-        $registering->translatePage('<html><body>' . $html, 'UI');
-        $this->assertSame(['Hello world'], self::registered($registering), 'the page registers the ordinary phrase alone');
+        $registering->translatePage('<html><body><p>Lead</p>' . $html, 'UI');
+        $this->assertSame(['Lead', 'Hello world'], array_values(array_column($registering->getPendingPhrases(), 'phrase')), 'the page registers the ordinary phrase alone');
+        $this->assertSame([], $registering->getPendingContentBlocks());
 
         $registering = $this->client();
         $registering->translateRich('Read ' . $html, null, 'UI');
-        $this->assertCount(1, self::registered($registering), 'the rich line is one phrase');
+        $this->assertCount(1, $registering->getPendingPhrases(), 'the rich line is one phrase');
+        $this->assertSame([], $registering->getPendingContentBlocks());
 
         $client = $this->client(['Hello world' => 'Hola mundo']);
         $block = $client->translateContentBlock($html, 'UI');
@@ -445,18 +455,177 @@ class RawTextBodyTest extends TestCase
     }
 
     /**
-     * Every phrase a client has queued, standalone or in a block, in order.
-     *
-     * @return string[]
+     * The text after the start tag comes back as written whatever its length,
+     * on every path, and a registered block holds it as written too.
      */
-    private static function registered(Client $client)
+    public function testATailOfAnyLengthComesBackAsWritten(): void
     {
-        $phrases = array_column($client->getPendingPhrases(), 'phrase');
-        foreach ($client->getPendingContentBlocks() as $block) {
-            $phrases = array_merge($phrases, array_column($block['phrases'], 'phrase'));
+        $tail = str_repeat('Hello <b>world</b> &amp; < 3 ', 4000);
+        $client = $this->client(['Hello world' => 'Hola mundo']);
+
+        foreach ([
+            'block' => $client->translateContentBlock('<div><p>Lead</p><p>Hello world</p><plaintext>' . $tail, 'UI'),
+            'page' => $client->translatePage('<html><body><p>Hello world</p><plaintext>' . $tail, 'UI'),
+            'rich' => $client->translateRich('Read <plaintext>' . $tail, null, 'UI')['html'],
+        ] as $route => $out) {
+            $this->assertStringEndsWith('<plaintext>' . $tail, $out, $route);
+            $this->assertStringNotContainsString(self::plaintextMark(), $out, $route);
+        }
+        $blocks = array_values($client->getPendingContentBlocks());
+        $this->assertCount(1, $blocks);
+        $this->assertStringEndsWith('<plaintext>' . $tail, $blocks[0]['html'], 'the registered block');
+    }
+
+    /**
+     * Text of the page's that holds the loader's own mark for a held body is
+     * text like any other, wherever it sits: only the body the loader held is
+     * written back as its text.
+     */
+    public function testTextHoldingTheLoadersMarkIsWrittenAsText(): void
+    {
+        $forged = self::plaintextMark() . bin2hex('<img src=x onerror=alert(1)>') . 'q';
+        $client = $this->client(['Hello world' => 'Hola mundo']);
+
+        foreach (['', '<plaintext>tail'] as $after) {
+            $html = '<div><p>' . $forged . '</p><p>Comment: ' . $forged . '</p><p>Hello world</p>' . $after;
+            foreach ([
+                'block' => $client->translateContentBlock($html, 'UI'),
+                'page' => $client->translatePage('<html><body>' . $html, 'UI'),
+                'rich' => $client->translateRich($forged . ' <b>now</b>' . $after, null, 'UI')['html'],
+            ] as $route => $out) {
+                $this->assertStringNotContainsString('<img', $out, "$route: $after");
+                $this->assertStringContainsString($forged, $out, "$route: the text as written");
+                if ($route === 'page') {
+                    $this->assertStringContainsString('<p>Hola mundo</p>', $out, "$route: $after");
+                }
+                if ($after !== '') {
+                    $this->assertStringEndsWith('<plaintext>tail', $out, "$route: the held body ends the output");
+                }
+            }
+        }
+    }
+
+    /**
+     * A raw body read again as markup - an xmp in svg, whose body a libxml2
+     * that reads raw bodies (2.14 and later) holds as one text node - is read
+     * in its own content, where a browser does not end the page at a
+     * <plaintext>: what follows the body stays the page's. The tree is the one
+     * such a libxml2 builds, built here by hand to run on any libxml2.
+     */
+    public function testARawBodyReadAgainAsMarkupKeepsWhatFollowsAPlaintextInIt(): void
+    {
+        $marker = 'data-ls-markup-0123456789abcdef';
+        $doc = new \DOMDocument();
+        $errors = libxml_use_internal_errors(true);
+        $doc->loadHTML('<ls-fragment><svg><xmp ' . $marker . '>x</xmp></svg><p>Hello</p>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        $doc->getElementsByTagName('xmp')->item(0)->firstChild->data = 'a<plaintext>b';
+        $reread = new \ReflectionMethod(Document::class, 'readAsMarkup');
+        $reread->setAccessible(true);
+        $reread->invoke(null, $doc, $marker);
+        libxml_clear_errors();
+        libxml_use_internal_errors($errors);
+
+        $out = Document::html($doc->documentElement);
+        $this->assertStringContainsString('<p>Hello</p>', $out);
+        $this->assertStringContainsString('b', $out);
+        $this->assertStringNotContainsString(self::plaintextMark(), $out);
+    }
+
+    /**
+     * A browser ignores a <plaintext> start tag inside a <select>, and reads
+     * one inside a <noscript> as the noscript's text: what follows the select
+     * or the noscript is the page's markup. libxml2 2.14 and later read
+     * everything after the tag as its text themselves, wherever it is.
+     */
+    public function testAPlaintextInASelectOrANoscriptLeavesWhatFollowsThemMarkup(): void
+    {
+        if (Document::readsRawBodies()) {
+            $this->markTestSkipped('This libxml2 reads everything after a <plaintext> start tag as its text, wherever it is.');
         }
 
-        return array_values($phrases);
+        foreach ([
+            '<form><select name="s"><option>One</option><plaintext></select></form><p>Hello world</p>' => ['One', 'Hello world'],
+            '<noscript><plaintext></noscript><p>Lead</p><p>Hello world</p>' => ['Lead', 'Hello world'],
+        ] as $html => $phrases) {
+            $this->assertSame($phrases, array_values((new HtmlParser())->extractPhrases($html)), $html);
+
+            $client = $this->client(['Hello world' => 'Hola mundo']);
+            $client->translateContentBlock('<div>' . $html . '</div>', 'UI');
+            $this->assertSame([$phrases], array_values(array_column($client->getPendingContentBlocks(), 'phrases')), "block: $html");
+            $this->assertStringContainsString('<p>Hola mundo</p>', $client->translatePage('<html><body>' . $html . '</body></html>', 'UI'), "page: $html");
+        }
+    }
+
+    /**
+     * Inside an svg or MathML integration point a browser reads a <plaintext>
+     * start tag as in the page, and everything after it, to the end of the
+     * input, as text.
+     */
+    public function testAPlaintextInAnIntegrationPointHoldsTheRestOfTheInput(): void
+    {
+        foreach ([
+            '<svg><foreignObject><plaintext>' => '<p>Goodbye</p></foreignObject></svg><p>Goodbye</p>',
+            '<svg><desc><plaintext>' => '<p>Goodbye</p></desc></svg><p>Goodbye</p>',
+            '<math><mtext><plaintext>' => '<p>Goodbye</p></mtext></math><p>Goodbye</p>',
+        ] as $start => $tail) {
+            $html = '<p>Hello world</p>' . $start . $tail;
+            $this->assertSame(['Hello world'], array_values((new HtmlParser())->extractPhrases($html)), $start);
+
+            $client = $this->client(['Hello world' => 'Hola mundo', 'Goodbye' => 'Adiós']);
+            $block = $client->translateContentBlock('<div><p>Lead</p>' . $html, 'UI');
+            $this->assertSame([['Lead', 'Hello world']], array_values(array_column($client->getPendingContentBlocks(), 'phrases')), "block: $start");
+            $page = $client->translatePage('<html><body>' . $html, 'UI');
+            foreach (['block' => $block, 'page' => $page] as $route => $out) {
+                $this->assertStringEndsWith('<plaintext>' . $tail, $out, "$route: $start");
+            }
+            $this->assertStringContainsString('<p>Hola mundo</p>', $page, $start);
+        }
+    }
+
+    /**
+     * A <plaintext> after the page's </html> ends the page as written, with
+     * no newline after it.
+     */
+    public function testAPlaintextAfterTheHtmlEndTagEndsThePageAsWritten(): void
+    {
+        $out = $this->client(['Hello world' => 'Hola mundo'])->translatePage('<html><body><p>Hello world</p></body></html><plaintext>tail', 'UI');
+
+        $this->assertStringEndsWith('<plaintext>tail', $out);
+        $this->assertStringContainsString('<p>Hola mundo</p>', $out);
+    }
+
+    /**
+     * A held <plaintext> ends what is written with it, so a translation that
+     * moves its slot before the line's words has it written after them, as
+     * deep in the markup as nothing else follows it.
+     */
+    public function testATranslationThatMovesThePlaintextSlotKeepsItsWords(): void
+    {
+        $rich = '<span>Read <b>this</b> now <plaintext>tail';
+        $key = '{m0o}Read {m1o}this{m1c} now {m2o}{m2c}{m0c}';
+        foreach ([
+            'moved first' => '{m0o}{m2o}{m2c} Leer {m1o}esto{m1c} ahora{m0c}',
+            'moved into another element' => '{m0o}Leer {m1o}esto{m2o}{m2c}{m1c} ahora{m0c}',
+            'repeated among the words' => '{m0o}{m2o}{m2c} Leer {m2o}{m2c}{m1o}esto{m1c} ahora{m0c}',
+        ] as $case => $translation) {
+            $out = $this->client([$key => $translation])->translateRich($rich, null, 'UI')['html'];
+            $this->assertSame(1, substr_count($out, '<plaintext>'), $case);
+            $this->assertStringEndsWith('ahora<plaintext>tail', $out, $case);
+            $this->assertStringContainsString('<b>esto', $out, $case);
+        }
+
+        $out = $this->client(['Read {m0o}this{m0c} now {m1o}{m1c}' => '{m1o}{m1c} Leer {m0o}esto{m0c} ahora'])
+            ->translatePage('<html><body><p data-ls-phrase>Read <b>this</b> now <plaintext>tail', 'UI');
+        $this->assertStringEndsWith('<p data-ls-phrase> Leer <b>esto</b> ahora<plaintext>tail', $out);
+    }
+
+    /** The token the loader opens a held <plaintext> body with. */
+    private static function plaintextMark()
+    {
+        $method = new \ReflectionMethod(Document::class, 'plaintextMark');
+        $method->setAccessible(true);
+
+        return $method->invoke(null);
     }
 
     /**

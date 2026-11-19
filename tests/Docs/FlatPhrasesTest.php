@@ -24,7 +24,8 @@ use PHPUnit\Framework\TestCase;
  *
  * The surfaces are every Markdown document outside tests/ and vendor/ (the
  * README, the upgrade guide, the agent skill, docs/) and every file in
- * examples/. CHANGELOG.md records what earlier releases did and is outside the
+ * examples/, of the files git tracks or would track: one it ignores, such as
+ * a developer's own CLAUDE.md, is in no download and on no page. CHANGELOG.md records what earlier releases did and is outside the
  * rule; CONFORMANCE.md grades this package against the spec, quotes the spec's
  * rules about ICU, and is not in the Composer download.
  *
@@ -33,8 +34,12 @@ use PHPUnit\Framework\TestCase;
  */
 class FlatPhrasesTest extends TestCase
 {
-    /** An ICU argument that selects a branch: `{count, plural, …}`, `{name_gender, select, …}`. */
-    const ICU_CONSTRUCT = '/\{\s*[A-Za-z_][\w.]*\s*,\s*(?:plural|select|selectordinal)\b/';
+    /**
+     * An ICU argument that selects a branch: `{count, plural, …}`,
+     * `{name_gender, select, …}`, `{0, plural, …}`. ICU names an argument
+     * with any run of characters but space and syntax, or with a number.
+     */
+    const ICU_CONSTRUCT = '/\{\s*[^\s{},]+\s*,\s*(?:plural|select|selectordinal)\b/';
 
     const ROLES = ['catalog', 'mig-4', 'counter-example'];
 
@@ -178,6 +183,8 @@ class FlatPhrasesTest extends TestCase
             'a selectordinal in prose' => ['Write `{place, selectordinal, one {#st} two {#nd} other {#th}}` and it works.'],
             'an =0 branch in an example' => ["echo \$client->translate('{count, plural, =0 {None} other {# left}}', null, 'Demo', null, ['count' => \$count]);"],
             'a message template' => ["const MESSAGE = '{count, plural, one {# attempt} other {# attempts}} left';"],
+            'a numbered argument' => ["\$client->translate('{0, plural, one {# item} other {# items}}', null, 'Cart');"],
+            'an argument named in another language' => ["\$client->translate('{número, plural, one {# artículo} other {# artículos}}', null, 'Cart');"],
         ];
     }
 
@@ -319,9 +326,30 @@ class FlatPhrasesTest extends TestCase
     }
 
     /** Paths from the repository root, forward slashes, sorted. */
-    private static function surfaces(): array
+    public function testAFileGitIgnoresIsNoSurface()
     {
-        $root = self::root();
+        $root = sys_get_temp_dir() . '/flat-phrases-' . bin2hex(random_bytes(6));
+        mkdir($root . '/examples', 0700, true);
+        try {
+            exec('git -C ' . escapeshellarg($root) . ' init -q 2>&1', $output, $status);
+            if ($status !== 0) {
+                $this->markTestSkipped('git is not available: ' . implode(' ', $output));
+            }
+            file_put_contents($root . '/.gitignore', "CLAUDE.md\n");
+            file_put_contents($root . '/README.md', 'You have {count} new messages');
+            file_put_contents($root . '/CLAUDE.md', '{count, plural, one {# item} other {# items}}');
+            file_put_contents($root . '/examples/demo.php', '<?php');
+
+            $this->assertSame(['README.md', 'examples/demo.php'], self::surfaces($root));
+        } finally {
+            exec('rm -rf ' . escapeshellarg($root));
+        }
+    }
+
+    private static function surfaces(?string $root = null): array
+    {
+        $root = $root === null ? self::root() : $root;
+        $listed = self::gitFiles($root);
         $surfaces = [];
         $files = new \RecursiveIteratorIterator(new \RecursiveCallbackFilterIterator(
             new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS),
@@ -333,13 +361,27 @@ class FlatPhrasesTest extends TestCase
         foreach ($files as $file) {
             $path = str_replace(DIRECTORY_SEPARATOR, '/', substr($file->getPathname(), strlen($root) + 1));
             $isDoc = substr($path, -3) === '.md' && !array_key_exists($path, self::OUTSIDE);
-            if ($isDoc || strpos($path, 'examples/') === 0) {
+            if (($isDoc || strpos($path, 'examples/') === 0) && ($listed === null || isset($listed[$path]))) {
                 $surfaces[] = $path;
             }
         }
         sort($surfaces);
 
         return $surfaces;
+    }
+
+    /**
+     * The files under $root that git tracks or would track, as keys, or null
+     * where git cannot say, when every file is a surface.
+     */
+    private static function gitFiles(string $root): ?array
+    {
+        $listing = shell_exec('git -C ' . escapeshellarg($root) . ' ls-files --cached --others --exclude-standard -z 2>/dev/null');
+        if (!is_string($listing) || $listing === '') {
+            return null;
+        }
+
+        return array_fill_keys(array_filter(explode("\0", $listing), 'strlen'), true);
     }
 
     private static function root(): string

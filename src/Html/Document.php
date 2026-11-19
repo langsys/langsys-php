@@ -61,14 +61,15 @@ final class Document
      * @param string $html
      * @param int $options
      * @param bool $reread
+     * @param bool $hold Whether a <plaintext> start tag ends the input, as in a page
      * @return bool
      */
-    private static function loadReading(DOMDocument $doc, $html, $options, $reread)
+    private static function loadReading(DOMDocument $doc, $html, $options, $reread, $hold = true)
     {
         // The scan marks each such body's start tag with an attribute no
         // page can know, so the second read follows the scan's reading.
         $marker = $reread ? 'data-ls-markup-' . bin2hex(random_bytes(8)) : null;
-        if (!$doc->loadHTML(self::UTF8_HINT . self::forLibxml((string) $html, $marker), $options | self::RECOVER | self::IGNORE_ENCODING)) {
+        if (!$doc->loadHTML(self::UTF8_HINT . self::forLibxml((string) $html, $marker, $hold), $options | self::RECOVER | self::IGNORE_ENCODING)) {
             return false;
         }
 
@@ -130,7 +131,9 @@ final class Document
      * xmp, iframe, noembed or noframes inside a <select>, or in svg or math
      * outside their integration points, and a title or textarea in svg or
      * math, the drawing's own element. Each is read once: a body inside one
-     * is read as the second read finds it.
+     * is read as the second read finds it. A <plaintext> start tag in one
+     * ends nothing: in a select a browser ignores it, and in svg or math it
+     * is the drawing's element.
      *
      * @param DOMDocument $doc
      * @param string $marker
@@ -145,7 +148,7 @@ final class Document
             }
 
             $parsed = new DOMDocument();
-            self::loadReading($parsed, '<' . self::FRAGMENT_ROOT . '>' . $element->textContent, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD, false);
+            self::loadReading($parsed, '<' . self::FRAGMENT_ROOT . '>' . $element->textContent, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD, false, false);
             while ($element->firstChild !== null) {
                 $element->removeChild($element->firstChild);
             }
@@ -210,16 +213,17 @@ final class Document
      *
      * @param string $html
      * @param string|null $marker The attribute scan() marks a body with for readAsMarkup()
+     * @param bool $hold Whether a <plaintext> start tag ends the input, as in a page
      * @return string
      */
-    private static function forLibxml($html, $marker = null)
+    private static function forLibxml($html, $marker = null, $hold = true)
     {
         if (strpos($html, '<') === false) {
             return $html;
         }
 
         $edits = [];
-        self::scan($html, $edits, $marker);
+        self::scan($html, $edits, $marker, $hold);
 
         // In the order they apply, each once: a mark and keepReferences()
         // add edits before scan() reaches what is inside the body, and only
@@ -267,7 +271,25 @@ final class Document
      */
     public static function html(\DOMNode $node)
     {
-        return self::restorePlaintext(self::written($node));
+        $html = self::written($node);
+        if (strpos($html, self::plaintextMark()) === false || ($held = self::heldPlaintext($node)) === null) {
+            return $html;
+        }
+
+        // Written again with the held body standing in as a placeholder of
+        // this call's own, which shows where its text goes: text anywhere
+        // else is written as text, whatever it holds.
+        $token = $held->data;
+        $placeholder = 'ls' . bin2hex(random_bytes(8)) . 'p';
+        $held->data = $placeholder;
+        try {
+            $html = self::written($node);
+        } finally {
+            $held->data = $token;
+        }
+        $at = strpos($html, $placeholder);
+
+        return $at === false ? $html : substr($html, 0, $at) . self::heldText($token);
     }
 
     /**
@@ -288,36 +310,65 @@ final class Document
     }
 
     /**
-     * $html with the text a held <plaintext> body stands for written back
-     * where the token is, and everything after it left out.
+     * The text a held body's token stands for, or null when $data is no
+     * such token.
      *
-     * @param string $html
-     * @return string
+     * @param string $data
+     * @return string|null
      */
-    private static function restorePlaintext($html)
+    private static function heldText($data)
     {
         $mark = self::plaintextMark();
-        $at = strpos($html, $mark);
-        if ($at === false || !preg_match('/\G' . $mark . '((?:[0-9a-f]{2})*)q/', $html, $m, 0, $at)) {
-            return $html;
+        $start = strlen($mark);
+        if (strncmp($data, $mark, $start) !== 0 || strlen($data) < $start + 1 || substr($data, -1) !== 'q') {
+            return null;
+        }
+        $hex = strlen($data) - $start - 1;
+        if ($hex % 2 !== 0 || strspn($data, '0123456789abcdef', $start, $hex) !== $hex) {
+            return null;
         }
 
-        return substr($html, 0, $at) . hex2bin($m[1]);
+        return $hex === 0 ? '' : (string) hex2bin(substr($data, $start, $hex));
+    }
+
+    /**
+     * The body load() held for a <plaintext>, at or below $node: the text
+     * node holding its token, inside the element. Text elsewhere is not one,
+     * whatever it holds.
+     *
+     * @param \DOMNode $node
+     * @return \DOMText|null
+     */
+    public static function heldPlaintext(\DOMNode $node)
+    {
+        $doc = $node instanceof DOMDocument ? $node : $node->ownerDocument;
+        if ($doc === null) {
+            return null;
+        }
+
+        $mark = self::plaintextMark();
+        $query = "descendant-or-self::plaintext/text()[starts-with(., '$mark')] | self::text()[parent::plaintext][starts-with(., '$mark')]";
+        foreach ((new \DOMXPath($doc))->query($query, $node) as $text) {
+            if (self::heldText($text->data) !== null) {
+                return $text;
+            }
+        }
+
+        return null;
     }
 
     /**
      * Whether $node holds a <plaintext> body load() held, which ends what
      * html() writes of it: nothing written after it is read as anything but
-     * its text.
+     * its text. A document holds one wherever it sits, after its </html>
+     * included.
      *
      * @param \DOMNode $node
      * @return bool
      */
     public static function endsInPlaintext(\DOMNode $node)
     {
-        $node = $node instanceof DOMDocument ? $node->documentElement : $node;
-
-        return $node !== null && strpos((string) $node->textContent, self::plaintextMark()) !== false;
+        return self::heldPlaintext($node) !== null;
     }
 
     /** The token a held <plaintext> body opens with, one no page can know. */
@@ -630,9 +681,10 @@ final class Document
      * @param string $html
      * @param array $edits
      * @param string|null $marker The attribute a body read again as markup is marked with
+     * @param bool $hold Whether a <plaintext> start tag ends the input, as in a page
      * @return array[]
      */
-    private static function scan($html, array &$edits, $marker = null)
+    private static function scan($html, array &$edits, $marker = null, $hold = true)
     {
         $tags = [];
         $open = [];
@@ -700,6 +752,14 @@ final class Document
 
             if ($foreign !== null) {
                 $inPoint = $points !== [];
+                if ($name === 'plaintext' && $inPoint && $pointSelects === 0) {
+                    // An integration point's content is read as the page is,
+                    // a <plaintext> in it included.
+                    if ($hold) {
+                        $edits[] = [$at, strlen($html) - $at, self::holdPlaintext(substr($html, $at))];
+                    }
+                    break;
+                }
                 if ($inPoint || !in_array($name, self::BREAKOUT, true)) {
                     // A body here is the drawing's element's, and a browser
                     // reads it as markup, as in a select inside an
@@ -745,8 +805,12 @@ final class Document
             if ($name === 'plaintext') {
                 // Everything after the start tag is text to the end of the
                 // input, which libxml2 2.9 parses as markup and 2.14 reads as
-                // text: held out of it, it is the same on every libxml2.
-                $edits[] = [$at, strlen($html) - $at, self::holdPlaintext(substr($html, $at))];
+                // text: held out of it, it is the same on every libxml2. In a
+                // <select> a browser ignores the tag, and in a <noscript> it
+                // is the noscript's text, so what follows them is markup.
+                if ($hold && empty($counts['select']) && empty($counts['noscript'])) {
+                    $edits[] = [$at, strlen($html) - $at, self::holdPlaintext(substr($html, $at))];
+                }
                 break;
             }
             if (!in_array($name, self::VOID, true)) {

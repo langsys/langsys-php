@@ -496,6 +496,7 @@ class MarkupTokenizer
         $top = [];          // Nodes at the outermost level.
         $stack = [];        // Open elements: ['index' => int, 'node' => DOMElement].
         $offset = 0;
+        $held = [];         // Each held <plaintext> body's element, in order.
 
         $found = preg_match_all(self::SENTINEL_PATTERN, $text, $matches, PREG_OFFSET_CAPTURE);
 
@@ -557,6 +558,9 @@ class MarkupTokenizer
 
                 $this->appendNode($element, $top, $stack);
                 $stack[] = ['index' => $index, 'node' => $element, 'kept' => in_array($index, $opaque, true)];
+                if (in_array($index, $opaque, true) && ($body = Document::heldPlaintext($element)) !== null) {
+                    $held[] = $body->parentNode;
+                }
                 continue;
             }
 
@@ -580,7 +584,49 @@ class MarkupTokenizer
             return null; // Unclosed token.
         }
 
-        return $top;
+        return $held === [] ? $top : $this->heldLast($top, $held, $doc);
+    }
+
+    /**
+     * $top with a held <plaintext> body's element written last. It ends
+     * whatever is written with it (Document::html()), so a translation that
+     * puts the line's words after its pair has it after them, as deep in the
+     * markup as nothing else follows it; one copy of it is kept.
+     *
+     * @param DOMNode[] $top
+     * @param DOMElement[] $held
+     * @param DOMDocument $doc
+     * @return DOMNode[]
+     */
+    private function heldLast(array $top, array $held, DOMDocument $doc)
+    {
+        $container = $doc->createElement('div');
+        foreach ($top as $node) {
+            $container->appendChild($node);
+        }
+        foreach (array_slice($held, 1) as $copy) {
+            $copy->parentNode->removeChild($copy);
+        }
+
+        $chain = [];
+        for ($at = $held[0]->parentNode; $at !== $container; $at = $at->parentNode) {
+            array_unshift($chain, $at);
+        }
+        $into = $container;
+        foreach ($chain as $ancestor) {
+            if ($ancestor !== $into->lastChild) {
+                break;
+            }
+            $into = $ancestor;
+        }
+        $into->appendChild($held[0]);
+
+        $nodes = iterator_to_array($container->childNodes);
+        foreach ($nodes as $node) {
+            $container->removeChild($node);
+        }
+
+        return $nodes;
     }
 
     /**
